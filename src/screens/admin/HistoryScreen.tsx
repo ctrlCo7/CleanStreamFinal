@@ -1,19 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '../../constants/colors';
 import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
+import { ReportStatus } from '../../types';
 
-const FILTER_OPTIONS = ['All', 'Resolved', 'In progress', 'Pending'];
+type DisplayStatus = 'resolved' | 'in_progress' | 'pending' | 'cancelled';
 
-const MOCK_HISTORY = [
-  { id: 'h1', barangay: 'Guadalupe', type: 'Hazardous waste', severity: 'critical' as const, status: 'resolved' as const, team: 'Team B', date: 'Apr 3, 2026', duration: '6h 20m', confidence: '99.1%' },
-  { id: 'h2', barangay: 'Punta Princesa', type: 'Plastic surge', severity: 'high' as const, status: 'resolved' as const, team: 'Team A', date: 'Apr 2, 2026', duration: '4h 45m', confidence: '97.4%' },
-  { id: 'h3', barangay: 'Labangon River', type: 'Metal debris', severity: 'high' as const, status: 'in_progress' as const, team: 'Team C', date: 'Apr 2, 2026', duration: '—', confidence: '91.2%' },
-  { id: 'h4', barangay: 'Mambaling', type: 'Organic waste', severity: 'moderate' as const, status: 'resolved' as const, team: 'Team A', date: 'Apr 1, 2026', duration: '3h 10m', confidence: '88.5%' },
-  { id: 'h5', barangay: 'Kinasang-an', type: 'Mixed waste', severity: 'moderate' as const, status: 'pending' as const, team: '—', date: 'Mar 31, 2026', duration: '—', confidence: '83.0%' },
-  { id: 'h6', barangay: 'Basak Pardo', type: 'Plastic waste', severity: 'low' as const, status: 'resolved' as const, team: 'Team D', date: 'Mar 30, 2026', duration: '2h 00m', confidence: '79.3%' },
-];
+const FILTER_OPTIONS = ['All', 'Resolved', 'In progress', 'Pending', 'Cancelled'];
 
 const SEVERITY_DOT: Record<string, string> = {
   critical: Colors.critical,
@@ -22,36 +17,47 @@ const SEVERITY_DOT: Record<string, string> = {
   low: Colors.teal,
 };
 
+function toDisplayStatus(status: ReportStatus): DisplayStatus {
+  if (status === 'completed') return 'resolved';
+  if (status === 'in_progress' || status === 'assigned' || status === 'verified') return 'in_progress';
+  if (status === 'rejected' || status === 'cancelled') return 'cancelled';
+  return 'pending';
+}
+
 export default function AdminHistoryScreen() {
   const { reports } = useAppSelector((s) => s.reports);
   const [filter, setFilter] = useState('All');
 
-  const liveHistory = reports.map((r) => ({
+  const history = reports.map((r) => ({
     id: r.id,
-    barangay: r.location?.barangay || 'Unknown',
+    barangay: r.location?.barangay || r.barangay || 'Unknown',
     type: r.aiAnalysis?.wasteTypes[0]?.label || 'Waste',
     severity: (r.severity || 'moderate') as 'critical' | 'high' | 'moderate' | 'low',
-    status: (r.status || 'pending') as 'resolved' | 'in_progress' | 'pending' | 'cancelled',
-    team: '—',
-    date: r.createdAt ? new Date(r.createdAt as any).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—',
-    duration: '—',
-    confidence: `${r.aiAnalysis?.confidence || '—'}%`,
+    displayStatus: toDisplayStatus(r.status),
+    team: r.assignedTeamName || '—',
+    date: r.createdAt
+      ? new Date(r.createdAt as unknown as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : '—',
+    duration:
+      r.resolvedAt && r.createdAt
+        ? `${Math.max(1, Math.round((new Date(r.resolvedAt as unknown as string).getTime() - new Date(r.createdAt as unknown as string).getTime()) / 3600000))}h`
+        : '—',
+    confidence: r.aiAnalysis?.confidence != null ? `${Number(r.aiAnalysis.confidence).toFixed(1)}%` : '—',
   }));
 
-  const combined = [...MOCK_HISTORY, ...liveHistory];
-
   const filtered = filter === 'All'
-    ? combined
-    : combined.filter((h) => {
-        if (filter === 'Resolved') return h.status === 'resolved';
-        if (filter === 'In progress') return h.status === 'in_progress';
-        if (filter === 'Pending') return h.status === 'pending';
+    ? history
+    : history.filter((h) => {
+        if (filter === 'Resolved') return h.displayStatus === 'resolved';
+        if (filter === 'In progress') return h.displayStatus === 'in_progress';
+        if (filter === 'Pending') return h.displayStatus === 'pending';
+        if (filter === 'Cancelled') return h.displayStatus === 'cancelled';
         return true;
       });
 
-  const totalResolved = combined.filter((h) => h.status === 'resolved').length;
-  const totalInProgress = combined.filter((h) => h.status === 'in_progress').length;
-  const totalPending = combined.filter((h) => h.status === 'pending').length;
+  const totalResolved = history.filter((h) => h.displayStatus === 'resolved').length;
+  const totalInProgress = history.filter((h) => h.displayStatus === 'in_progress').length;
+  const totalPending = history.filter((h) => h.displayStatus === 'pending').length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -63,7 +69,7 @@ export default function AdminHistoryScreen() {
         {/* Summary stats */}
         <View style={styles.statsRow}>
           {[
-            { val: combined.length, label: 'Total', color: Colors.teal },
+            { val: history.length, label: 'Total', color: Colors.teal },
             { val: totalResolved, label: 'Resolved', color: Colors.green },
             { val: totalInProgress, label: 'In progress', color: Colors.amber },
             { val: totalPending, label: 'Pending', color: Colors.red },
@@ -89,38 +95,48 @@ export default function AdminHistoryScreen() {
         </ScrollView>
 
         {/* History items */}
-        {filtered.map((item) => (
-          <View key={item.id} style={styles.historyCard}>
-            <View style={styles.historyTop}>
-              <View style={[styles.dot, { backgroundColor: SEVERITY_DOT[item.severity] }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.historyBarangay}>{item.barangay}</Text>
-                <Text style={styles.historyType}>{item.type}</Text>
-              </View>
-              <Badge variant={item.status === 'resolved' ? 'resolved' : item.status === 'in_progress' ? 'in_progress' : 'pending'} label={item.status === 'in_progress' ? 'In progress' : item.status.charAt(0).toUpperCase() + item.status.slice(1)} />
-            </View>
-            <View style={styles.historyMeta}>
-              {[
-                { k: 'Date', v: item.date },
-                { k: 'Team', v: item.team },
-                { k: 'Duration', v: item.duration },
-                { k: 'CNN', v: item.confidence },
-              ].map((m) => (
-                <View key={m.k} style={styles.metaPair}>
-                  <Text style={styles.metaKey}>{m.k}</Text>
-                  <Text style={styles.metaVal}>{m.v}</Text>
+        {filtered.map((item) => {
+          const badgeVariant = item.displayStatus === 'resolved' ? 'completed'
+            : item.displayStatus === 'in_progress' ? 'in_progress'
+            : item.displayStatus === 'cancelled' ? 'cancelled'
+            : 'pending';
+          const badgeLabel = item.displayStatus === 'resolved' ? 'Resolved'
+            : item.displayStatus === 'in_progress' ? 'In progress'
+            : item.displayStatus === 'cancelled' ? 'Cancelled'
+            : 'Pending';
+          return (
+            <View key={item.id} style={styles.historyCard}>
+              <View style={styles.historyTop}>
+                <View style={[styles.dot, { backgroundColor: SEVERITY_DOT[item.severity] }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.historyBarangay}>{item.barangay}</Text>
+                  <Text style={styles.historyType}>{item.type}</Text>
                 </View>
-              ))}
+                <Badge variant={badgeVariant} label={badgeLabel} />
+              </View>
+              <View style={styles.historyMeta}>
+                {[
+                  { k: 'Date', v: item.date },
+                  { k: 'Team', v: item.team },
+                  { k: 'Duration', v: item.duration },
+                  { k: 'CNN', v: item.confidence },
+                ].map((m) => (
+                  <View key={m.k} style={styles.metaPair}>
+                    <Text style={styles.metaKey}>{m.k}</Text>
+                    <Text style={styles.metaVal}>{m.v}</Text>
+                  </View>
+                ))}
+              </View>
+              <View style={styles.historyBadgeRow}>
+                <Badge variant={item.severity} label={item.severity.charAt(0).toUpperCase() + item.severity.slice(1)} />
+              </View>
             </View>
-            <View style={styles.historyBadgeRow}>
-              <Badge variant={item.severity} label={item.severity.charAt(0).toUpperCase() + item.severity.slice(1)} />
-            </View>
-          </View>
-        ))}
+          );
+        })}
 
         {filtered.length === 0 && (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No records found</Text>
+            <Text style={styles.emptyText}>{history.length === 0 ? 'No reports yet' : 'No records match this filter'}</Text>
           </View>
         )}
       </ScrollView>

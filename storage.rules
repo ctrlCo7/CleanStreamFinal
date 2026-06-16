@@ -1,0 +1,25 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Report photos — authenticated users can upload their own reports
+    match /reports/{reportId}/{fileName} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 10 * 1024 * 1024  // 10 MB max
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // Processed/annotated images written by Cloud Functions
+    match /processed/{userId}/{imageId}/{fileName} {
+      allow read:  if request.auth != null;
+      // Only Cloud Functions write here; deny client writes
+      allow write: if false;
+    }
+
+    // Deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

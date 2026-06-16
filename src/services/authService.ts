@@ -32,6 +32,8 @@ export const registerUser = async (
     barangay,
     employeeId,
     agency,
+    isActive: true,
+    isVerified: false,
     createdAt: new Date().toISOString(),
   };
 

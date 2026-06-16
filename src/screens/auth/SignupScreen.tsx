@@ -1,13 +1,18 @@
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView, Platform,
+  ScrollView,
+  StyleSheet,
+  Text, TextInput, TouchableOpacity,
+  View,
 } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Colors } from '../../constants/colors';
-import { RootStackParamList, UserRole } from '../../types';
+import { clearError, register, setUser } from '../../store/authSlice';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { register, clearError } from '../../store/authSlice';
+import { RootStackParamList, UserRole } from '../../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 
@@ -42,7 +47,10 @@ export default function SignupScreen({ navigation }: Props) {
     const result = await dispatch(
       register({ email: email.trim(), password, firstName, lastName, role, barangay, employeeId, agency }),
     );
-    if (register.rejected.match(result)) {
+    if (register.fulfilled.match(result)) {
+      dispatch(setUser(null));
+      navigation.navigate('Login');
+    } else {
       Alert.alert('Sign up failed', result.payload as string || 'Please try again.');
     }
   };

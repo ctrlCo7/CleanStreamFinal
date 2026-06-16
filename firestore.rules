@@ -1,0 +1,249 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helpers ───────────────────────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function currentUid() {
+      return request.auth.uid;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(currentUid())).data;
+    }
+
+    function hasRole(role) {
+      return isAuthenticated() && getUserData().role == role;
+    }
+
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    function isBarangayOfficer() {
+      return hasRole('barangay');
+    }
+
+    function isCleanupTeam() {
+      return hasRole('cleanup_team');
+    }
+
+    function isCitizen() {
+      return hasRole('citizen');
+    }
+
+    function isAdminOrBarangay() {
+      return isAuthenticated() && getUserData().role in ['admin', 'barangay'];
+    }
+
+    function isStaff() {
+      return isAuthenticated() && getUserData().role in ['admin', 'barangay', 'cleanup_team'];
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && currentUid() == userId;
+    }
+
+    function sameBarangay(barangayId) {
+      return isAuthenticated() && getUserData().barangayId == barangayId;
+    }
+
+    function isNotDeleted() {
+      return !('deleted' in resource.data) || resource.data.deleted == false;
+    }
+
+    // ─── Users ─────────────────────────────────────────────────────────────────
+    // citizens read own profile; admin reads all; barangay reads members
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin() || isBarangayOfficer() || isCleanupTeam();
+      allow create: if isAuthenticated() && currentUid() == userId
+                    && request.resource.data.role in ['citizen', 'barangay', 'cleanup_team']
+                    && request.resource.data.keys().hasAll(['uid', 'email', 'firstName', 'lastName', 'role']);
+      allow update: if (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys()
+                          .hasAny(['role', 'isVerified', 'isActive']))
+                    || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ─── Reports ───────────────────────────────────────────────────────────────
+    match /reports/{reportId} {
+      // Citizens: read own; staff: read all
+      allow read: if isAuthenticated()
+                  && (isOwner(resource.data.userId) || isStaff());
+
+      // Citizens and barangay officers can create reports
+      allow create: if isAuthenticated()
+                    && (isCitizen() || isBarangayOfficer())
+                    && request.resource.data.userId == currentUid()
+                    && request.resource.data.keys().hasAll(['userId', 'location', 'status', 'severity']);
+
+      // Status transitions — strict role-based write access
+      allow update: if isAuthenticated() && (
+                      // Owner can only update notes/photos on pending reports
+                      (isOwner(resource.data.userId)
+                        && resource.data.status == 'pending'
+                        && !request.resource.data.diff(resource.data).affectedKeys()
+                            .hasAny(['status', 'severity', 'userId', 'aiAnalysis'])) ||
+
+                      // Barangay: verify, reject, assign reports in own barangay
+                      (isBarangayOfficer()
+                        && sameBarangay(resource.data.barangayId)
+                        && request.resource.data.status in ['verified', 'assigned', 'rejected']) ||
+
+                      // Cleanup team: update to in_progress / completed for assigned task
+                      (isCleanupTeam()
+                        && resource.data.assignedTeamId == getUserData().barangayId
+                        && request.resource.data.status in ['in_progress', 'completed']) ||
+
+                      // Admin: unrestricted update
+                      isAdmin() ||
+
+                      // AI service (server-side): update aiAnalysis field
+                      (isOwner(resource.data.userId)
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['aiAnalysis', 'severity', 'wasteTypes', 'updatedAt']))
+                    );
+
+      allow delete: if isAdmin();
+    }
+
+    // ─── Barangays ─────────────────────────────────────────────────────────────
+    match /barangays/{barangayId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+                    || (isBarangayOfficer() && sameBarangay(barangayId)
+                        && !request.resource.data.diff(resource.data).affectedKeys()
+                            .hasAny(['isActive', 'captainName']));
+      allow delete: if isAdmin();
+    }
+
+    // ─── Cleanup Tasks ──────────────────────────────────────────────────────────
+    match /cleanupTasks/{taskId} {
+      allow read: if isAuthenticated() && (
+                    isAdmin() ||
+                    isBarangayOfficer() ||
+                    (isCleanupTeam() && resource.data.assignedTeamId == getUserData().uid)
+                  );
+
+      allow create: if isAdminOrBarangay();
+
+      allow update: if isAuthenticated() && (
+                      isAdmin() ||
+                      // Barangay can manage tasks in their jurisdiction
+                      (isBarangayOfficer() && sameBarangay(resource.data.barangayId)) ||
+                      // Cleanup team can update status and progress on their own task
+                      (isCleanupTeam()
+                        && resource.data.assignedTeamId == currentUid()
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['status', 'progressNotes', 'completionNotes',
+                                      'actualStartTime', 'actualEndTime', 'completedAt',
+                                      'wasteCollectedKg', 'beforePhotoURLs', 'afterPhotoURLs', 'updatedAt']))
+                    );
+
+      allow delete: if isAdmin();
+    }
+
+    // ─── Cleanup Events ────────────────────────────────────────────────────────
+    match /cleanupEvents/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdminOrBarangay();
+      allow update: if isAdmin()
+                    || (isBarangayOfficer() && sameBarangay(resource.data.barangayId));
+      allow delete: if isAdmin();
+
+      // Participants subcollection — citizens can join/leave
+      match /participants/{userId} {
+        allow read: if isAuthenticated();
+        allow create: if isOwner(userId);
+        allow update: if isOwner(userId) || isAdminOrBarangay();
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // ─── Notifications ──────────────────────────────────────────────────────────
+    match /notifications/{notificationId} {
+      // Users only see their own notifications
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isAuthenticated();
+      allow update: if isOwner(resource.data.userId)
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['read', 'readAt']);
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+
+    // ─── Announcements ──────────────────────────────────────────────────────────
+    match /announcements/{announcementId} {
+      allow read: if isAuthenticated() && resource.data.isActive == true;
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+                    || (isBarangayOfficer()
+                        && resource.data.authorId == currentUid()
+                        && !request.resource.data.diff(resource.data).affectedKeys()
+                            .hasAny(['authorId', 'targetRoles', 'isPinned']));
+      allow delete: if isAdmin();
+    }
+
+    // ─── Activity Logs ──────────────────────────────────────────────────────────
+    match /activityLogs/{logId} {
+      // Only admins can read all logs; users see own logs
+      allow read: if isAdmin()
+                  || (isAuthenticated() && resource.data.userId == currentUid());
+      // All authenticated users can write their own activity
+      allow create: if isAuthenticated() && request.resource.data.userId == currentUid();
+      // Logs are immutable
+      allow update, delete: if false;
+    }
+
+    // ─── Analytics ─────────────────────────────────────────────────────────────
+    match /analytics/{snapshotId} {
+      allow read: if isAdminOrBarangay();
+      allow write: if isAdmin();
+    }
+
+    // ─── Feedback ──────────────────────────────────────────────────────────────
+    match /feedback/{feedbackId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == currentUid()
+                    && request.resource.data.rating >= 1
+                    && request.resource.data.rating <= 5;
+      allow update: if isAdmin()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['status', 'adminResponse', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
+
+    // ─── System Settings ────────────────────────────────────────────────────────
+    match /systemSettings/{doc} {
+      // All authenticated users can read settings (for maintenance mode, feature flags)
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ─── Conversations ──────────────────────────────────────────────────────────
+    match /conversations/{conversationId} {
+      allow read, write: if isAuthenticated()
+                         && currentUid() in resource.data.participantIds;
+      allow create: if isAuthenticated()
+                    && currentUid() in request.resource.data.participantIds;
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated()
+                    && currentUid() in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+        allow create: if isAuthenticated()
+                      && request.resource.data.senderId == currentUid()
+                      && currentUid() in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+        allow update: if isAuthenticated()
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+        allow delete: if false;
+      }
+    }
+
+  }
+}

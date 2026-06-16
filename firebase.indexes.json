@@ -1,0 +1,275 @@
+{
+  "indexes": [
+
+    // ─── reports ────────────────────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "barangayId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "barangayId", "order": "ASCENDING" },
+        { "fieldPath": "status",     "order": "ASCENDING" },
+        { "fieldPath": "createdAt",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "severity",  "order": "ASCENDING" },
+        { "fieldPath": "status",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignedTeamId", "order": "ASCENDING" },
+        { "fieldPath": "status",         "order": "ASCENDING" },
+        { "fieldPath": "createdAt",      "order": "DESCENDING" }
+      ]
+    },
+
+    // ─── cleanupTasks ────────────────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "cleanupTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignedTeamId", "order": "ASCENDING" },
+        { "fieldPath": "scheduledDate",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cleanupTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignedTeamId", "order": "ASCENDING" },
+        { "fieldPath": "status",         "order": "ASCENDING" },
+        { "fieldPath": "scheduledDate",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cleanupTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "barangayId",    "order": "ASCENDING" },
+        { "fieldPath": "scheduledDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cleanupTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "barangayId", "order": "ASCENDING" },
+        { "fieldPath": "status",     "order": "ASCENDING" },
+        { "fieldPath": "scheduledDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cleanupTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "priority",      "order": "ASCENDING" },
+        { "fieldPath": "status",        "order": "ASCENDING" },
+        { "fieldPath": "scheduledDate", "order": "ASCENDING" }
+      ]
+    },
+
+    // ─── cleanupEvents ───────────────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "cleanupEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",    "order": "ASCENDING" },
+        { "fieldPath": "eventDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cleanupEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "barangayId", "order": "ASCENDING" },
+        { "fieldPath": "eventDate",  "order": "DESCENDING" }
+      ]
+    },
+
+    // ─── notifications ───────────────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "read",   "order": "ASCENDING" }
+      ]
+    },
+
+    // ─── announcements ───────────────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "announcements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive",     "order": "ASCENDING" },
+        { "fieldPath": "isPinned",     "order": "DESCENDING" },
+        { "fieldPath": "publishedAt",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "announcements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type",        "order": "ASCENDING" },
+        { "fieldPath": "isActive",    "order": "ASCENDING" },
+        { "fieldPath": "publishedAt", "order": "DESCENDING" }
+      ]
+    },
+
+    // ─── activityLogs ────────────────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "activityLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId",    "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activityLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "entityType", "order": "ASCENDING" },
+        { "fieldPath": "entityId",   "order": "ASCENDING" },
+        { "fieldPath": "timestamp",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activityLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "action",    "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+
+    // ─── analytics ───────────────────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "analytics",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "periodType", "order": "ASCENDING" },
+        { "fieldPath": "date",       "order": "DESCENDING" }
+      ]
+    },
+
+    // ─── feedback ────────────────────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "feedback",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "feedback",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "feedback",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type",      "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+
+    // ─── conversations ───────────────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "conversations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participantIds",   "arrayConfig": "CONTAINS" },
+        { "fieldPath": "lastMessageTime",  "order": "DESCENDING" }
+      ]
+    },
+
+    // ─── conversations/messages ──────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "receiverId", "order": "ASCENDING" },
+        { "fieldPath": "read",       "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "timestamp", "order": "ASCENDING" }
+      ]
+    }
+
+  ],
+
+  "fieldOverrides": [
+    {
+      "collectionGroup": "activityLogs",
+      "fieldPath": "timestamp",
+      "indexes": [
+        { "order": "ASCENDING",  "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION" }
+      ]
+    },
+    {
+      "collectionGroup": "reports",
+      "fieldPath": "statusHistory",
+      "indexes": []
+    }
+  ]
+}

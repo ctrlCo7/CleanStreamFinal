@@ -1,14 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView,
-  TextInput, Alert,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet,
+  TextInput, Alert, ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, limit } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 import { Colors } from '../../constants/colors';
 import { useAppSelector } from '../../store/hooks';
 
 const CHECKPOINT_TYPES = ['Pre-cleanup assessment', 'During cleanup progress', 'Post-cleanup verification', 'Hazmat status update', 'Community alert'];
 const CONDITIONS = ['Clean', 'Mild', 'Moderate', 'Heavy', 'Critical'];
 const WASTE_TYPES_OPT = ['Plastic', 'Organic', 'Hazardous', 'Metal', 'Electronic', 'Mixed'];
+
+const COND_COLORS: Record<string, string> = {
+  Clean: Colors.teal,
+  Mild: Colors.green,
+  Moderate: Colors.amber,
+  Heavy: Colors.red,
+  Critical: Colors.critical,
+};
+
+interface FieldCheckpoint {
+  id: string;
+  type: string;
+  condition: string;
+  date: string;
+  barangay: string;
+}
 
 export default function BarangayReportScreen() {
   const { user } = useAppSelector((s) => s.auth);
@@ -17,22 +36,70 @@ export default function BarangayReportScreen() {
   const [wasteType, setWasteType] = useState('Plastic');
   const [notes, setNotes] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [typeIdx, setTypeIdx] = useState(0);
   const [condIdx, setCondIdx] = useState(2);
+  const [recentCheckpoints, setRecentCheckpoints] = useState<FieldCheckpoint[]>([]);
 
   const barangay = user?.barangay || 'Guadalupe';
 
-  const handleSubmit = () => {
+  // Subscribe to recent checkpoints for this user
+  useEffect(() => {
+    if (!user?.uid) return;
+    const q = query(
+      collection(db, 'fieldCheckpoints'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc'),
+      limit(5),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setRecentCheckpoints(
+        snap.docs.map((d) => {
+          const data = d.data();
+          const ts = data.createdAt?.toDate?.() ?? new Date(data.createdAt ?? Date.now());
+          return {
+            id: d.id,
+            type: data.type || '—',
+            condition: data.condition || '—',
+            barangay: data.barangay || '—',
+            date: ts.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+          };
+        }),
+      );
+    });
+    return unsub;
+  }, [user?.uid]);
+
+  const handleSubmit = async () => {
     if (!notes.trim()) {
       Alert.alert('Notes required', 'Please add field notes before submitting.');
       return;
     }
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
+    setSaving(true);
+    try {
+      await addDoc(collection(db, 'fieldCheckpoints'), {
+        userId: user?.uid ?? '',
+        userName: user ? `${user.firstName} ${user.lastName}` : 'BHW Officer',
+        barangayId: user?.barangayId ?? '',
+        barangay,
+        type: checkpointType,
+        condition,
+        wasteType,
+        notes: notes.trim(),
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      });
+      setSubmitted(true);
       setNotes('');
-      Alert.alert('Checkpoint submitted', 'Your field report has been sent to the admin.');
-    }, 1500);
+      setTimeout(() => {
+        setSubmitted(false);
+        Alert.alert('Checkpoint submitted', 'Your field report has been sent to the admin.');
+      }, 1500);
+    } catch {
+      Alert.alert('Error', 'Failed to submit. Please check your connection and try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const cycleType = () => {
@@ -45,14 +112,6 @@ export default function BarangayReportScreen() {
     const next = (condIdx + 1) % CONDITIONS.length;
     setCondIdx(next);
     setCondition(CONDITIONS[next]);
-  };
-
-  const COND_COLORS: Record<string, string> = {
-    Clean: Colors.teal,
-    Mild: Colors.green,
-    Moderate: Colors.amber,
-    Heavy: Colors.red,
-    Critical: Colors.critical,
   };
 
   return (
@@ -142,30 +201,31 @@ export default function BarangayReportScreen() {
         <TouchableOpacity
           style={[styles.submitBtn, submitted && styles.submitBtnSuccess]}
           onPress={handleSubmit}
-          disabled={submitted}
+          disabled={submitted || saving}
           activeOpacity={0.85}
         >
-          <Text style={styles.submitBtnText}>{submitted ? '✓ Submitted' : 'Submit checkpoint'}</Text>
+          {saving
+            ? <ActivityIndicator size="small" color="#fff" />
+            : <Text style={styles.submitBtnText}>{submitted ? '✓ Submitted' : 'Submit checkpoint'}</Text>
+          }
         </TouchableOpacity>
 
-        {/* Previous checkpoints */}
-        <View style={styles.prevSection}>
-          <Text style={styles.prevTitle}>Recent checkpoints</Text>
-          {[
-            { type: 'Post-cleanup verification', condition: 'Clean', date: 'Apr 3, 2026 · 2:14 PM', barangay: 'Guadalupe' },
-            { type: 'Pre-cleanup assessment', condition: 'Critical', date: 'Apr 2, 2026 · 5:47 AM', barangay: 'Guadalupe' },
-            { type: 'During cleanup progress', condition: 'Moderate', date: 'Apr 1, 2026 · 9:30 AM', barangay: 'Labangon' },
-          ].map((p, i) => (
-            <View key={i} style={styles.prevCard}>
-              <View style={[styles.prevDot, { backgroundColor: COND_COLORS[p.condition] }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.prevType}>{p.type}</Text>
-                <Text style={styles.prevDate}>{p.date} · {p.barangay}</Text>
+        {/* Recent checkpoints from Firestore */}
+        {recentCheckpoints.length > 0 && (
+          <View style={styles.prevSection}>
+            <Text style={styles.prevTitle}>Recent checkpoints</Text>
+            {recentCheckpoints.map((p) => (
+              <View key={p.id} style={styles.prevCard}>
+                <View style={[styles.prevDot, { backgroundColor: COND_COLORS[p.condition] ?? Colors.grayMid }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.prevType}>{p.type}</Text>
+                  <Text style={styles.prevDate}>{p.date} · {p.barangay}</Text>
+                </View>
+                <Text style={[styles.prevCond, { color: COND_COLORS[p.condition] ?? Colors.textMuted }]}>{p.condition}</Text>
               </View>
-              <Text style={[styles.prevCond, { color: COND_COLORS[p.condition] }]}>{p.condition}</Text>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

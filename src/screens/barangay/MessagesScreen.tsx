@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors } from '../../constants/colors';
@@ -27,7 +28,7 @@ export default function BarangayMessagesScreen() {
     return unsub;
   }, [user?.uid]);
 
-  const totalUnread = MOCK_CONVS.filter((c) => c.unread).length + conversations.filter((c) => (c.unreadCount || 0) > 0).length;
+  const totalUnread = MOCK_CONVS.filter((c) => c.unread).length + conversations.filter((c) => (c.unreadCounts?.[user?.uid ?? ''] || 0) > 0).length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -68,7 +69,7 @@ export default function BarangayMessagesScreen() {
         {conversations.map((conv) => {
           const otherName = Object.entries(conv.participantNames)
             .find(([id]) => id !== user?.uid)?.[1] || 'Admin';
-          const isUnread = (conv.unreadCount || 0) > 0;
+          const isUnread = (conv.unreadCounts?.[user?.uid ?? ''] || 0) > 0;
           return (
             <TouchableOpacity
               key={conv.id}

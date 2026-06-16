@@ -8,7 +8,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '../../constants/colors';
 import { RootStackParamList } from '../../types';
-import { useAppSelector } from '../../store/hooks';
+import { useAppSelector, useAppDispatch } from '../../store/hooks';
+import { upsertReport } from '../../store/reportsSlice';
 import { getCurrentLocation } from '../../services/locationService';
 import { analyzeWastePhoto } from '../../services/aiService';
 import { createReport, updateReportWithAI } from '../../services/reportsService';
@@ -19,14 +20,16 @@ import Svg, { Path, Circle, Rect } from 'react-native-svg';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const AI_STEPS = [
-  'Detecting waste types',
-  'Estimating volume (m³)',
+  'Uploading photo to cloud',
+  'Running YOLO object detection',
+  'Running CNN classification',
+  'Generating disposal recommendations',
   'Calculating severity score',
-  'Assigning cleanup priority',
 ];
 
 export default function CitizenReportScreen() {
   const navigation = useNavigation<Nav>();
+  const dispatch = useAppDispatch();
   const { user } = useAppSelector((s) => s.auth);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [location, setLocation] = useState<GeoLocation | null>(null);
@@ -54,7 +57,7 @@ export default function CitizenReportScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: 'images',
       quality: 0.85,
       allowsEditing: false,
     });
@@ -71,13 +74,16 @@ export default function CitizenReportScreen() {
     setProcessing(true);
     setAiStep(0);
 
-    try {
-      // Step progress simulation
-      const stepInterval = setInterval(() => {
-        setAiStep((s) => Math.min(s + 1, AI_STEPS.length - 1));
-      }, 500);
+    const stepInterval = setInterval(() => {
+      setAiStep((s) => Math.min(s + 1, AI_STEPS.length - 1));
+    }, 600);
 
-      const reportId = await createReport(
+    // ── STEP 1: Create Firestore document (CRITICAL) ───────────────────────
+    let reportId: string;
+    let reportNumber: string;
+    try {
+      console.log('[Submit] Creating report...');
+      const result = await createReport(
         user.uid,
         user.role,
         `${user.firstName} ${user.lastName}`,
@@ -85,32 +91,97 @@ export default function CitizenReportScreen() {
         location,
         notes,
       );
-
-      const aiResult = await analyzeWastePhoto(photoUri);
+      reportId = result.reportId;
+      reportNumber = result.reportNumber;
+      console.log('[Submit] Report created successfully. ID:', reportId, 'Number:', reportNumber);
+    } catch (criticalErr) {
       clearInterval(stepInterval);
-      setAiStep(AI_STEPS.length);
-
-      await updateReportWithAI(reportId, aiResult);
-
       setProcessing(false);
-      navigation.navigate('CitizenAIResult', {
-        report: {
-          id: reportId,
-          userId: user.uid,
-          userRole: user.role,
-          userName: `${user.firstName} ${user.lastName}`,
-          location,
-          photoURL: photoUri,
-          status: 'pending',
-          severity: aiResult.severityLevel,
-          aiAnalysis: aiResult,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      });
-    } catch (e) {
-      setProcessing(false);
-      Alert.alert('Submission failed', (e as Error).message || 'Please try again.');
+      console.error('[Submit] CRITICAL — Firestore document creation failed:', criticalErr);
+      Alert.alert('Submission failed', 'Could not save your report. Please check your connection and try again.');
+      return;
+    }
+
+    // Report is saved. All remaining steps are non-critical.
+    const now = new Date().toISOString();
+    const userName = `${user.firstName} ${user.lastName}`;
+
+    // ── STEP 2: AI analysis (NON-CRITICAL) ────────────────────────────────
+    let aiResult: Awaited<ReturnType<typeof analyzeWastePhoto>> | null = null;
+    let aiWarning: string | null = null;
+
+    try {
+      console.log('[Submit] Running AI analysis for report:', reportId);
+      aiResult = await analyzeWastePhoto(photoUri, reportId, user.uid);
+      console.log('[Submit] AI analysis complete. Severity:', aiResult.severityLevel,
+        '| Confidence:', aiResult.confidence,
+        '| Objects:', aiResult.objectCount ?? 'N/A',
+        '| ProcessedURL:', aiResult.processedImageURL ?? 'none');
+    } catch (aiErr) {
+      console.error('[Submit] AI analysis failed (non-fatal):', aiErr);
+      aiWarning = 'AI analysis will be retried automatically.';
+    }
+
+    // ── STEP 3: Persist AI result to Firestore (NON-CRITICAL) ─────────────
+    if (aiResult) {
+      try {
+        console.log('[Submit] Saving AI result to Firestore...');
+        await updateReportWithAI(reportId, aiResult);
+        console.log('[Submit] AI result saved.');
+      } catch (updateErr) {
+        console.error('[Submit] AI result save failed (non-fatal):', updateErr);
+      }
+    }
+
+    clearInterval(stepInterval);
+    setAiStep(AI_STEPS.length);
+    setProcessing(false);
+
+    // ── Navigate with whatever result we have ──────────────────────────────
+    const effectiveAI = aiResult ?? {
+      modelVersion: 'Pending',
+      confidence: 0,
+      severityScore: 0,
+      severityLevel: 'low' as const,
+      wasteTypes: [],
+      estimatedVolume: 0,
+      spreadArea: 0,
+      hazardousDetected: false,
+      teamNeeded: 'TBD',
+      cleanupPriority: 'Pending AI analysis',
+      timestamp: now,
+    };
+
+    const reportPayload = {
+      id: reportId,
+      reportNumber,
+      userId: user.uid,
+      userRole: user.role,
+      userName,
+      location,
+      photoURL: effectiveAI.processedImageURL ?? photoUri,
+      status: 'pending' as const,
+      severity: effectiveAI.severityLevel,
+      aiAnalysis: effectiveAI,
+      statusHistory: [{ status: 'pending' as const, changedBy: user.uid, changedByName: userName, changedAt: now }],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Put the new report in Redux immediately so History shows it right away
+    dispatch(upsertReport(reportPayload));
+
+    if (aiWarning) {
+      Alert.alert(
+        'Report submitted',
+        `Your report was saved successfully. ${aiWarning}`,
+        [{
+          text: 'View report',
+          onPress: () => navigation.navigate('CitizenAIResult', { report: reportPayload }),
+        }],
+      );
+    } else {
+      navigation.navigate('CitizenAIResult', { report: reportPayload });
     }
   };
 

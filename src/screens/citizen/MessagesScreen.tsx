@@ -1,12 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import React, { useEffect, useState } from 'react';
+import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '../../constants/colors';
-import { RootStackParamList } from '../../types';
-import { useAppSelector } from '../../store/hooks';
 import { subscribeToConversations } from '../../services/messagingService';
-import { Conversation } from '../../types';
+import { useAppSelector } from '../../store/hooks';
+import { Conversation, RootStackParamList } from '../../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -28,7 +27,7 @@ export default function CitizenMessagesScreen() {
     return unsub;
   }, [user?.uid]);
 
-  const totalUnread = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  const totalUnread = conversations.reduce((sum, c) => sum + (c.unreadCounts?.[user?.uid ?? ''] || 0), 0);
 
   const openChat = (conv: Conversation) => {
     const otherName = Object.entries(conv.participantNames)
@@ -79,7 +78,7 @@ export default function CitizenMessagesScreen() {
         {conversations.map((conv) => {
           const otherName = Object.entries(conv.participantNames)
             .find(([id]) => id !== user?.uid)?.[1] || 'Unknown';
-          const isUnread = (conv.unreadCount || 0) > 0;
+          const isUnread = (conv.unreadCounts?.[user?.uid ?? ''] || 0) > 0;
           return (
             <TouchableOpacity
               key={conv.id}

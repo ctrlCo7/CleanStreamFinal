@@ -1,46 +1,104 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '../../constants/colors';
 import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
+import { CleanupEvent } from '../../types';
+import { subscribeToUpcomingEvents, joinEvent, leaveEvent } from '../../services/cleanupEventService';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const MONTH = 'April 2026';
 
-const CALENDAR_WEEKS = [
-  [null, null, 1, 2, 3, 4, 5],
-  [6, 7, 8, 9, 10, 11, 12],
-  [13, 14, 15, 16, 17, 18, 19],
-  [20, 21, 22, 23, 24, 25, 26],
-  [27, 28, 29, 30, null, null, null],
-];
-
-const EVENT_DAYS: Record<number, { color: string; label: string }> = {
-  3: { color: Colors.critical, label: 'Critical' },
-  5: { color: Colors.teal, label: 'Cleanup' },
-  6: { color: Colors.teal, label: 'Cleanup' },
-  12: { color: Colors.amber, label: 'Moderate' },
-  18: { color: Colors.teal, label: 'Cleanup' },
-};
-
-const SCHEDULED = [
-  { id: 's1', title: 'Guadalupe hazmat cleanup', date: 'April 5, 2026', time: '6:00 AM – 2:00 PM', team: 'Team B — Hazmat specialists', status: 'confirmed', severity: 'critical' as const },
-  { id: 's2', title: 'Punta Princesa plastic sweep', date: 'April 6, 2026', time: '7:00 AM – 12:00 PM', team: 'Team A — General cleanup', status: 'confirmed', severity: 'high' as const },
-  { id: 's3', title: 'Kinasang-an waste collection', date: 'April 12, 2026', time: '8:00 AM – 11:00 AM', team: 'Team C — Standard cleanup', status: 'pending', severity: 'moderate' as const },
-  { id: 's4', title: 'Labangon River inspection', date: 'April 18, 2026', time: '7:00 AM – 9:00 AM', team: 'Team D — Heavy machinery', status: 'pending', severity: 'high' as const },
-];
+function buildCalendar(year: number, month: number): (number | null)[][] {
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startOffset = (firstDay + 6) % 7; // Mon=0
+  const flat: (number | null)[] = [
+    ...Array(startOffset).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (flat.length % 7 !== 0) flat.push(null);
+  return Array.from({ length: flat.length / 7 }, (_, i) => flat.slice(i * 7, i * 7 + 7));
+}
 
 export default function BarangayScheduleScreen() {
   const { user } = useAppSelector((s) => s.auth);
-  const [selectedDay, setSelectedDay] = useState<number | null>(5);
+  const [events, setEvents] = useState<CleanupEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [joiningId, setJoiningId] = useState<string | null>(null);
 
-  const todayEvents = selectedDay ? SCHEDULED.filter((s) => {
-    const dayMatch = s.date.includes(`April ${selectedDay}`);
-    return dayMatch;
-  }) : [];
+  const now = new Date();
+  const [viewYear, setViewYear] = useState(now.getFullYear());
+  const [viewMonth, setViewMonth] = useState(now.getMonth());
+  const [selectedDay, setSelectedDay] = useState<number | null>(now.getDate());
 
-  const handleConfirm = (id: string) => {
-    Alert.alert('Confirmed', 'You have confirmed attendance for this cleanup task.');
+  const MONTH_LABEL = new Date(viewYear, viewMonth, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+  const weeks = useMemo(() => buildCalendar(viewYear, viewMonth), [viewYear, viewMonth]);
+
+  useEffect(() => {
+    const unsub = subscribeToUpcomingEvents((incoming) => {
+      setEvents(incoming);
+      setLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  // Map event dates to dot colors
+  const eventDayMap = useMemo(() => {
+    const map: Record<number, string> = {};
+    events.forEach((e) => {
+      try {
+        const d = new Date(e.eventDate);
+        if (d.getFullYear() === viewYear && d.getMonth() === viewMonth) {
+          const day = d.getDate();
+          const color = e.barangay === user?.barangay ? Colors.teal : Colors.amber;
+          if (!map[day]) map[day] = color;
+        }
+      } catch { /* skip malformed dates */ }
+    });
+    return map;
+  }, [events, viewYear, viewMonth, user?.barangay]);
+
+  // Events on selected day
+  const dayEvents = useMemo(() => {
+    if (!selectedDay) return [];
+    return events.filter((e) => {
+      try {
+        const d = new Date(e.eventDate);
+        return d.getFullYear() === viewYear && d.getMonth() === viewMonth && d.getDate() === selectedDay;
+      } catch { return false; }
+    });
+  }, [events, selectedDay, viewYear, viewMonth]);
+
+  const handleJoin = async (event: CleanupEvent) => {
+    if (!user) return;
+    const isJoined = event.participantIds?.includes(user.uid);
+    setJoiningId(event.id);
+    try {
+      if (isJoined) {
+        await leaveEvent(event.id, user.uid);
+        Alert.alert('Left event', `You have left "${event.title}".`);
+      } else {
+        await joinEvent(event.id, {
+          userId: user.uid,
+          userName: `${user.firstName} ${user.lastName}`,
+        });
+        Alert.alert('Joined!', `You are registered for "${event.title}".`);
+      }
+    } catch {
+      Alert.alert('Error', 'Could not update attendance. Please try again.');
+    } finally {
+      setJoiningId(null);
+    }
+  };
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }
+    else setViewMonth((m) => m - 1);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); }
+    else setViewMonth((m) => m + 1);
   };
 
   return (
@@ -55,28 +113,37 @@ export default function BarangayScheduleScreen() {
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {/* Calendar */}
         <View style={styles.calCard}>
-          <Text style={styles.calMonth}>{MONTH}</Text>
+          <View style={styles.calNav}>
+            <TouchableOpacity onPress={prevMonth} style={styles.navBtn}>
+              <Text style={styles.navArrow}>‹</Text>
+            </TouchableOpacity>
+            <Text style={styles.calMonth}>{MONTH_LABEL}</Text>
+            <TouchableOpacity onPress={nextMonth} style={styles.navBtn}>
+              <Text style={styles.navArrow}>›</Text>
+            </TouchableOpacity>
+          </View>
           <View style={styles.calDayRow}>
             {DAYS.map((d) => (
               <Text key={d} style={styles.calDayLabel}>{d}</Text>
             ))}
           </View>
-          {CALENDAR_WEEKS.map((week, wi) => (
+          {weeks.map((week, wi) => (
             <View key={wi} style={styles.calWeekRow}>
               {week.map((day, di) => {
-                const event = day ? EVENT_DAYS[day] : null;
+                const dotColor = day ? eventDayMap[day] : null;
                 const isSelected = day === selectedDay;
+                const isToday = day === now.getDate() && viewMonth === now.getMonth() && viewYear === now.getFullYear();
                 return (
                   <TouchableOpacity
                     key={di}
-                    style={[styles.calCell, isSelected && styles.calCellSelected]}
+                    style={[styles.calCell, isSelected && styles.calCellSelected, isToday && !isSelected && styles.calCellToday]}
                     onPress={() => day && setSelectedDay(day)}
                     disabled={!day}
                   >
                     {day ? (
                       <>
-                        <Text style={[styles.calDayNum, isSelected && styles.calDayNumSelected]}>{day}</Text>
-                        {event && <View style={[styles.calDot, { backgroundColor: event.color }]} />}
+                        <Text style={[styles.calDayNum, isSelected && styles.calDayNumSelected, isToday && !isSelected && styles.calDayNumToday]}>{day}</Text>
+                        {dotColor && <View style={[styles.calDot, { backgroundColor: dotColor }]} />}
                       </>
                     ) : <Text style={styles.calDayNum}> </Text>}
                   </TouchableOpacity>
@@ -84,51 +151,81 @@ export default function BarangayScheduleScreen() {
               })}
             </View>
           ))}
-
-          {/* Legend */}
           <View style={styles.calLegend}>
-            <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: Colors.teal }]} /><Text style={styles.legendText}>Cleanup</Text></View>
-            <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: Colors.critical }]} /><Text style={styles.legendText}>Critical</Text></View>
-            <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: Colors.amber }]} /><Text style={styles.legendText}>Moderate</Text></View>
+            <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: Colors.teal }]} /><Text style={styles.legendText}>My barangay</Text></View>
+            <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: Colors.amber }]} /><Text style={styles.legendText}>Other area</Text></View>
           </View>
         </View>
 
-        {/* Day events */}
-        {selectedDay && (
-          <View style={styles.daySectionHeader}>
-            <Text style={styles.daySectionTitle}>April {selectedDay} events</Text>
+        {/* Selected day events */}
+        {selectedDay && dayEvents.length > 0 && (
+          <>
+            <Text style={styles.daySectionTitle}>{MONTH_LABEL.split(' ')[0]} {selectedDay} events</Text>
+            {dayEvents.map((ev) => <EventCard key={ev.id} event={ev} user={user} onJoin={handleJoin} joiningId={joiningId} />)}
+          </>
+        )}
+        {selectedDay && dayEvents.length === 0 && (
+          <View style={styles.emptyDay}>
+            <Text style={styles.emptyDayText}>No events on this day</Text>
           </View>
         )}
 
-        {/* All scheduled cleanups */}
-        <View style={styles.daySectionHeader}>
-          <Text style={styles.daySectionTitle}>All scheduled cleanups</Text>
-        </View>
-
-        {SCHEDULED.map((item) => (
-          <View key={item.id} style={styles.schedCard}>
-            <View style={[styles.schedLeft, { backgroundColor: item.severity === 'critical' ? Colors.criticalBg : item.severity === 'high' ? Colors.redBg : Colors.tealLight }]}>
-              <View style={[styles.schedDot, { backgroundColor: item.severity === 'critical' ? Colors.critical : item.severity === 'high' ? Colors.red : Colors.teal }]} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.schedTitle}>{item.title}</Text>
-              <Text style={styles.schedDate}>{item.date}</Text>
-              <Text style={styles.schedTime}>{item.time}</Text>
-              <Text style={styles.schedTeam}>{item.team}</Text>
-              <View style={styles.schedBadgeRow}>
-                <Badge variant={item.severity} label={item.severity.charAt(0).toUpperCase() + item.severity.slice(1)} />
-                <Badge variant={item.status === 'confirmed' ? 'resolved' : 'pending'} label={item.status === 'confirmed' ? 'Confirmed' : 'Pending confirm'} />
-              </View>
-              {item.status === 'pending' && (
-                <TouchableOpacity style={styles.confirmBtn} onPress={() => handleConfirm(item.id)}>
-                  <Text style={styles.confirmBtnText}>Confirm attendance</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+        {/* All upcoming events */}
+        <Text style={styles.daySectionTitle}>All upcoming cleanups</Text>
+        {loading && <ActivityIndicator size="small" color={Colors.brgy} style={{ alignSelf: 'center', marginVertical: 12 }} />}
+        {!loading && events.length === 0 && (
+          <View style={styles.emptyDay}>
+            <Text style={styles.emptyDayText}>No upcoming events scheduled</Text>
           </View>
-        ))}
+        )}
+        {events.map((ev) => <EventCard key={ev.id} event={ev} user={user} onJoin={handleJoin} joiningId={joiningId} />)}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function EventCard({ event, user, onJoin, joiningId }: {
+  event: CleanupEvent;
+  user: { uid: string; barangay?: string } | null;
+  onJoin: (e: CleanupEvent) => void;
+  joiningId: string | null;
+}) {
+  const isJoined = user ? event.participantIds?.includes(user.uid) : false;
+  const isMyBarangay = user?.barangay && event.barangay === user.barangay;
+  const isLoading = joiningId === event.id;
+
+  let dateStr = '—';
+  try {
+    dateStr = new Date(event.eventDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  } catch { /* skip */ }
+
+  const accentColor = isMyBarangay ? Colors.brgy : Colors.blue;
+  const accentBg = isMyBarangay ? Colors.brgyLight : Colors.blueBg;
+
+  return (
+    <View style={[styles.schedCard, { borderLeftColor: accentColor }]}>
+      <View style={[styles.schedLeft, { backgroundColor: accentBg }]} />
+      <View style={{ flex: 1, padding: 11, paddingLeft: 10 }}>
+        <Text style={styles.schedTitle}>{event.title}</Text>
+        <Text style={styles.schedBarangay}>{event.barangay}</Text>
+        <Text style={styles.schedDate}>{dateStr}</Text>
+        <Text style={styles.schedTime}>{event.startTime} – {event.endTime}</Text>
+        <View style={styles.schedBadgeRow}>
+          <Badge variant={isJoined ? 'low' : 'pending'} label={isJoined ? 'Joined' : 'Open'} />
+          <Text style={styles.participantCount}>{event.currentParticipants ?? 0}/{event.maxParticipants ?? '?'} volunteers</Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.joinBtn, { backgroundColor: isJoined ? Colors.grayBg : accentColor }]}
+          onPress={() => onJoin(event)}
+          disabled={isLoading}
+        >
+          {isLoading
+            ? <ActivityIndicator size="small" color={isJoined ? Colors.textMuted : '#fff'} />
+            : <Text style={[styles.joinBtnText, { color: isJoined ? Colors.textMuted : '#fff' }]}>{isJoined ? 'Leave event' : 'Confirm attendance'}</Text>
+          }
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -144,32 +241,38 @@ const styles = StyleSheet.create({
   rolePillText: { fontSize: 10, color: Colors.brgyDark, fontWeight: '500' },
   body: { padding: 14, gap: 10, paddingBottom: 28 },
   calCard: { backgroundColor: Colors.white, borderRadius: 14, padding: 13, borderWidth: 0.5, borderColor: Colors.border },
-  calMonth: { fontSize: 13, fontWeight: '500', color: Colors.textPrimary, textAlign: 'center', marginBottom: 10 },
+  calNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  navBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  navArrow: { fontSize: 20, color: Colors.textMuted, fontWeight: '500' },
+  calMonth: { fontSize: 13, fontWeight: '500', color: Colors.textPrimary },
   calDayRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 4 },
   calDayLabel: { fontSize: 9, color: Colors.textMuted, width: 34, textAlign: 'center', fontWeight: '500' },
   calWeekRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 2 },
   calCell: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 17 },
   calCellSelected: { backgroundColor: Colors.brgy },
+  calCellToday: { backgroundColor: Colors.brgyLight },
   calDayNum: { fontSize: 12, color: Colors.textPrimary },
   calDayNumSelected: { color: '#fff', fontWeight: '500' },
+  calDayNumToday: { color: Colors.brgyDark, fontWeight: '500' },
   calDot: { width: 5, height: 5, borderRadius: 2.5, marginTop: 1 },
   calLegend: { flexDirection: 'row', gap: 12, justifyContent: 'center', marginTop: 10 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 7, height: 7, borderRadius: 3.5 },
   legendText: { fontSize: 10, color: Colors.textMuted },
-  daySectionHeader: { marginTop: 4 },
-  daySectionTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
+  daySectionTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary, marginTop: 4 },
+  emptyDay: { backgroundColor: Colors.white, borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  emptyDayText: { fontSize: 12, color: Colors.textHint },
   schedCard: {
     backgroundColor: Colors.white, borderRadius: 13, borderWidth: 0.5, borderColor: Colors.border,
-    flexDirection: 'row', overflow: 'hidden',
+    borderLeftWidth: 3, flexDirection: 'row', overflow: 'hidden',
   },
-  schedLeft: { width: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
-  schedDot: { width: 0 },
-  schedTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary, padding: 11, paddingBottom: 2 },
-  schedDate: { fontSize: 10, color: Colors.textMuted, paddingHorizontal: 11 },
-  schedTime: { fontSize: 10, color: Colors.textPrimary, paddingHorizontal: 11, fontWeight: '500', marginTop: 2 },
-  schedTeam: { fontSize: 10, color: Colors.textMuted, paddingHorizontal: 11, marginTop: 2 },
-  schedBadgeRow: { flexDirection: 'row', gap: 5, paddingHorizontal: 11, marginTop: 6 },
-  confirmBtn: { marginHorizontal: 11, marginTop: 8, marginBottom: 11, backgroundColor: Colors.brgy, borderRadius: 10, paddingVertical: 8, alignItems: 'center' },
-  confirmBtnText: { fontSize: 11, fontWeight: '500', color: '#fff' },
+  schedLeft: { width: 4 },
+  schedTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
+  schedBarangay: { fontSize: 10, color: Colors.textMuted, marginTop: 1 },
+  schedDate: { fontSize: 10, color: Colors.textMuted, marginTop: 3 },
+  schedTime: { fontSize: 10, color: Colors.textPrimary, fontWeight: '500', marginTop: 1 },
+  schedBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 6 },
+  participantCount: { fontSize: 10, color: Colors.textMuted },
+  joinBtn: { marginTop: 8, borderRadius: 10, paddingVertical: 8, alignItems: 'center' },
+  joinBtnText: { fontSize: 11, fontWeight: '500' },
 });

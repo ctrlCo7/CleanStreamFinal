@@ -96,10 +96,10 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
         </View>
 
         {/* Waste classification */}
-        <Text style={styles.sectionTitle}>5-Type Waste Classification</Text>
+        <Text style={styles.sectionTitle}>Waste Classification</Text>
         <View style={styles.wasteGrid}>
           {ai.wasteTypes.map((wt) => (
-            <View key={wt.type} style={[styles.wasteCard, wt.type === 'electronic' && { gridColumn: 'span 2' }]}>
+            <View key={wt.type} style={styles.wasteCard}>
               <Text style={styles.wasteName}>{wt.label}</Text>
               <View style={styles.wasteBar}>
                 <View style={[styles.wasteFill, { width: `${wt.percentage}%` as never, backgroundColor: wt.color }]} />
@@ -109,12 +109,48 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
           ))}
         </View>
 
+        {/* Detected objects (YOLO) */}
+        {ai.detectedObjects && ai.detectedObjects.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>
+              Detected Objects ({ai.objectCount ?? ai.detectedObjects.length})
+            </Text>
+            <View style={styles.detectionList}>
+              {ai.detectedObjects.map((obj, idx) => (
+                <View key={idx} style={styles.detectionRow}>
+                  <View style={[styles.detectionDot, { backgroundColor: obj.color }]} />
+                  <Text style={styles.detectionLabel}>{obj.label}</Text>
+                  <View style={[styles.detectionBadge, { backgroundColor: `${obj.color}22`, borderColor: `${obj.color}55` }]}>
+                    <Text style={[styles.detectionConf, { color: obj.color }]}>{obj.confidence}%</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* CNN category */}
+        {ai.cnnResult && (
+          <View style={styles.cnnCard}>
+            <Text style={styles.cnnLabel}>CNN Primary Category</Text>
+            <View style={styles.cnnBadgeRow}>
+              <View style={[styles.cnnBadge, { backgroundColor: `${sevColor}18`, borderColor: `${sevColor}40` }]}>
+                <Text style={[styles.cnnBadgeText, { color: sevColor }]}>
+                  {ai.cnnResult.label}
+                </Text>
+              </View>
+              <Text style={styles.cnnConf}>{ai.cnnResult.confidence}% confidence</Text>
+            </View>
+          </View>
+        )}
+
         {/* Volume card */}
         <View style={styles.infoCard}>
           <Text style={styles.infoCardTitle}>Estimated Volume & Priority</Text>
           {[
             { k: 'Volume', v: `~${ai.estimatedVolume} cubic meters` },
             { k: 'Spread area', v: `~${ai.spreadArea} m²` },
+            { k: 'Objects detected', v: ai.objectCount != null ? `${ai.objectCount} items` : 'N/A' },
             { k: 'Hazardous detected', v: ai.hazardousDetected ? 'Yes — Hazardous material' : 'No', red: ai.hazardousDetected },
             { k: 'Team needed', v: ai.teamNeeded },
           ].map((row) => (
@@ -124,6 +160,38 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
             </View>
           ))}
         </View>
+
+        {/* Disposal recommendations */}
+        {ai.recommendations && ai.recommendations.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Disposal Recommendations</Text>
+            {ai.recommendations.map((rec, idx) => (
+              <View key={idx} style={styles.recCard}>
+                <View style={styles.recHeader}>
+                  <Text style={styles.recIcon}>{rec.icon}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.recTitle}>{rec.wasteLabel}</Text>
+                    <Text style={styles.recFacility}>{rec.facility}</Text>
+                  </View>
+                  <View style={[
+                    styles.recUrgency,
+                    rec.urgency === 'immediate' && { backgroundColor: '#C0392B22', borderColor: '#C0392B55' },
+                    rec.urgency === 'scheduled' && { backgroundColor: '#F39C1222', borderColor: '#F39C1255' },
+                    rec.urgency === 'routine' && { backgroundColor: '#63992222', borderColor: '#63992255' },
+                  ]}>
+                    <Text style={[
+                      styles.recUrgencyText,
+                      rec.urgency === 'immediate' && { color: '#C0392B' },
+                      rec.urgency === 'scheduled' && { color: '#D35400' },
+                      rec.urgency === 'routine' && { color: '#639922' },
+                    ]}>{rec.urgency}</Text>
+                  </View>
+                </View>
+                <Text style={styles.recAction}>{rec.action}</Text>
+              </View>
+            ))}
+          </>
+        )}
 
         {/* Priority card */}
         <View style={[styles.priorityCard, { backgroundColor: `${sevColor}18`, borderColor: `${sevColor}40` }]}>
@@ -154,7 +222,7 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
 
         <TouchableOpacity
           style={styles.historyBtn}
-          onPress={() => navigation.navigate('CitizenTabs', {} as never)}
+          onPress={() => navigation.navigate('CitizenTabs', { screen: 'CitizenHistory' } as never)}
         >
           <Text style={styles.historyBtnText}>View in history</Text>
         </TouchableOpacity>
@@ -178,7 +246,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row', gap: 12, alignItems: 'center',
     borderRadius: 14, padding: 14,
     backgroundColor: Colors.tealDeep,
-    backgroundImage: 'linear-gradient(135deg, #085041, #1D9E75)' as never,
   },
   aiIcon: {
     width: 48, height: 48, borderRadius: 14,
@@ -230,4 +297,45 @@ const styles = StyleSheet.create({
     paddingVertical: 11, alignItems: 'center', backgroundColor: Colors.white,
   },
   historyBtnText: { fontSize: 12, fontWeight: '500', color: Colors.teal },
+  // ─── Detected objects ───────────────────────────────────────────────────────
+  detectionList: {
+    backgroundColor: Colors.white, borderRadius: 12, padding: 10,
+    borderWidth: 0.5, borderColor: Colors.border, gap: 6,
+  },
+  detectionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 4, borderBottomWidth: 0.5, borderBottomColor: Colors.border,
+  },
+  detectionDot: { width: 8, height: 8, borderRadius: 4 },
+  detectionLabel: { flex: 1, fontSize: 12, color: Colors.textPrimary },
+  detectionBadge: {
+    paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10, borderWidth: 0.5,
+  },
+  detectionConf: { fontSize: 10, fontWeight: '600' },
+  // ─── CNN category ───────────────────────────────────────────────────────────
+  cnnCard: {
+    backgroundColor: Colors.white, borderRadius: 12, padding: 10,
+    borderWidth: 0.5, borderColor: Colors.border,
+  },
+  cnnLabel: { fontSize: 11, color: Colors.textMuted, marginBottom: 6 },
+  cnnBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cnnBadge: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 0.5,
+  },
+  cnnBadgeText: { fontSize: 12, fontWeight: '600' },
+  cnnConf: { fontSize: 11, color: Colors.textMuted },
+  // ─── Disposal recommendations ───────────────────────────────────────────────
+  recCard: {
+    backgroundColor: Colors.white, borderRadius: 12, padding: 11,
+    borderWidth: 0.5, borderColor: Colors.border, gap: 6,
+  },
+  recHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  recIcon: { fontSize: 20 },
+  recTitle: { fontSize: 12, fontWeight: '600', color: Colors.textPrimary },
+  recFacility: { fontSize: 10, color: Colors.textMuted, marginTop: 1 },
+  recUrgency: {
+    paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10, borderWidth: 0.5,
+  },
+  recUrgencyText: { fontSize: 9, fontWeight: '600', textTransform: 'capitalize' },
+  recAction: { fontSize: 11, color: Colors.textMuted, lineHeight: 16 },
 });

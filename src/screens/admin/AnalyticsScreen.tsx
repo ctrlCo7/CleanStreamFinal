@@ -1,40 +1,71 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '../../constants/colors';
 import { useAppSelector } from '../../store/hooks';
 import { BarChart } from '../../components/charts/BarChart';
 import { DonutChart } from '../../components/charts/DonutChart';
+import { buildDashboardAnalytics } from '../../services/analyticsService';
+import { AnalyticsData } from '../../types';
 
 export default function AdminAnalyticsScreen() {
   const { reports } = useAppSelector((s) => s.reports);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const total = reports.length;
-  const resolved = reports.filter((r) => r.status === 'resolved').length;
-  const resolutionRate = total > 0 ? Math.round((resolved / total) * 100) : 0;
-  const hazardous = reports.filter((r) => r.aiAnalysis?.hazardousDetected).length;
+  useEffect(() => {
+    buildDashboardAnalytics()
+      .then(setAnalytics)
+      .catch((e) => console.error('[Analytics]', e))
+      .finally(() => setLoading(false));
+  }, [reports.length]);
 
-  const monthlyData = [
-    { label: 'Jan', value: 28, color: Colors.blueBg },
-    { label: 'Feb', value: 36, color: Colors.blueBg },
-    { label: 'Mar', value: 42, color: Colors.blueBg },
-    { label: 'Apr', value: total > 0 ? total : 60, color: Colors.teal },
-    { label: 'May', value: 18, color: Colors.grayMid },
-    { label: 'Jun', value: 12, color: Colors.grayMid },
-  ];
+  // Live fallbacks from Redux while analytics loads
+  const total = analytics?.totalReports ?? reports.length;
+  const resolved = analytics?.resolvedCount ?? reports.filter((r) => r.status === 'completed').length;
+  const resolutionRate = analytics?.resolutionRate ?? (total > 0 ? Math.round((resolved / total) * 100) : 0);
+  const hazardous = analytics?.hazardousCount ?? reports.filter((r) => r.aiAnalysis?.hazardousDetected).length;
 
-  const wasteTypes = [
-    { label: 'Plastic', percentage: 68, color: Colors.blue },
-    { label: 'Organic', percentage: 16, color: Colors.green },
-    { label: 'Hazardous', percentage: 10, color: Colors.critical },
-  ];
+  const monthlyData = analytics?.monthlyData
+    ? analytics.monthlyData.map((d) => ({ label: d.month, value: d.count, color: Colors.blueBg }))
+    : [
+        { label: 'Jan', value: 0, color: Colors.blueBg },
+        { label: 'Feb', value: 0, color: Colors.blueBg },
+        { label: 'Mar', value: 0, color: Colors.blueBg },
+        { label: 'Apr', value: total, color: Colors.teal },
+        { label: 'May', value: 0, color: Colors.grayMid },
+        { label: 'Jun', value: 0, color: Colors.grayMid },
+      ];
 
-  const barangays = [
-    { name: 'Guadalupe', pct: 94, color: Colors.critical },
-    { name: 'Punta Princesa', pct: 87, color: Colors.red },
-    { name: 'Labangon', pct: 62, color: Colors.amber },
-    { name: 'Mambaling', pct: 41, color: Colors.blue },
-    { name: 'Kinasang-an', pct: 28, color: Colors.teal },
-  ];
+  const wasteSegments = analytics?.wasteTypeDistribution && analytics.wasteTypeDistribution.length > 0
+    ? analytics.wasteTypeDistribution.slice(0, 3).map((w) => ({
+        label: w.label,
+        percentage: w.percentage,
+        color: w.color,
+      }))
+    : [
+        { label: 'Plastic', percentage: 68, color: Colors.blue },
+        { label: 'Organic', percentage: 16, color: Colors.green },
+        { label: 'Hazardous', percentage: 10, color: Colors.critical },
+      ];
+
+  const barangays = analytics?.barangayPollution && analytics.barangayPollution.length > 0
+    ? analytics.barangayPollution.map((b, i) => ({
+        name: b.name,
+        pct: b.percentage,
+        color: [Colors.critical, Colors.red, Colors.amber, Colors.blue, Colors.teal][i % 5],
+      }))
+    : [
+        { name: 'Guadalupe', pct: 0, color: Colors.critical },
+        { name: 'Punta Princesa', pct: 0, color: Colors.red },
+        { name: 'Labangon', pct: 0, color: Colors.amber },
+        { name: 'Mambaling', pct: 0, color: Colors.blue },
+        { name: 'Kinasang-an', pct: 0, color: Colors.teal },
+      ];
+
+  const avgConfidence = analytics?.aiStats.avgConfidence
+    ? `${analytics.aiStats.avgConfidence}%`
+    : '—';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -49,13 +80,20 @@ export default function AdminAnalyticsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        {loading && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator size="small" color={Colors.teal} />
+            <Text style={styles.loadingText}>Loading analytics…</Text>
+          </View>
+        )}
+
         {/* KPIs */}
         <View style={styles.kpiGrid}>
           {[
-            { val: total > 0 ? total : 142, label: 'Total reports', color: Colors.teal, trend: '↑ 23% vs last month', trendUp: true },
-            { val: `${resolutionRate || 78}%`, label: 'Resolution rate', color: Colors.green, trend: '↑ 12% improvement', trendUp: true },
-            { val: '14h', label: 'Avg response', color: Colors.amber, trend: '↓ 3h slower', trendUp: false },
-            { val: hazardous > 0 ? hazardous : 23, label: 'Hazardous', color: Colors.red, trend: '↑ 4 this week', trendUp: false },
+            { val: total, label: 'Total reports', color: Colors.teal, trend: '↑ Real-time', trendUp: true },
+            { val: `${resolutionRate}%`, label: 'Resolution rate', color: Colors.green, trend: resolved > 0 ? `${resolved} completed` : 'No completions yet', trendUp: true },
+            { val: '—', label: 'Avg response', color: Colors.amber, trend: 'Tracking disabled', trendUp: false },
+            { val: hazardous, label: 'Hazardous', color: Colors.red, trend: hazardous > 0 ? `${hazardous} flagged` : 'None detected', trendUp: false },
           ].map((kpi) => (
             <View key={kpi.label} style={styles.kpiCard}>
               <Text style={[styles.kpiVal, { color: kpi.color }]}>{kpi.val}</Text>
@@ -66,10 +104,10 @@ export default function AdminAnalyticsScreen() {
         </View>
 
         {/* Bar chart */}
-        <BarChart title="Monthly reports (2026)" data={monthlyData} />
+        <BarChart title="Monthly reports (last 6 months)" data={monthlyData} />
 
         {/* Donut chart */}
-        <DonutChart title="Waste type distribution" segments={wasteTypes} total={total > 0 ? total : 142} />
+        <DonutChart title="Waste type distribution" segments={wasteSegments} total={total} />
 
         {/* Barangay bars */}
         <View style={styles.chartCard}>
@@ -78,7 +116,7 @@ export default function AdminAnalyticsScreen() {
             <View key={b.name} style={styles.brgyRow}>
               <Text style={styles.brgyName}>{b.name}</Text>
               <View style={styles.brgyBarWrap}>
-                <View style={[styles.brgyBar, { width: `${b.pct}%` as never, backgroundColor: b.color }]} />
+                <View style={[styles.brgyBar, { width: `${Math.max(b.pct, 2)}%` as never, backgroundColor: b.color }]} />
               </View>
               <Text style={styles.brgyPct}>{b.pct}%</Text>
             </View>
@@ -89,10 +127,10 @@ export default function AdminAnalyticsScreen() {
         <View style={styles.chartCard}>
           <Text style={styles.chartTitle}>AI classification summary</Text>
           {[
-            { k: 'Total CNN scans', v: `${total > 0 ? total : 142}` },
-            { k: 'Avg confidence', v: '94.7%', color: Colors.teal },
-            { k: 'Hazardous flags', v: `${hazardous > 0 ? hazardous : 23}`, color: Colors.red },
-            { k: 'Model version', v: 'CNN v2.4' },
+            { k: 'Total CNN scans', v: `${analytics?.aiStats.totalScans ?? total}` },
+            { k: 'Avg confidence', v: avgConfidence, color: Colors.teal },
+            { k: 'Hazardous flags', v: `${hazardous}`, color: Colors.red },
+            { k: 'Model version', v: analytics?.aiStats.modelVersion || 'CNN v2.4' },
           ].map((row) => (
             <View key={row.k} style={styles.aiRow}>
               <Text style={styles.aiKey}>{row.k}</Text>
@@ -116,6 +154,8 @@ const styles = StyleSheet.create({
   exportBtn: { backgroundColor: Colors.tealLight, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   exportBtnText: { fontSize: 11, color: Colors.teal },
   body: { padding: 14, gap: 10, paddingBottom: 20 },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', paddingVertical: 4 },
+  loadingText: { fontSize: 11, color: Colors.textMuted },
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   kpiCard: { width: '47%', backgroundColor: Colors.white, borderRadius: 12, padding: 10, borderWidth: 0.5, borderColor: Colors.border },
   kpiVal: { fontSize: 18, fontWeight: '500' },

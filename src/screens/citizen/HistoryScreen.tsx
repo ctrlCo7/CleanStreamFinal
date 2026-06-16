@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, RefreshControl,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors } from '../../constants/colors';
 import { RootStackParamList, WasteReport } from '../../types';
@@ -27,16 +27,23 @@ export default function CitizenHistoryScreen() {
     if (user?.uid) dispatch(fetchUserReports(user.uid));
   }, [user?.uid, dispatch]);
 
+  // Re-fetch every time the tab comes into focus so newly submitted reports appear immediately
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.uid) dispatch(fetchUserReports(user.uid));
+    }, [user?.uid, dispatch]),
+  );
+
   const filtered = userReports.filter((r) => {
     if (filter === 'All') return true;
     if (filter === 'Pending') return r.status === 'pending';
     if (filter === 'In progress') return r.status === 'in_progress';
-    if (filter === 'Resolved') return r.status === 'resolved';
+    if (filter === 'Resolved') return r.status === 'completed';
     return true;
   });
 
   const total = userReports.length;
-  const resolved = userReports.filter((r) => r.status === 'resolved').length;
+  const resolved = userReports.filter((r) => r.status === 'completed').length;
   const pending = userReports.filter((r) => r.status === 'pending').length;
 
   const wasteChartData = [
@@ -124,9 +131,12 @@ export default function CitizenHistoryScreen() {
 
 function getStatusColor(status: WasteReport['status']): string {
   switch (status) {
-    case 'resolved': return Colors.teal;
+    case 'completed': return Colors.teal;
     case 'in_progress': return Colors.amber;
     case 'pending': return Colors.blue;
+    case 'verified': return Colors.green;
+    case 'assigned': return Colors.blue;
+    case 'rejected': return Colors.red;
     default: return Colors.grayMuted;
   }
 }

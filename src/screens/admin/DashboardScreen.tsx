@@ -1,7 +1,8 @@
 import React, { useEffect, useCallback } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, RefreshControl,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors } from '../../constants/colors';
@@ -30,7 +31,7 @@ export default function AdminDashboardScreen() {
 
   const priorityReports = reports
     .filter((r) => r.severity === 'critical' || r.severity === 'high')
-    .filter((r) => r.status !== 'resolved')
+    .filter((r) => r.status !== 'completed')
     .slice(0, 3);
 
   const hotspots = reports.slice(0, 6).map((r, i) => ({

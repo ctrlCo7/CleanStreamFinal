@@ -55,7 +55,23 @@ export const getCurrentLocation = async (): Promise<GeoLocation> => {
   });
 
   const { latitude, longitude, accuracy } = loc.coords;
-  const barangay = getNearestBarangay(latitude, longitude);
+
+  // Default fallback using nearest hardcoded barangay
+  let barangay = getNearestBarangay(latitude, longitude);
+  let address = `${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E`;
+
+  try {
+    const [geo] = await Location.reverseGeocodeAsync({ latitude, longitude });
+    if (geo) {
+      // district is the most specific administrative unit (barangay-level on some devices)
+      barangay = geo.district || geo.subregion || geo.city || barangay;
+      address = [geo.streetNumber, geo.street, geo.district || geo.subregion, geo.city]
+        .filter(Boolean)
+        .join(', ');
+    }
+  } catch {
+    // keep fallback values
+  }
 
   return {
     latitude,
@@ -63,7 +79,7 @@ export const getCurrentLocation = async (): Promise<GeoLocation> => {
     accuracy: accuracy || undefined,
     timestamp: loc.timestamp,
     barangay,
-    address: `${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E`,
+    address,
   };
 };
 
@@ -74,16 +90,20 @@ export const watchLocation = (
 
   Location.watchPositionAsync(
     { accuracy: Location.Accuracy.High, distanceInterval: 10 },
-    (loc) => {
+    async (loc) => {
       const { latitude, longitude, accuracy } = loc.coords;
-      callback({
-        latitude,
-        longitude,
-        accuracy: accuracy || undefined,
-        timestamp: loc.timestamp,
-        barangay: getNearestBarangay(latitude, longitude),
-        address: `${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E`,
-      });
+      let barangay = getNearestBarangay(latitude, longitude);
+      let address = `${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E`;
+      try {
+        const [geo] = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (geo) {
+          barangay = geo.district || geo.subregion || geo.city || barangay;
+          address = [geo.streetNumber, geo.street, geo.district || geo.subregion, geo.city]
+            .filter(Boolean)
+            .join(', ');
+        }
+      } catch { /* keep fallback */ }
+      callback({ latitude, longitude, accuracy: accuracy || undefined, timestamp: loc.timestamp, barangay, address });
     },
   ).then((sub) => { subscription = sub; });
 

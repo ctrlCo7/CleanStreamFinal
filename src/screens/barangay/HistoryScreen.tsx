@@ -1,18 +1,12 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 import { Colors } from '../../constants/colors';
-import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
 
 const FILTER_OPTIONS = ['All', 'Verified', 'Pending review', 'Flagged'];
-
-const MOCK_CHECKPOINTS = [
-  { id: 'c1', type: 'Post-cleanup verification', barangay: 'Guadalupe', condition: 'Clean', date: 'Apr 3, 2026 · 2:14 PM', officer: 'Leni Reyes', status: 'verified' as const },
-  { id: 'c2', type: 'Pre-cleanup assessment', barangay: 'Guadalupe', condition: 'Critical', date: 'Apr 2, 2026 · 5:47 AM', officer: 'Leni Reyes', status: 'verified' as const },
-  { id: 'c3', type: 'During cleanup progress', barangay: 'Labangon', condition: 'Moderate', date: 'Apr 1, 2026 · 9:30 AM', officer: 'Leni Reyes', status: 'pending' as const },
-  { id: 'c4', type: 'Hazmat status update', barangay: 'Guadalupe', condition: 'Heavy', date: 'Mar 31, 2026 · 7:00 AM', officer: 'Leni Reyes', status: 'flagged' as const },
-  { id: 'c5', type: 'Community alert', barangay: 'Punta Princesa', condition: 'Moderate', date: 'Mar 30, 2026 · 3:20 PM', officer: 'Leni Reyes', status: 'verified' as const },
-];
 
 const COND_COLORS: Record<string, string> = {
   Clean: Colors.teal,
@@ -28,22 +22,63 @@ const STATUS_COLORS: Record<string, string> = {
   flagged: Colors.red,
 };
 
+interface FieldCheckpoint {
+  id: string;
+  type: string;
+  condition: string;
+  barangay: string;
+  officer: string;
+  date: string;
+  status: 'verified' | 'pending' | 'flagged';
+}
+
 export default function BarangayHistoryScreen() {
   const { user } = useAppSelector((s) => s.auth);
+  const [checkpoints, setCheckpoints] = useState<FieldCheckpoint[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('All');
 
+  useEffect(() => {
+    if (!user?.uid) return;
+    const q = query(
+      collection(db, 'fieldCheckpoints'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc'),
+      limit(50),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setCheckpoints(
+        snap.docs.map((d) => {
+          const data = d.data();
+          const ts = data.createdAt?.toDate?.() ?? new Date(data.createdAt ?? Date.now());
+          return {
+            id: d.id,
+            type: data.type || '—',
+            condition: data.condition || 'Moderate',
+            barangay: data.barangay || user?.barangay || '—',
+            officer: data.userName || `${user?.firstName} ${user?.lastName}`,
+            date: ts.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+            status: (data.status || 'pending') as 'verified' | 'pending' | 'flagged',
+          };
+        }),
+      );
+      setLoading(false);
+    });
+    return unsub;
+  }, [user?.uid]);
+
   const filtered = filter === 'All'
-    ? MOCK_CHECKPOINTS
-    : MOCK_CHECKPOINTS.filter((c) => {
+    ? checkpoints
+    : checkpoints.filter((c) => {
         if (filter === 'Verified') return c.status === 'verified';
         if (filter === 'Pending review') return c.status === 'pending';
         if (filter === 'Flagged') return c.status === 'flagged';
         return true;
       });
 
-  const verified = MOCK_CHECKPOINTS.filter((c) => c.status === 'verified').length;
-  const pending = MOCK_CHECKPOINTS.filter((c) => c.status === 'pending').length;
-  const flagged = MOCK_CHECKPOINTS.filter((c) => c.status === 'flagged').length;
+  const verified = checkpoints.filter((c) => c.status === 'verified').length;
+  const pending = checkpoints.filter((c) => c.status === 'pending').length;
+  const flagged = checkpoints.filter((c) => c.status === 'flagged').length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -55,7 +90,7 @@ export default function BarangayHistoryScreen() {
         {/* Stats */}
         <View style={styles.statsRow}>
           {[
-            { val: MOCK_CHECKPOINTS.length, label: 'Total', color: Colors.brgy },
+            { val: checkpoints.length, label: 'Total', color: Colors.brgy },
             { val: verified, label: 'Verified', color: Colors.green },
             { val: pending, label: 'Pending', color: Colors.amber },
             { val: flagged, label: 'Flagged', color: Colors.red },
@@ -80,31 +115,35 @@ export default function BarangayHistoryScreen() {
           ))}
         </ScrollView>
 
+        {loading && (
+          <ActivityIndicator size="small" color={Colors.brgy} style={{ alignSelf: 'center', marginVertical: 16 }} />
+        )}
+
         {/* Checkpoint cards */}
         {filtered.map((item) => (
           <View key={item.id} style={[styles.checkCard, item.status === 'flagged' && styles.checkCardFlagged]}>
             <View style={styles.checkTop}>
-              <View style={[styles.condBadge, { backgroundColor: COND_COLORS[item.condition] + '20', borderColor: COND_COLORS[item.condition] + '40' }]}>
-                <Text style={[styles.condText, { color: COND_COLORS[item.condition] }]}>{item.condition}</Text>
+              <View style={[styles.condBadge, { backgroundColor: (COND_COLORS[item.condition] ?? Colors.grayMid) + '20', borderColor: (COND_COLORS[item.condition] ?? Colors.grayMid) + '40' }]}>
+                <Text style={[styles.condText, { color: COND_COLORS[item.condition] ?? Colors.textMuted }]}>{item.condition}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.checkType}>{item.type}</Text>
                 <Text style={styles.checkBarangay}>{item.barangay} · {item.officer}</Text>
               </View>
-              <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[item.status] }]} />
+              <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[item.status] ?? Colors.grayMid }]} />
             </View>
             <View style={styles.checkMeta}>
               <Text style={styles.checkDate}>{item.date}</Text>
-              <Text style={[styles.checkStatus, { color: STATUS_COLORS[item.status] }]}>
-                {item.status.charAt(0).toUpperCase() + item.status.slice(1).replace('_', ' ')}
+              <Text style={[styles.checkStatus, { color: STATUS_COLORS[item.status] ?? Colors.textMuted }]}>
+                {item.status === 'pending' ? 'Pending review' : item.status.charAt(0).toUpperCase() + item.status.slice(1)}
               </Text>
             </View>
           </View>
         ))}
 
-        {filtered.length === 0 && (
+        {!loading && filtered.length === 0 && (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No checkpoints found</Text>
+            <Text style={styles.emptyText}>{checkpoints.length === 0 ? 'No checkpoints submitted yet' : 'No checkpoints match this filter'}</Text>
           </View>
         )}
       </ScrollView>

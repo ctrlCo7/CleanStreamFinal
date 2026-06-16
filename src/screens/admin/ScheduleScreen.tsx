@@ -1,45 +1,73 @@
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Colors } from '../../constants/colors';
 import { RootStackParamList } from '../../types';
 import { BackIcon } from '../../components/common/TabIcons';
 import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
+import { updateReportStatus } from '../../services/reportsService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AdminSchedule'>;
 
 const TEAMS = ['Team A — General cleanup', 'Team B — Hazmat specialists', 'Team C — Standard cleanup', 'Team D — Heavy machinery'];
 const BARANGAY_UNITS = ['Punta Princesa BHW', 'Guadalupe BHW', 'Labangon BHW', 'Mambaling BHW'];
 
+function suggestScheduleDate(severity: string): string {
+  const now = new Date();
+  const daysOffset = severity === 'critical' ? 1 : severity === 'high' ? 2 : 4;
+  const d = new Date(now);
+  d.setDate(d.getDate() + daysOffset);
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
 export default function AdminScheduleScreen({ navigation, route }: Props) {
   const { reportId } = route.params || {};
   const { reports } = useAppSelector((s) => s.reports);
+  const { user } = useAppSelector((s) => s.auth);
   const report = reportId ? reports.find((r) => r.id === reportId) : null;
+
+  const [teamIdx, setTeamIdx] = useState(1);
+  const [unitIdx, setUnitIdx] = useState(0);
   const [selectedTeam, setSelectedTeam] = useState(TEAMS[1]);
   const [selectedUnit, setSelectedUnit] = useState(BARANGAY_UNITS[0]);
   const [approved, setApproved] = useState(false);
-  const [teamIdx, setTeamIdx] = useState(1);
-  const [unitIdx, setUnitIdx] = useState(0);
+  const [saving, setSaving] = useState(false);
 
   const severity = report?.severity || 'critical';
-  const barangay = report?.location?.barangay || 'Guadalupe';
+  const barangay = report?.location?.barangay || report?.barangay || 'Unknown';
 
   const aiSchedule = {
-    date: 'April 5, 2026',
-    time: '6:00 AM – 2:00 PM',
-    personnel: '8–10 (hazmat)',
+    date: suggestScheduleDate(severity),
+    time: severity === 'critical' ? '6:00 AM – 2:00 PM' : '7:00 AM – 12:00 PM',
+    personnel: severity === 'critical' ? '8–10 (hazmat)' : '4–6 (standard)',
     priority: severity.toUpperCase(),
   };
 
-  const handleApprove = () => {
-    setApproved(true);
-    setTimeout(() => {
-      navigation.goBack();
-      Alert.alert('Schedule approved', `Team notified for ${aiSchedule.date} at 6 AM`);
-    }, 1500);
+  const handleApprove = async () => {
+    setSaving(true);
+    try {
+      if (report && user) {
+        const userName = `${user.firstName} ${user.lastName}`;
+        await updateReportStatus(report.id, 'assigned', user.uid, userName, {
+          assignedTeamName: selectedTeam,
+          assignedBarangayId: selectedUnit,
+          note: `Scheduled ${aiSchedule.date}. ${selectedTeam} + ${selectedUnit}.`,
+        });
+      }
+      setApproved(true);
+      setTimeout(() => {
+        navigation.goBack();
+        Alert.alert('Schedule approved', `Team notified for ${aiSchedule.date} at ${aiSchedule.time.split('–')[0].trim()}`);
+      }, 1200);
+    } catch {
+      Alert.alert('Error', 'Failed to save schedule. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const cycleTeam = () => {
@@ -68,8 +96,8 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
           <Text style={styles.sevTitle}>{barangay}</Text>
           <Text style={styles.sevSub}>{severity.charAt(0).toUpperCase() + severity.slice(1)} · {report?.aiAnalysis?.hazardousDetected ? 'Hazardous waste' : 'Waste detected'}</Text>
           <View style={styles.sevBadgeRow}>
-            <Badge variant={severity} label={`CNN: ${report?.aiAnalysis?.confidence || '99.1'}%`} />
-            <Badge variant="moderate" label={`Vol. ~${report?.aiAnalysis?.estimatedVolume || '5.8'}m³`} />
+            <Badge variant={severity as 'critical' | 'high' | 'moderate' | 'low'} label={`CNN: ${report?.aiAnalysis?.confidence != null ? Number(report.aiAnalysis.confidence).toFixed(1) : '—'}%`} />
+            <Badge variant="moderate" label={`Vol. ~${report?.aiAnalysis?.estimatedVolume?.toFixed(1) ?? '—'}m³`} />
           </View>
         </View>
 
@@ -104,8 +132,15 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
 
         {/* Action buttons */}
         <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.approveBtn} onPress={handleApprove} disabled={approved}>
-            <Text style={styles.approveBtnText}>{approved ? '✓ Approved' : 'Approve'}</Text>
+          <TouchableOpacity
+            style={[styles.approveBtn, (approved || saving) && styles.approveBtnDisabled]}
+            onPress={handleApprove}
+            disabled={approved || saving}
+          >
+            {saving
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={styles.approveBtnText}>{approved ? '✓ Approved' : 'Approve'}</Text>
+            }
           </TouchableOpacity>
           <TouchableOpacity style={styles.modifyBtn} onPress={() => Alert.alert('Edit mode', 'Modify schedule')}>
             <Text style={styles.modifyBtnText}>Modify</Text>
@@ -118,7 +153,7 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
               <Text style={{ fontSize: 20 }}>✓</Text>
             </View>
             <Text style={styles.successTitle}>Schedule approved!</Text>
-            <Text style={styles.successSub}>Specialist team notified. {aiSchedule.date}, 6 AM.</Text>
+            <Text style={styles.successSub}>{selectedTeam} notified. {aiSchedule.date}, {aiSchedule.time.split('–')[0].trim()}.</Text>
           </View>
         )}
       </ScrollView>
@@ -138,8 +173,7 @@ const styles = StyleSheet.create({
   body: { padding: 14, gap: 10, paddingBottom: 24 },
   sevBanner: {
     backgroundColor: Colors.white, borderRadius: 12, padding: 11, paddingHorizontal: 14,
-    borderWidth: 0.5, borderColor: Colors.border,
-    borderLeftWidth: 3,
+    borderWidth: 0.5, borderColor: Colors.border, borderLeftWidth: 3,
   },
   sevTitle: { fontSize: 14, fontWeight: '500', color: Colors.textPrimary },
   sevSub: { fontSize: 11, color: Colors.textMuted, marginTop: 3 },
@@ -163,6 +197,7 @@ const styles = StyleSheet.create({
   selectorArrow: { fontSize: 14, color: Colors.grayHint },
   actionRow: { flexDirection: 'row', gap: 8 },
   approveBtn: { flex: 1, backgroundColor: Colors.teal, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
+  approveBtnDisabled: { opacity: 0.6 },
   approveBtnText: { fontSize: 12, fontWeight: '500', color: '#fff' },
   modifyBtn: { flex: 1, backgroundColor: Colors.white, borderWidth: 0.5, borderColor: Colors.borderMid, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
   modifyBtnText: { fontSize: 12, color: Colors.textPrimary },

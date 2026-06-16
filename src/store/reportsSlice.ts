@@ -1,10 +1,10 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { WasteReport, ReportStatus } from '../types';
+import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import {
   getAllReports,
   getReportsByUser,
   updateReportStatus,
 } from '../services/reportsService';
+import { ReportStatus, WasteReport } from '../types';
 
 interface ReportsState {
   reports: WasteReport[];
@@ -38,9 +38,10 @@ export const changeReportStatus = createAsyncThunk(
   async ({
     reportId,
     status,
-    assignedTeam,
-  }: { reportId: string; status: ReportStatus; assignedTeam?: string }) => {
-    await updateReportStatus(reportId, status, assignedTeam);
+    changedByUserId,
+    changedByName,
+  }: { reportId: string; status: ReportStatus; changedByUserId: string; changedByName: string }) => {
+    await updateReportStatus(reportId, status, changedByUserId, changedByName);
     return { reportId, status };
   },
 );
@@ -74,8 +75,14 @@ const reportsSlice = createSlice({
         state.loading = false;
         state.error = action.error.message || 'Failed to load reports';
       })
+      .addCase(fetchUserReports.pending, (state) => { state.loading = true; })
       .addCase(fetchUserReports.fulfilled, (state, action) => {
+        state.loading = false;
         state.userReports = action.payload;
+      })
+      .addCase(fetchUserReports.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message ?? 'Failed to load reports';
       })
       .addCase(changeReportStatus.fulfilled, (state, action) => {
         const { reportId, status } = action.payload;

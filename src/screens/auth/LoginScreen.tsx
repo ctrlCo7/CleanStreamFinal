@@ -1,14 +1,19 @@
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView, Platform,
+  ScrollView,
+  StyleSheet,
+  Text, TextInput, TouchableOpacity,
+  View,
 } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import Svg, { Path, Rect, Circle } from 'react-native-svg';
+import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { Colors } from '../../constants/colors';
-import { RootStackParamList, UserRole } from '../../types';
+import { clearError, login } from '../../store/authSlice';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { login, clearError } from '../../store/authSlice';
+import { RootStackParamList, UserRole } from '../../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
@@ -59,17 +64,47 @@ export default function LoginScreen({ navigation }: Props) {
   const [password, setPassword] = useState('');
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Missing fields', 'Please enter email and password.');
-      return;
+  if (!email.trim() || !password.trim()) {
+    Alert.alert('Missing fields', 'Please enter email and password.');
+    return;
+  }
+
+  dispatch(clearError());
+
+  const result = await dispatch(
+    login({
+      email: email.trim(),
+      password,
+    })
+  );
+
+  if (login.rejected.match(result)) {
+    Alert.alert(
+      'Sign in failed',
+      (result.payload as string) || 'Please check your credentials.'
+    );
+    return;
+  }
+
+  if (login.fulfilled.match(result)) {
+    const user = result.payload;
+
+    switch (user.role) {
+      case 'admin':
+        navigation.replace('AdminTabs');
+        break;
+
+      case 'barangay':
+        navigation.replace('BarangayTabs');
+        break;
+
+      case 'citizen':
+      default:
+        navigation.replace('CitizenTabs');
+        break;
     }
-    dispatch(clearError());
-    const result = await dispatch(login({ email: email.trim(), password }));
-    if (login.rejected.match(result)) {
-      Alert.alert('Sign in failed', result.payload as string || 'Please check your credentials.');
-    }
-    // Navigation handled by RootNavigator watching auth state
-  };
+  }
+};
 
   return (
     <KeyboardAvoidingView
@@ -155,9 +190,8 @@ export default function LoginScreen({ navigation }: Props) {
         <TouchableOpacity
           style={styles.primaryBtn}
           onPress={handleLogin}
-          disabled={loading}
           activeOpacity={0.85}
-        >
+          >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (

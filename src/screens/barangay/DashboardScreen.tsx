@@ -1,34 +1,68 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors } from '../../constants/colors';
 import { Badge } from '../../components/common/Badge';
 import { MapPreview } from '../../components/common/MapPreview';
 import { useAppSelector } from '../../store/hooks';
-import { RootStackParamList } from '../../types';
+import { RootStackParamList, WasteReport, CleanupEvent } from '../../types';
+import { subscribeToBarangayReports } from '../../services/reportsService';
+import { subscribeToUpcomingEvents } from '../../services/cleanupEventService';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-const UPCOMING_TASKS = [
-  { id: 't1', title: 'Guadalupe cleanup coordination', date: 'Apr 5, 6:00 AM', team: 'Team B (Hazmat)', status: 'confirmed' },
-  { id: 't2', title: 'Punta Princesa sweep', date: 'Apr 6, 7:00 AM', team: 'Team A', status: 'pending' },
-  { id: 't3', title: 'Labangon River inspection', date: 'Apr 7, 8:00 AM', team: 'Team C', status: 'pending' },
-];
 
 export default function BarangayDashboardScreen() {
   const navigation = useNavigation<Nav>();
   const { user } = useAppSelector((s) => s.auth);
-  const { reports } = useAppSelector((s) => s.reports);
+  const { reports: allReports } = useAppSelector((s) => s.reports);
 
   const myBarangay = user?.barangay || 'Guadalupe';
-  const myReports = reports.filter((r) => r.location?.barangay === myBarangay);
-  const activeReports = myReports.filter((r) => r.status !== 'resolved');
-  const criticalCount = myReports.filter((r) => r.severity === 'critical' && r.status !== 'resolved').length;
+  const myBarangayId = user?.barangayId || '';
 
-  const hotspots = reports
-    .filter((r) => r.location?.lat && r.location?.lng)
-    .map((r) => ({ id: r.id, lat: r.location!.lat!, lng: r.location!.lng!, severity: r.severity }));
+  const [barangayReports, setBarangayReports] = useState<WasteReport[]>([]);
+  const [events, setEvents] = useState<CleanupEvent[]>([]);
+
+  // Real-time barangay reports subscription
+  useEffect(() => {
+    if (!myBarangayId) {
+      // Fall back to filtering all reports by barangay name
+      const filtered = allReports.filter(
+        (r) => r.location?.barangay === myBarangay || r.barangay === myBarangay,
+      );
+      setBarangayReports(filtered);
+      return;
+    }
+    const unsub = subscribeToBarangayReports(myBarangayId, setBarangayReports);
+    return unsub;
+  }, [myBarangayId, myBarangay, allReports]);
+
+  // Real-time upcoming cleanup events
+  useEffect(() => {
+    const unsub = subscribeToUpcomingEvents(setEvents);
+    return unsub;
+  }, []);
+
+  const myReports = barangayReports;
+  const activeReports = myReports.filter((r) => r.status !== 'completed' && r.status !== 'rejected' && r.status !== 'cancelled');
+  const criticalCount = myReports.filter((r) => r.severity === 'critical' && r.status !== 'completed').length;
+  const resolvedCount = myReports.filter((r) => r.status === 'completed').length;
+
+  const hotspots = myReports
+    .filter((r) => typeof r.location?.latitude === 'number' && typeof r.location?.longitude === 'number')
+    .slice(0, 6)
+    .map((r) => ({
+      id: r.id,
+      latitude: r.location.latitude,
+      longitude: r.location.longitude,
+      severity: (r.severity || 'moderate') as 'critical' | 'high' | 'moderate' | 'low',
+    }));
+
+  // Filter events for this barangay or show all upcoming
+  const upcomingTasks = events
+    .filter((e) => !myBarangayId || e.barangayId === myBarangayId || e.barangay === myBarangay)
+    .slice(0, 3);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -46,10 +80,10 @@ export default function BarangayDashboardScreen() {
         {/* Stats row */}
         <View style={styles.statsRow}>
           {[
-            { val: myReports.length || 12, label: 'Total', color: Colors.brgy },
-            { val: activeReports.length || 4, label: 'Active', color: Colors.amber },
-            { val: criticalCount || 1, label: 'Critical', color: Colors.critical },
-            { val: myReports.filter((r) => r.status === 'resolved').length || 8, label: 'Resolved', color: Colors.green },
+            { val: myReports.length || 0, label: 'Total', color: Colors.brgy },
+            { val: activeReports.length || 0, label: 'Active', color: Colors.amber },
+            { val: criticalCount || 0, label: 'Critical', color: Colors.critical },
+            { val: resolvedCount || 0, label: 'Resolved', color: Colors.green },
           ].map((s) => (
             <View key={s.label} style={styles.statCard}>
               <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
@@ -60,12 +94,12 @@ export default function BarangayDashboardScreen() {
 
         {/* Map */}
         <MapPreview
-          hotspots={hotspots.length > 0 ? hotspots : [
-            { id: 'm1', lat: 10.3095, lng: 123.8973, severity: 'critical' },
-            { id: 'm2', lat: 10.3240, lng: 123.9185, severity: 'high' },
+          pins={hotspots.length > 0 ? hotspots : [
+            { id: 'm1', latitude: 10.3095, longitude: 123.8973, severity: 'critical' as const },
+            { id: 'm2', latitude: 10.3240, longitude: 123.9185, severity: 'high' as const },
           ]}
-          onPinPress={(id) => navigation.navigate('CitizenDetail', { reportId: id })}
-          tag={`${myBarangay} Hotspots`}
+          onPress={() => navigation.navigate('Map', {})}
+          tagText={`${myBarangay} Hotspots`}
         />
 
         {/* Active alerts */}
@@ -82,27 +116,39 @@ export default function BarangayDashboardScreen() {
 
         {/* Upcoming tasks */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Upcoming cleanup tasks</Text>
+          <Text style={styles.sectionTitle}>Upcoming cleanup events</Text>
         </View>
 
-        {UPCOMING_TASKS.map((task) => (
-          <TouchableOpacity
-            key={task.id}
-            style={styles.taskCard}
-            onPress={() => navigation.navigate('BarangaySchedule', {})}
-            activeOpacity={0.85}
-          >
-            <View style={styles.taskLeft}>
-              <View style={[styles.taskDot, { backgroundColor: task.status === 'confirmed' ? Colors.teal : Colors.amber }]} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.taskTitle}>{task.title}</Text>
-              <Text style={styles.taskDate}>{task.date}</Text>
-              <Text style={styles.taskTeam}>{task.team}</Text>
-            </View>
-            <Badge variant={task.status === 'confirmed' ? 'resolved' : 'pending'} label={task.status === 'confirmed' ? 'Confirmed' : 'Pending'} />
-          </TouchableOpacity>
-        ))}
+        {upcomingTasks.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>No upcoming events scheduled</Text>
+          </View>
+        ) : (
+          upcomingTasks.map((task) => {
+            const eventDate = task.eventDate
+              ? new Date(task.eventDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              : '—';
+            const isJoined = task.participantIds?.includes(user?.uid ?? '');
+            return (
+              <TouchableOpacity
+                key={task.id}
+                style={styles.taskCard}
+                onPress={() => navigation.navigate('BarangaySchedule', {})}
+                activeOpacity={0.85}
+              >
+                <View style={styles.taskLeft}>
+                  <View style={[styles.taskDot, { backgroundColor: isJoined ? Colors.teal : Colors.amber }]} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.taskTitle}>{task.title}</Text>
+                  <Text style={styles.taskDate}>{eventDate}</Text>
+                  <Text style={styles.taskTeam}>{task.startTime} – {task.endTime}</Text>
+                </View>
+                <Badge variant={isJoined ? 'low' : 'pending'} label={isJoined ? 'Joined' : 'Upcoming'} />
+              </TouchableOpacity>
+            );
+          })
+        )}
 
         {/* Quick actions */}
         <View style={styles.sectionHeader}>
@@ -147,6 +193,8 @@ const styles = StyleSheet.create({
   criticalSub: { fontSize: 10, color: Colors.criticalText, opacity: 0.8, marginTop: 2 },
   sectionHeader: { marginTop: 4 },
   sectionTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
+  emptyCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  emptyText: { fontSize: 12, color: Colors.textHint },
   taskCard: {
     backgroundColor: Colors.white, borderRadius: 13, padding: 11,
     flexDirection: 'row', alignItems: 'center', gap: 10,
