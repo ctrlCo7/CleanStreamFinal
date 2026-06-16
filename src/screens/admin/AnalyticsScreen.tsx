@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Colors } from '../../constants/colors';
-import { useAppSelector } from '../../store/hooks';
 import { BarChart } from '../../components/charts/BarChart';
 import { DonutChart } from '../../components/charts/DonutChart';
+import { Colors } from '../../constants/colors';
 import { buildDashboardAnalytics } from '../../services/analyticsService';
+import { useAppSelector } from '../../store/hooks';
 import { AnalyticsData } from '../../types';
 
 export default function AdminAnalyticsScreen() {
