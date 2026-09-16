@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -199,25 +200,34 @@ export default function MapScreen({ navigation }: Props) {
 
       {/* ── Map ── */}
       <View style={styles.mapContainer}>
-        <MapView
-          provider={PROVIDER_GOOGLE}
-          style={styles.map}
-          initialRegion={CEBU}
-          showsUserLocation
-          showsMyLocationButton={false}
-          moveOnMarkerPress={false}
-        >
-          {filtered.map((report) => (
-            <SeverityMarker
-              key={report.id}
-              report={report}
-              onNavigate={handleNavigate}
-            />
-          ))}
-        </MapView>
+        {Platform.OS === 'web' ? (
+          <View style={styles.webFallback}>
+            <Text style={styles.webFallbackTitle}>Map isn't available on web</Text>
+            <Text style={styles.webFallbackText}>
+              Open CleanStream on iOS or Android (Expo Go or a dev build) to view the live waste map.
+            </Text>
+          </View>
+        ) : (
+          <MapView
+            provider={PROVIDER_GOOGLE}
+            style={styles.map}
+            initialRegion={CEBU}
+            showsUserLocation
+            showsMyLocationButton={false}
+            moveOnMarkerPress={false}
+          >
+            {filtered.map((report) => (
+              <SeverityMarker
+                key={report.id}
+                report={report}
+                onNavigate={handleNavigate}
+              />
+            ))}
+          </MapView>
+        )}
 
         {/* Loading overlay */}
-        {loading && (
+        {Platform.OS !== 'web' && loading && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color={Colors.teal} />
             <Text style={styles.loadingText}>Loading map data…</Text>
@@ -310,6 +320,16 @@ const styles = StyleSheet.create({
   // Map
   mapContainer: { flex: 1, position: 'relative' },
   map:          { flex: 1 },
+  webFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    backgroundColor: Colors.grayBg,
+    gap: 8,
+  },
+  webFallbackTitle: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary, textAlign: 'center' },
+  webFallbackText:  { fontSize: 12, color: Colors.textMuted, textAlign: 'center', lineHeight: 18 },
 
   // Markers
   pin: {
@@ -371,7 +391,7 @@ const styles = StyleSheet.create({
 
   // Loading overlay
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(255,255,255,0.85)',
     alignItems: 'center',
     justifyContent: 'center',

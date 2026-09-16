@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Colors } from '../../constants/colors';
 
@@ -42,24 +42,26 @@ export function MapPreview({
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
       <View style={[styles.container, { height }]}>
-        <MapView
-          style={StyleSheet.absoluteFillObject}
-          provider={PROVIDER_GOOGLE}
-          initialRegion={CEBU_REGION}
-          scrollEnabled={false}
-          zoomEnabled={false}
-          pitchEnabled={false}
-          rotateEnabled={false}
-          mapType="standard"
-        >
-          {pins.map((pin) => (
-            <Marker
-              key={pin.id}
-              coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
-              pinColor={PIN_COLORS[pin.severity]}
-            />
-          ))}
-        </MapView>
+        {Platform.OS !== 'web' && (
+          <MapView
+            style={StyleSheet.absoluteFill}
+            provider={PROVIDER_GOOGLE}
+            initialRegion={CEBU_REGION}
+            scrollEnabled={false}
+            zoomEnabled={false}
+            pitchEnabled={false}
+            rotateEnabled={false}
+            mapType="standard"
+          >
+            {pins.map((pin) => (
+              <Marker
+                key={pin.id}
+                coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
+                pinColor={PIN_COLORS[pin.severity]}
+              />
+            ))}
+          </MapView>
+        )}
         <View style={[styles.tag, { position: 'absolute', bottom: 8, left: 10 }]}>
           <Text style={[styles.tagText, { color: accentColor }]}>{tagText}</Text>
         </View>

@@ -1,6 +1,5 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAuth, initializeAuth, inMemoryPersistence } from 'firebase/auth';
 import { getDatabase } from 'firebase/database';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
@@ -18,10 +17,13 @@ const firebaseConfig = {
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
+// In-memory persistence: the session lives only for the current app run, so
+// every fresh launch lands on the Login/Signup screen instead of auto-restoring
+// a previously signed-in account.
 let auth: ReturnType<typeof getAuth>;
 try {
   auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage),
+    persistence: inMemoryPersistence,
   });
 } catch {
   auth = getAuth(app);

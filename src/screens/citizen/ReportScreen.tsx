@@ -215,7 +215,7 @@ export default function CitizenReportScreen() {
             <Text style={styles.liveBadgeText}>LIVE CAPTURE ONLY</Text>
           </View>
           {photoUri ? (
-            <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+            <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
           ) : (
             <View style={styles.cameraInner}>
               <CameraIcon color="rgba(255,255,255,0.5)" size={36} />
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
   submitBtnDisabled: { opacity: 0.5 },
   submitBtnText: { fontSize: 12, fontWeight: '500', color: '#fff' },
   overlay: {
-    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.96)',
+    ...StyleSheet.absoluteFill, backgroundColor: 'rgba(255,255,255,0.96)',
     alignItems: 'center', justifyContent: 'center', gap: 14, zIndex: 50,
   },
   overlayTitle: { fontSize: 14, fontWeight: '500', color: Colors.textPrimary },
