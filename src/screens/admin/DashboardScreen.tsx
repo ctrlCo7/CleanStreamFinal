@@ -1,15 +1,15 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchAllReports } from '../../store/reportsSlice';
-import { logout } from '../../store/authSlice';
 import { Badge } from '../../components/common/Badge';
 import { MapPreview } from '../../components/common/MapPreview';
 import { BellIcon } from '../../components/common/TabIcons';
@@ -19,7 +19,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function AdminDashboardScreen() {
   const navigation = useNavigation<Nav>();
   const dispatch = useAppDispatch();
-  const { user } = useAppSelector((s) => s.auth);
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { reports, loading } = useAppSelector((s) => s.reports);
 
   const load = useCallback(() => dispatch(fetchAllReports()), [dispatch]);
@@ -34,12 +35,15 @@ export default function AdminDashboardScreen() {
     .filter((r) => r.status !== 'completed')
     .slice(0, 3);
 
-  const hotspots = reports.slice(0, 6).map((r, i) => ({
-    id: r.id,
-    latitude: r.location?.latitude || 10.3157 + i * 0.003,
-    longitude: r.location?.longitude || 123.8854 + i * 0.004,
-    severity: r.severity,
-  }));
+  const hotspots = reports
+    .filter((r) => typeof r.location?.latitude === 'number' && typeof r.location?.longitude === 'number')
+    .slice(0, 6)
+    .map((r) => ({
+      id: r.id,
+      latitude: r.location.latitude,
+      longitude: r.location.longitude,
+      severity: r.severity,
+    }));
 
   return (
     <SafeAreaView style={styles.container}>
@@ -48,34 +52,34 @@ export default function AdminDashboardScreen() {
           <Text style={styles.headerTitle}>Admin dashboard</Text>
           <Text style={styles.headerSub}>CleanStream · Cebu City</Text>
         </View>
-        <TouchableOpacity style={[styles.iconBtn, styles.iconBtnRelative]} onPress={() => navigation.navigate('AdminTabs', {} as never)}>
-          <BellIcon color={Colors.textMuted} size={16} />
-          <View style={styles.notifDot} />
+        <TouchableOpacity style={[styles.iconBtn, styles.iconBtnRelative]} onPress={() => navigation.navigate('AdminAlerts')}>
+          <BellIcon color={colors.textMuted} size={16} />
+          {(critical > 0 || high > 0) && <View style={styles.notifDot} />}
         </TouchableOpacity>
       </View>
 
       <ScrollView
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={Colors.blue} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.blue} />}
       >
         {/* Role pill */}
         <View style={styles.roleRow}>
-          <View style={[styles.rolePill, { backgroundColor: Colors.blueBg }]}>
-            <Text style={[styles.rolePillText, { color: Colors.blueText }]}>Administrator</Text>
+          <View style={[styles.rolePill, { backgroundColor: colors.blueBg }]}>
+            <Text style={[styles.rolePillText, { color: colors.blueText }]}>Administrator</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('AdminProfile' as never)}>
-            <Text style={[styles.profileLink, { color: Colors.blueText }]}>My profile →</Text>
+            <Text style={[styles.profileLink, { color: colors.blueText }]}>My profile →</Text>
           </TouchableOpacity>
         </View>
 
         {/* Stats */}
         <View style={styles.statsGrid}>
           {[
-            { val: reports.length, label: 'Reports', color: Colors.textPrimary },
-            { val: critical, label: 'Critical', color: Colors.critical },
-            { val: high, label: 'High', color: Colors.red },
-            { val: pending, label: 'Pending', color: Colors.amber },
+            { val: reports.length, label: 'Reports', color: colors.textPrimary },
+            { val: critical, label: 'Critical', color: colors.critical },
+            { val: high, label: 'High', color: colors.red },
+            { val: pending, label: 'Pending', color: colors.amber },
           ].map((s) => (
             <View key={s.label} style={styles.statCard}>
               <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
@@ -90,10 +94,10 @@ export default function AdminDashboardScreen() {
         {/* Legend */}
         <View style={styles.legend}>
           {[
-            { label: 'Critical', color: Colors.critical },
-            { label: 'High', color: Colors.red },
-            { label: 'Mod', color: Colors.amber },
-            { label: 'Low', color: Colors.teal },
+            { label: 'Critical', color: colors.critical },
+            { label: 'High', color: colors.red },
+            { label: 'Mod', color: colors.amber },
+            { label: 'Low', color: colors.teal },
           ].map((item) => (
             <View key={item.label} style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: item.color }]} />
@@ -114,17 +118,17 @@ export default function AdminDashboardScreen() {
             key={report.id}
             style={[
               styles.alertCard,
-              report.severity === 'critical' && { backgroundColor: Colors.criticalBg, borderColor: 'rgba(192,57,43,0.2)' },
+              report.severity === 'critical' && { backgroundColor: colors.criticalBg, borderColor: 'rgba(192,57,43,0.2)' },
             ]}
             onPress={() => navigation.navigate('AdminSchedule', { reportId: report.id })}
             activeOpacity={0.85}
           >
-            <View style={[styles.alertDot, { backgroundColor: report.severity === 'critical' ? Colors.critical : Colors.red }]} />
+            <View style={[styles.alertDot, { backgroundColor: report.severity === 'critical' ? colors.critical : colors.red }]} />
             <View style={{ flex: 1 }}>
-              <Text style={[styles.alertTitle, report.severity === 'critical' && { color: Colors.criticalText }]}>
+              <Text style={[styles.alertTitle, report.severity === 'critical' && { color: colors.criticalText }]}>
                 {report.severity.toUpperCase()} — {report.location?.barangay || 'Unknown'}
               </Text>
-              <Text style={[styles.alertBody, report.severity === 'critical' && { color: Colors.criticalText, opacity: 0.7 }]}>
+              <Text style={[styles.alertBody, report.severity === 'critical' && { color: colors.criticalText, opacity: 0.7 }]}>
                 {report.aiAnalysis?.wasteTypes[0]?.label || 'Waste detected'} · CNN: {report.aiAnalysis?.confidence || '—'}%
               </Text>
               <View style={{ marginTop: 5 }}>
@@ -138,7 +142,7 @@ export default function AdminDashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,

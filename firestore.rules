@@ -72,9 +72,10 @@ service cloud.firestore {
 
     // ─── Reports ───────────────────────────────────────────────────────────────
     match /reports/{reportId} {
-      // Citizens: read own; staff: read all
-      allow read: if isAuthenticated()
-                  && (isOwner(resource.data.userId) || isStaff());
+      // Public within the app: the live waste Map screen queries the whole
+      // collection with no owner filter, so any authenticated user (any role)
+      // must be able to read any report for the map + report-detail views.
+      allow read: if isAuthenticated();
 
       // Citizens and barangay officers can create reports
       allow create: if isAuthenticated()
@@ -121,6 +122,25 @@ service cloud.firestore {
                         && !request.resource.data.diff(resource.data).affectedKeys()
                             .hasAny(['isActive', 'captainName']));
       allow delete: if isAdmin();
+    }
+
+    // ─── Field Checkpoints (barangay officer patrol/inspection reports) ─────────
+    match /fieldCheckpoints/{checkpointId} {
+      // Owner reads their own submissions; admin reviews/verifies across all barangays
+      allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+      allow create: if isBarangayOfficer() && request.resource.data.userId == currentUid();
+      // Only admin can verify, and only the verification fields may change
+      allow update: if isAdmin()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['status', 'verifiedBy', 'verifiedByName', 'verifiedAt']);
+      allow delete: if isAdmin();
+    }
+
+    // ─── Waterway Alarms (barangay officer's own recurring check reminders) ────
+    match /waterwayAlarms/{alarmId} {
+      allow read: if isBarangayOfficer() && isOwner(resource.data.userId);
+      allow create: if isBarangayOfficer() && request.resource.data.userId == currentUid();
+      allow update, delete: if isBarangayOfficer() && isOwner(resource.data.userId);
     }
 
     // ─── Cleanup Tasks ──────────────────────────────────────────────────────────

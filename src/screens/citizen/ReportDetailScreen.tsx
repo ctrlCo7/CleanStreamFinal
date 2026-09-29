@@ -1,27 +1,53 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Image } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Image, Alert, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { RootStackParamList, WasteReport } from '../../types';
 import { Badge } from '../../components/common/Badge';
 import { BackIcon } from '../../components/common/TabIcons';
 import { getReportById } from '../../services/reportsService';
+import { getOrCreateAdminConversation } from '../../services/messagingService';
+import { useAppSelector } from '../../store/hooks';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CitizenDetail'>;
 
 const STATUS_STEPS: { key: string; label: string }[] = [
   { key: 'pending', label: 'Submitted' },
+  { key: 'verified', label: 'Verified' },
+  { key: 'assigned', label: 'Assigned' },
   { key: 'in_progress', label: 'In progress' },
-  { key: 'resolved', label: 'Resolved' },
+  { key: 'completed', label: 'Resolved' },
 ];
 
 export default function CitizenReportDetailScreen({ navigation, route }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { reportId } = route.params;
+  const { user } = useAppSelector((s) => s.auth);
   const [report, setReport] = useState<WasteReport | null>(null);
+  const [contactingAdmin, setContactingAdmin] = useState(false);
 
   useEffect(() => {
     getReportById(reportId).then(setReport);
   }, [reportId]);
+
+  const handleChatAdmin = async () => {
+    if (!user?.uid || contactingAdmin) return;
+    setContactingAdmin(true);
+    try {
+      const result = await getOrCreateAdminConversation(user.uid, `${user.firstName} ${user.lastName}`, 'citizen');
+      if (!result) {
+        Alert.alert('No admin available', 'No admin account was found to message right now.');
+        return;
+      }
+      navigation.navigate('CitizenChat', { conversationId: result.conversationId, participantName: result.adminName });
+    } catch {
+      Alert.alert('Couldn’t open chat', 'Please try again.');
+    } finally {
+      setContactingAdmin(false);
+    }
+  };
 
   if (!report) {
     return (
@@ -32,7 +58,7 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
           <View style={{ width: 34 }} />
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: Colors.textMuted }}>Loading...</Text>
+          <Text style={{ color: colors.textMuted }}>Loading...</Text>
         </View>
       </SafeAreaView>
     );
@@ -54,7 +80,7 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
           <Image source={{ uri: report.photoURL }} style={styles.photo} resizeMode="cover" />
         ) : (
           <View style={styles.photoPlaceholder}>
-            <Text style={{ color: Colors.textHint, fontSize: 12 }}>No photo available</Text>
+            <Text style={{ color: colors.textHint, fontSize: 12 }}>No photo available</Text>
           </View>
         )}
 
@@ -80,46 +106,54 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
               {row.badge ? (
                 <Badge variant={report.status} />
               ) : (
-                <Text style={[styles.detailVal, row.red && { color: Colors.red }]}>{row.v}</Text>
+                <Text style={[styles.detailVal, row.red && { color: colors.red }]}>{row.v}</Text>
               )}
             </View>
           ))}
         </View>
 
         {/* Status tracker */}
-        <View style={styles.statusTracker}>
-          {STATUS_STEPS.map((step, i) => {
-            const done = i <= stepIndex;
-            const active = i === stepIndex;
-            return (
-              <React.Fragment key={step.key}>
-                <View style={styles.stepCol}>
-                  <View style={[styles.stepDot, done && styles.stepDotDone, active && styles.stepDotActive]} />
-                  <Text style={[styles.stepLabel, done && styles.stepLabelDone, active && styles.stepLabelActive]}>
-                    {step.label}
-                  </Text>
-                </View>
-                {i < STATUS_STEPS.length - 1 && (
-                  <View style={[styles.stepLine, done && i < stepIndex && styles.stepLineDone]} />
-                )}
-              </React.Fragment>
-            );
-          })}
-        </View>
+        {report.status === 'rejected' || report.status === 'cancelled' ? (
+          <View style={styles.rejectedBanner}>
+            <Text style={styles.rejectedTitle}>
+              This report was {report.status === 'rejected' ? 'rejected' : 'cancelled'}.
+            </Text>
+            {report.rejectionReason && (
+              <Text style={styles.rejectedReason}>Reason: {report.rejectionReason}</Text>
+            )}
+          </View>
+        ) : (
+          <View style={styles.statusTracker}>
+            {STATUS_STEPS.map((step, i) => {
+              const done = i <= stepIndex;
+              const active = i === stepIndex;
+              return (
+                <React.Fragment key={step.key}>
+                  <View style={styles.stepCol}>
+                    <View style={[styles.stepDot, done && styles.stepDotDone, active && styles.stepDotActive]} />
+                    <Text style={[styles.stepLabel, done && styles.stepLabelDone, active && styles.stepLabelActive]}>
+                      {step.label}
+                    </Text>
+                  </View>
+                  {i < STATUS_STEPS.length - 1 && (
+                    <View style={[styles.stepLine, done && i < stepIndex && styles.stepLineDone]} />
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </View>
+        )}
 
         {/* Actions */}
         <View style={styles.actions}>
           <TouchableOpacity style={styles.outlineBtn} onPress={() => navigation.navigate('Map', {})}>
             <Text style={styles.outlineBtnText}>🗺️ Map</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() => navigation.navigate('CitizenChat', {
-              conversationId: `${report.userId}_admin`,
-              participantName: 'Admin Support',
-            })}
-          >
-            <Text style={styles.primaryBtnText}>💬 Chat admin</Text>
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleChatAdmin} disabled={contactingAdmin}>
+            {contactingAdmin
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={styles.primaryBtnText}>💬 Chat admin</Text>
+            }
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -127,7 +161,7 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,
@@ -150,6 +184,12 @@ const styles = StyleSheet.create({
   detailKey: { fontSize: 11, color: Colors.textMuted },
   detailVal: { fontSize: 11, fontWeight: '500', color: Colors.textPrimary, textAlign: 'right', flex: 1, marginLeft: 8 },
   statusTracker: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 },
+  rejectedBanner: {
+    backgroundColor: Colors.redBg, borderRadius: 12, padding: 12,
+    borderWidth: 0.5, borderColor: 'rgba(226,75,74,0.25)',
+  },
+  rejectedTitle: { fontSize: 12, fontWeight: '500', color: Colors.redText },
+  rejectedReason: { fontSize: 11, color: Colors.redText, opacity: 0.85, marginTop: 4 },
   stepCol: { alignItems: 'center', gap: 4 },
   stepDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: Colors.grayBg, borderWidth: 1, borderColor: Colors.borderMid },
   stepDotDone: { backgroundColor: Colors.teal, borderColor: Colors.teal },

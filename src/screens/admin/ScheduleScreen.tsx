@@ -1,20 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
 import { BackIcon } from '../../components/common/TabIcons';
 import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
 import { updateReportStatus } from '../../services/reportsService';
+import { CEBU_BARANGAYS } from '../../services/locationService';
+import { getNotificationRecipientsByRole, sendBulkNotification, sendReportNotification } from '../../services/notificationService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AdminSchedule'>;
 
 const TEAMS = ['Team A — General cleanup', 'Team B — Hazmat specialists', 'Team C — Standard cleanup', 'Team D — Heavy machinery'];
-const BARANGAY_UNITS = ['Punta Princesa BHW', 'Guadalupe BHW', 'Labangon BHW', 'Mambaling BHW'];
 
 function suggestScheduleDate(severity: string): string {
   const now = new Date();
@@ -25,20 +27,28 @@ function suggestScheduleDate(severity: string): string {
 }
 
 export default function AdminScheduleScreen({ navigation, route }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { reportId } = route.params || {};
   const { reports } = useAppSelector((s) => s.reports);
   const { user } = useAppSelector((s) => s.auth);
   const report = reportId ? reports.find((r) => r.id === reportId) : null;
 
-  const [teamIdx, setTeamIdx] = useState(1);
-  const [unitIdx, setUnitIdx] = useState(0);
-  const [selectedTeam, setSelectedTeam] = useState(TEAMS[1]);
-  const [selectedUnit, setSelectedUnit] = useState(BARANGAY_UNITS[0]);
-  const [approved, setApproved] = useState(false);
-  const [saving, setSaving] = useState(false);
-
   const severity = report?.severity || 'critical';
   const barangay = report?.location?.barangay || report?.barangay || 'Unknown';
+
+  // Default the barangay-unit selector to the report's own barangay when it matches
+  // the canonical list, so approving without touching the selector still assigns the
+  // correct real barangayId (previously this used a hardcoded display-only label that
+  // never matched a real barangay account, so assignments never actually reached anyone).
+  const defaultUnitIdx = Math.max(0, CEBU_BARANGAYS.findIndex((b) => b.name === barangay));
+
+  const [teamIdx, setTeamIdx] = useState(1);
+  const [unitIdx, setUnitIdx] = useState(defaultUnitIdx);
+  const [selectedTeam, setSelectedTeam] = useState(TEAMS[1]);
+  const [selectedUnit, setSelectedUnit] = useState(CEBU_BARANGAYS[defaultUnitIdx]);
+  const [approved, setApproved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const aiSchedule = {
     date: suggestScheduleDate(severity),
@@ -54,9 +64,26 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
         const userName = `${user.firstName} ${user.lastName}`;
         await updateReportStatus(report.id, 'assigned', user.uid, userName, {
           assignedTeamName: selectedTeam,
-          assignedBarangayId: selectedUnit,
-          note: `Scheduled ${aiSchedule.date}. ${selectedTeam} + ${selectedUnit}.`,
+          assignedBarangayId: selectedUnit.id,
+          note: `Scheduled ${aiSchedule.date}. ${selectedTeam} + ${selectedUnit.name} BSP.`,
         });
+
+        // Notify the citizen who filed the report, and the barangay official(s) for
+        // the assigned barangay -- previously neither ever heard about an approval.
+        sendReportNotification(report.userId, 'report_assigned', report.id, report.reportNumber ?? report.id)
+          .catch((e) => console.warn('[Schedule] Citizen notification failed (non-fatal):', e));
+
+        getNotificationRecipientsByRole(['barangay'], selectedUnit.id)
+          .then((barangayUserIds) => {
+            if (barangayUserIds.length === 0) return;
+            return sendBulkNotification(
+              barangayUserIds,
+              'Cleanup scheduled in your barangay',
+              `${selectedTeam} scheduled for ${aiSchedule.date} — ${severity} severity report in ${selectedUnit.name}.`,
+              'system',
+            );
+          })
+          .catch((e) => console.warn('[Schedule] Barangay notification failed (non-fatal):', e));
       }
       setApproved(true);
       setTimeout(() => {
@@ -77,9 +104,9 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
   };
 
   const cycleUnit = () => {
-    const next = (unitIdx + 1) % BARANGAY_UNITS.length;
+    const next = (unitIdx + 1) % CEBU_BARANGAYS.length;
     setUnitIdx(next);
-    setSelectedUnit(BARANGAY_UNITS[next]);
+    setSelectedUnit(CEBU_BARANGAYS[next]);
   };
 
   return (
@@ -92,7 +119,7 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {/* Severity banner */}
-        <View style={[styles.sevBanner, { borderLeftColor: severity === 'critical' ? Colors.critical : Colors.red }]}>
+        <View style={[styles.sevBanner, { borderLeftColor: severity === 'critical' ? colors.critical : colors.red }]}>
           <Text style={styles.sevTitle}>{barangay}</Text>
           <Text style={styles.sevSub}>{severity.charAt(0).toUpperCase() + severity.slice(1)} · {report?.aiAnalysis?.hazardousDetected ? 'Hazardous waste' : 'Waste detected'}</Text>
           <View style={styles.sevBadgeRow}>
@@ -107,7 +134,7 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
           {Object.entries(aiSchedule).map(([k, v]) => (
             <View key={k} style={styles.schedRow}>
               <Text style={styles.schedKey}>{k.charAt(0).toUpperCase() + k.slice(1)}</Text>
-              <Text style={[styles.schedVal, k === 'priority' && { color: Colors.critical }]}>{v}</Text>
+              <Text style={[styles.schedVal, k === 'priority' && { color: colors.critical }]}>{v}</Text>
             </View>
           ))}
         </View>
@@ -125,7 +152,7 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
         <View style={styles.field}>
           <Text style={styles.fieldLabel}>Assign barangay unit</Text>
           <TouchableOpacity style={styles.selector} onPress={cycleUnit}>
-            <Text style={styles.selectorText}>{selectedUnit}</Text>
+            <Text style={styles.selectorText}>{selectedUnit.name} BSP</Text>
             <Text style={styles.selectorArrow}>▾</Text>
           </TouchableOpacity>
         </View>
@@ -161,7 +188,7 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,

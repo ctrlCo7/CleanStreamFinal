@@ -1,24 +1,30 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Svg, { Path, Circle } from 'react-native-svg';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
 import { Badge } from '../../components/common/Badge';
 import { BackIcon, CheckIcon } from '../../components/common/TabIcons';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CitizenAIResult'>;
 
-const SEV_COLORS = {
-  critical: Colors.critical,
-  high: Colors.red,
-  moderate: Colors.amber,
-  low: Colors.teal,
-};
+function buildSevColors(colors: ThemeColors) {
+  return {
+    critical: colors.critical,
+    high: colors.red,
+    moderate: colors.amber,
+    low: colors.teal,
+  };
+}
 
 export default function CitizenAIResultScreen({ navigation, route }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const SEV_COLORS = useMemo(() => buildSevColors(colors), [colors]);
   const { report } = route.params;
   const ai = report.aiAnalysis;
 
@@ -30,7 +36,7 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
     );
   }
 
-  const sevColor = SEV_COLORS[ai.severityLevel] || Colors.amber;
+  const sevColor = SEV_COLORS[ai.severityLevel] || colors.amber;
   const sevScore = ai.severityScore;
   const radius = 38;
   const circumference = 2 * Math.PI * radius;
@@ -69,7 +75,7 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
           <Text style={styles.sevCardTitle}>Severity Assessment</Text>
           <View style={styles.sevRow}>
             <Svg width={96} height={96} viewBox="0 0 96 96">
-              <Circle cx="48" cy="48" r={radius} fill="none" stroke={Colors.grayBg} strokeWidth="9" />
+              <Circle cx="48" cy="48" r={radius} fill="none" stroke={colors.grayBg} strokeWidth="9" />
               <Circle
                 cx="48" cy="48" r={radius} fill="none"
                 stroke={sevColor} strokeWidth="9"
@@ -156,7 +162,7 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
           ].map((row) => (
             <View key={row.k} style={styles.infoRow}>
               <Text style={styles.infoKey}>{row.k}</Text>
-              <Text style={[styles.infoVal, row.red && { color: Colors.red }]}>{row.v}</Text>
+              <Text style={[styles.infoVal, row.red && { color: colors.red }]}>{row.v}</Text>
             </View>
           ))}
         </View>
@@ -213,7 +219,7 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
 
         {/* Validated */}
         <View style={styles.validatedCard}>
-          <CheckIcon color={Colors.tealDark} size={16} />
+          <CheckIcon color={colors.tealDark} size={16} />
           <View>
             <Text style={styles.validatedTitle}>Report validated & submitted</Text>
             <Text style={styles.validatedSub}>GPS verified · Camera watermark applied</Text>
@@ -231,7 +237,7 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   noAI: { textAlign: 'center', marginTop: 40, color: Colors.textMuted },
   header: {

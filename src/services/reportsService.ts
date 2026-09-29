@@ -24,6 +24,7 @@ import {
   ReportStatus,
   StatusHistoryEntry,
   SeverityLevel,
+  AIWasteType,
 } from '../types';
 
 // ─── Report number generation ─────────────────────────────────────────────────
@@ -158,6 +159,8 @@ export const updateReportStatus = async (
     verifiedByName?: string;
     rejectionReason?: string;
     note?: string;
+    groundTruthSeverity?: SeverityLevel;
+    groundTruthWasteType?: AIWasteType;
   },
 ): Promise<void> => {
   const historyEntry: StatusHistoryEntry = {
@@ -179,6 +182,8 @@ export const updateReportStatus = async (
   if (options?.assignedBarangayId) updates.assignedBarangayId = options.assignedBarangayId;
   if (options?.cleanupTaskId) updates.cleanupTaskId = options.cleanupTaskId;
   if (options?.rejectionReason) updates.rejectionReason = options.rejectionReason;
+  if (options?.groundTruthSeverity) updates.groundTruthSeverity = options.groundTruthSeverity;
+  if (options?.groundTruthWasteType) updates.groundTruthWasteType = options.groundTruthWasteType;
 
   if (status === 'verified') {
     updates.verifiedBy = options?.verifiedBy ?? changedByUserId;
@@ -195,10 +200,13 @@ export const verifyReport = (
   reportId: string,
   barangayUserId: string,
   barangayUserName: string,
+  groundTruth?: { severity?: SeverityLevel; wasteType?: AIWasteType },
 ) =>
   updateReportStatus(reportId, 'verified', barangayUserId, barangayUserName, {
     verifiedBy: barangayUserId,
     verifiedByName: barangayUserName,
+    groundTruthSeverity: groundTruth?.severity,
+    groundTruthWasteType: groundTruth?.wasteType,
   });
 
 export const assignReport = (

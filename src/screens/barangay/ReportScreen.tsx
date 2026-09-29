@@ -1,25 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   TextInput, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, limit } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { useAppSelector } from '../../store/hooks';
+import { createCheckpoint } from '../../services/checkpointService';
+import { getNotificationRecipientsByRole, sendBulkNotification } from '../../services/notificationService';
 
 const CHECKPOINT_TYPES = ['Pre-cleanup assessment', 'During cleanup progress', 'Post-cleanup verification', 'Hazmat status update', 'Community alert'];
 const CONDITIONS = ['Clean', 'Mild', 'Moderate', 'Heavy', 'Critical'];
 const WASTE_TYPES_OPT = ['Plastic', 'Organic', 'Hazardous', 'Metal', 'Electronic', 'Mixed'];
 
-const COND_COLORS: Record<string, string> = {
-  Clean: Colors.teal,
-  Mild: Colors.green,
-  Moderate: Colors.amber,
-  Heavy: Colors.red,
-  Critical: Colors.critical,
-};
+function buildCondColors(colors: ThemeColors): Record<string, string> {
+  return {
+    Clean: colors.teal,
+    Mild: colors.green,
+    Moderate: colors.amber,
+    Heavy: colors.red,
+    Critical: colors.critical,
+  };
+}
 
 interface FieldCheckpoint {
   id: string;
@@ -30,6 +35,9 @@ interface FieldCheckpoint {
 }
 
 export default function BarangayReportScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const COND_COLORS = useMemo(() => buildCondColors(colors), [colors]);
   const { user } = useAppSelector((s) => s.auth);
   const [checkpointType, setCheckpointType] = useState(CHECKPOINT_TYPES[0]);
   const [condition, setCondition] = useState(CONDITIONS[2]);
@@ -76,19 +84,33 @@ export default function BarangayReportScreen() {
       return;
     }
     setSaving(true);
+    const officerName = user ? `${user.firstName} ${user.lastName}` : 'Barangay Official';
     try {
-      await addDoc(collection(db, 'fieldCheckpoints'), {
-        userId: user?.uid ?? '',
-        userName: user ? `${user.firstName} ${user.lastName}` : 'BHW Officer',
-        barangayId: user?.barangayId ?? '',
+      await createCheckpoint(
+        user?.uid ?? '',
+        officerName,
+        user?.barangayId ?? '',
         barangay,
-        type: checkpointType,
+        checkpointType,
         condition,
         wasteType,
-        notes: notes.trim(),
-        status: 'pending',
-        createdAt: serverTimestamp(),
-      });
+        notes.trim(),
+      );
+
+      // Notify admins so checkpoint completions actually surface somewhere, per the
+      // CleanStream workflow ("notify the Admin regarding checkpoint completion").
+      getNotificationRecipientsByRole(['admin'])
+        .then((adminIds) => {
+          if (adminIds.length === 0) return;
+          return sendBulkNotification(
+            adminIds,
+            'Checkpoint report submitted',
+            `${officerName} (${barangay}) submitted a ${checkpointType.toLowerCase()} checkpoint — condition: ${condition}.`,
+            'system',
+          );
+        })
+        .catch((e) => console.warn('[Checkpoint] Admin notification failed (non-fatal):', e));
+
       setSubmitted(true);
       setNotes('');
       setTimeout(() => {
@@ -119,7 +141,7 @@ export default function BarangayReportScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Field Checkpoint</Text>
         <View style={styles.rolePill}>
-          <Text style={styles.rolePillText}>{barangay} BHW</Text>
+          <Text style={styles.rolePillText}>{barangay} BSP</Text>
         </View>
       </View>
 
@@ -172,7 +194,7 @@ export default function BarangayReportScreen() {
           <Text style={styles.cardTitle}>Auto-detected location</Text>
           {[
             { k: 'Barangay', v: barangay },
-            { k: 'Officer', v: user ? `${user.firstName} ${user.lastName}` : 'BHW Officer' },
+            { k: 'Officer', v: user ? `${user.firstName} ${user.lastName}` : 'Barangay Official' },
             { k: 'Date/Time', v: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
           ].map((row) => (
             <View key={row.k} style={styles.infoRow}>
@@ -188,7 +210,7 @@ export default function BarangayReportScreen() {
           <TextInput
             style={styles.notesInput}
             placeholder="Describe conditions, estimated volume, hazards, community feedback..."
-            placeholderTextColor={Colors.textHint}
+            placeholderTextColor={colors.textHint}
             value={notes}
             onChangeText={setNotes}
             multiline
@@ -216,12 +238,12 @@ export default function BarangayReportScreen() {
             <Text style={styles.prevTitle}>Recent checkpoints</Text>
             {recentCheckpoints.map((p) => (
               <View key={p.id} style={styles.prevCard}>
-                <View style={[styles.prevDot, { backgroundColor: COND_COLORS[p.condition] ?? Colors.grayMid }]} />
+                <View style={[styles.prevDot, { backgroundColor: COND_COLORS[p.condition] ?? colors.grayMid }]} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.prevType}>{p.type}</Text>
                   <Text style={styles.prevDate}>{p.date} · {p.barangay}</Text>
                 </View>
-                <Text style={[styles.prevCond, { color: COND_COLORS[p.condition] ?? Colors.textMuted }]}>{p.condition}</Text>
+                <Text style={[styles.prevCond, { color: COND_COLORS[p.condition] ?? colors.textMuted }]}>{p.condition}</Text>
               </View>
             ))}
           </View>
@@ -231,7 +253,7 @@ export default function BarangayReportScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,

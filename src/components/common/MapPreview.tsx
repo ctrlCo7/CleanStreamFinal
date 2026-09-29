@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
 
 interface HotspotPin {
   id: string;
@@ -18,13 +18,6 @@ interface MapPreviewProps {
   accentColor?: string;
 }
 
-const PIN_COLORS = {
-  critical: Colors.critical,
-  high: Colors.red,
-  moderate: Colors.amber,
-  low: Colors.teal,
-};
-
 const CEBU_REGION = {
   latitude: 10.3157,
   longitude: 123.8854,
@@ -37,36 +30,48 @@ export function MapPreview({
   onPress,
   height = 130,
   tagText = 'Live hotspot map · Tap to expand',
-  accentColor = Colors.tealDark,
+  accentColor,
 }: MapPreviewProps) {
+  const { colors, isDark } = useTheme();
+  const pinColors = {
+    critical: colors.critical,
+    high: colors.red,
+    moderate: colors.amber,
+    low: colors.teal,
+  };
+  const resolvedAccent = accentColor ?? colors.tealDark;
+
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
-      <View style={[styles.container, { height }]}>
+      <View style={[styles.container, { height, backgroundColor: isDark ? colors.grayMid : '#D4EFE4' }]}>
         {Platform.OS !== 'web' && (
           <MapView
             style={StyleSheet.absoluteFill}
-            provider={PROVIDER_GOOGLE}
+            // Expo Go on iOS has no Google Maps SDK baked in -- forcing
+            // PROVIDER_GOOGLE there renders blank. Android keeps Google Maps.
+            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
             initialRegion={CEBU_REGION}
             scrollEnabled={false}
             zoomEnabled={false}
             pitchEnabled={false}
             rotateEnabled={false}
             mapType="standard"
+            userInterfaceStyle={isDark ? 'dark' : 'light'}
           >
             {pins.map((pin) => (
               <Marker
                 key={pin.id}
                 coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
-                pinColor={PIN_COLORS[pin.severity]}
+                pinColor={pinColors[pin.severity]}
               />
             ))}
           </MapView>
         )}
-        <View style={[styles.tag, { position: 'absolute', bottom: 8, left: 10 }]}>
-          <Text style={[styles.tagText, { color: accentColor }]}>{tagText}</Text>
+        <View style={[styles.tag, { position: 'absolute', bottom: 8, left: 10, backgroundColor: isDark ? 'rgba(30,30,29,0.88)' : 'rgba(255,255,255,0.88)' }]}>
+          <Text style={[styles.tagText, { color: resolvedAccent }]}>{tagText}</Text>
         </View>
-        <View style={styles.gpsBadge}>
-          <Text style={[styles.gpsText, { color: accentColor }]}>📍 Mobile GPS</Text>
+        <View style={[styles.gpsBadge, { backgroundColor: isDark ? 'rgba(30,30,29,0.9)' : 'rgba(255,255,255,0.9)' }]}>
+          <Text style={[styles.gpsText, { color: resolvedAccent }]}>📍 Mobile GPS</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -77,11 +82,9 @@ const styles = StyleSheet.create({
   container: {
     borderRadius: 14,
     overflow: 'hidden',
-    backgroundColor: '#D4EFE4',
     position: 'relative',
   },
   tag: {
-    backgroundColor: 'rgba(255,255,255,0.88)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
@@ -94,7 +97,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     right: 10,
-    backgroundColor: 'rgba(255,255,255,0.9)',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 8,

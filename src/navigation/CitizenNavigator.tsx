@@ -1,15 +1,13 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text, TouchableOpacity } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { Colors } from '../constants/colors';
+import { View } from 'react-native';
+import { useTheme } from '../hooks/useTheme';
 import { CitizenTabParamList } from '../types';
 
 import CitizenHomeScreen from '../screens/citizen/HomeScreen';
 import CitizenHistoryScreen from '../screens/citizen/HistoryScreen';
 import CitizenMessagesScreen from '../screens/citizen/MessagesScreen';
 import CitizenProfileScreen from '../screens/citizen/ProfileScreen';
-import CitizenNotificationsScreen from '../screens/citizen/NotificationsScreen';
 
 import {
   HomeIcon,
@@ -22,6 +20,11 @@ import {
 const Tab = createBottomTabNavigator<CitizenTabParamList>();
 
 export default function CitizenNavigator() {
+  const { colors } = useTheme();
+
+  // Placeholder — tab press is intercepted by the listener below
+  const MapTabPlaceholder = () => <View style={{ flex: 1, backgroundColor: colors.grayBg }} />;
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -29,12 +32,12 @@ export default function CitizenNavigator() {
         tabBarStyle: {
           height: 56,
           borderTopWidth: 0.5,
-          borderTopColor: Colors.border,
-          backgroundColor: Colors.white,
+          borderTopColor: colors.border,
+          backgroundColor: colors.white,
           paddingBottom: 4,
         },
-        tabBarActiveTintColor: Colors.teal,
-        tabBarInactiveTintColor: Colors.grayHint,
+        tabBarActiveTintColor: colors.teal,
+        tabBarInactiveTintColor: colors.grayHint,
         tabBarLabelStyle: { fontSize: 9, fontWeight: '500' },
       }}
     >
@@ -86,9 +89,4 @@ export default function CitizenNavigator() {
       />
     </Tab.Navigator>
   );
-}
-
-// Placeholder — tab press is intercepted by the listener above
-function MapTabPlaceholder() {
-  return <View style={{ flex: 1, backgroundColor: Colors.grayBg }} />;
 }

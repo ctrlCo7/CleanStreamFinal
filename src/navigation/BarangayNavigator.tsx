@@ -1,6 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Colors } from '../constants/colors';
+import { useTheme } from '../hooks/useTheme';
 import { BarangayTabParamList } from '../types';
 
 import BarangayDashboardScreen from '../screens/barangay/DashboardScreen';
@@ -20,6 +20,7 @@ import {
 const Tab = createBottomTabNavigator<BarangayTabParamList>();
 
 export default function BarangayNavigator() {
+  const { colors } = useTheme();
   return (
     <Tab.Navigator
       screenOptions={{
@@ -27,12 +28,12 @@ export default function BarangayNavigator() {
         tabBarStyle: {
           height: 56,
           borderTopWidth: 0.5,
-          borderTopColor: Colors.border,
-          backgroundColor: Colors.white,
+          borderTopColor: colors.border,
+          backgroundColor: colors.white,
           paddingBottom: 4,
         },
-        tabBarActiveTintColor: Colors.brgy,
-        tabBarInactiveTintColor: Colors.grayHint,
+        tabBarActiveTintColor: colors.brgy,
+        tabBarInactiveTintColor: colors.grayHint,
         tabBarLabelStyle: { fontSize: 9, fontWeight: '500' },
       }}
     >

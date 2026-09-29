@@ -1,27 +1,31 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert } from 'react-native';
-import { Colors } from '../../constants/colors';
+import React, { useMemo } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert, Switch } from 'react-native';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { logout } from '../../store/authSlice';
 import { BackIcon } from '../../components/common/TabIcons';
 import { useNavigation } from '@react-navigation/native';
 
-const ACHIEVEMENTS = [
-  { emoji: '🌊', label: 'First Report', bg: Colors.tealLight, color: Colors.tealDark, border: Colors.tealMid },
-  { emoji: '⚡', label: '10 Reports', bg: Colors.amberBg, color: Colors.amberText, border: '#FAC775' },
-  { emoji: '🗺️', label: 'Map Explorer', bg: Colors.blueBg, color: Colors.blueText, border: '#85B7EB' },
-];
-
 export default function CitizenProfileScreen() {
   const dispatch = useAppDispatch();
   const navigation = useNavigation();
+  const { colors, isDark, setMode } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAppSelector((s) => s.auth);
   const { userReports } = useAppSelector((s) => s.reports);
 
   const total = userReports.length;
-  const resolved = userReports.filter((r) => r.status === 'resolved').length;
+  const resolved = userReports.filter((r) => r.status === 'completed').length;
   const pending = userReports.filter((r) => r.status === 'pending').length;
+  const verified = userReports.filter((r) => r.status !== 'pending' && r.status !== 'rejected').length;
   const initials = `${user?.firstName?.[0] || ''}${user?.lastName?.[0] || ''}`.toUpperCase();
+
+  const achievements = [
+    total >= 1 && { emoji: '🌊', label: 'First Report', bg: colors.tealLight, color: colors.tealDark, border: colors.tealMid },
+    verified >= 1 && { emoji: '✅', label: 'Verified Reporter', bg: colors.blueBg, color: colors.blueText, border: '#85B7EB' },
+    total >= 10 && { emoji: '⚡', label: '10 Reports', bg: colors.amberBg, color: colors.amberText, border: '#FAC775' },
+  ].filter(Boolean) as { emoji: string; label: string; bg: string; color: string; border: string }[];
 
   const handleLogout = () => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
@@ -41,8 +45,8 @@ export default function CitizenProfileScreen() {
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {/* Avatar */}
         <View style={styles.avatarSection}>
-          <View style={[styles.avatar, { backgroundColor: Colors.tealLight }]}>
-            <Text style={[styles.avatarText, { color: Colors.tealDeep }]}>{initials}</Text>
+          <View style={[styles.avatar, { backgroundColor: colors.tealLight }]}>
+            <Text style={[styles.avatarText, { color: colors.tealDeep }]}>{initials}</Text>
           </View>
           <Text style={styles.name}>{user?.firstName} {user?.lastName}</Text>
           <View style={styles.rolePill}>
@@ -52,9 +56,9 @@ export default function CitizenProfileScreen() {
 
         {/* Stats */}
         <View style={styles.statsRow}>
-          <View style={styles.stat}><Text style={[styles.statVal, { color: Colors.teal }]}>{total}</Text><Text style={styles.statLabel}>Reports</Text></View>
-          <View style={styles.stat}><Text style={[styles.statVal, { color: Colors.green }]}>{resolved}</Text><Text style={styles.statLabel}>Resolved</Text></View>
-          <View style={styles.stat}><Text style={[styles.statVal, { color: Colors.amber }]}>{pending}</Text><Text style={styles.statLabel}>Pending</Text></View>
+          <View style={styles.stat}><Text style={[styles.statVal, { color: colors.teal }]}>{total}</Text><Text style={styles.statLabel}>Reports</Text></View>
+          <View style={styles.stat}><Text style={[styles.statVal, { color: colors.green }]}>{resolved}</Text><Text style={styles.statLabel}>Resolved</Text></View>
+          <View style={styles.stat}><Text style={[styles.statVal, { color: colors.amber }]}>{pending}</Text><Text style={styles.statLabel}>Pending</Text></View>
         </View>
 
         {/* Account info */}
@@ -66,7 +70,7 @@ export default function CitizenProfileScreen() {
             { icon: '📅', label: 'Member since', val: user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '—' },
           ].map((row) => (
             <View key={row.label} style={styles.infoRow}>
-              <View style={[styles.infoIcon, { backgroundColor: Colors.tealLight }]}>
+              <View style={[styles.infoIcon, { backgroundColor: colors.tealLight }]}>
                 <Text>{row.icon}</Text>
               </View>
               <View>
@@ -78,39 +82,55 @@ export default function CitizenProfileScreen() {
         </View>
 
         {/* Achievements */}
-        <Text style={styles.sectionLabel}>Achievements</Text>
-        <View style={styles.card}>
-          <View style={styles.achieveRow}>
-            {ACHIEVEMENTS.map((a) => (
-              <View key={a.label} style={[styles.achieveBadge, { backgroundColor: a.bg, borderColor: a.border }]}>
-                <Text style={[styles.achieveText, { color: a.color }]}>{a.emoji} {a.label}</Text>
+        {achievements.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>Achievements</Text>
+            <View style={styles.card}>
+              <View style={styles.achieveRow}>
+                {achievements.map((a) => (
+                  <View key={a.label} style={[styles.achieveBadge, { backgroundColor: a.bg, borderColor: a.border }]}>
+                    <Text style={[styles.achieveText, { color: a.color }]}>{a.emoji} {a.label}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
-        </View>
+            </View>
+          </>
+        )}
 
         {/* Settings */}
         <Text style={styles.sectionLabel}>Settings</Text>
         <View style={styles.card}>
+          <View style={styles.settingsRow}>
+            <View style={[styles.infoIcon, { backgroundColor: colors.grayBg }]}>
+              <Text>🌙</Text>
+            </View>
+            <Text style={styles.settingsLabel}>Dark mode</Text>
+            <Switch
+              value={isDark}
+              onValueChange={(v) => setMode(v ? 'dark' : 'light')}
+              trackColor={{ false: colors.grayMid, true: colors.teal }}
+              thumbColor="#fff"
+            />
+          </View>
           {[
             { icon: '🔔', label: 'Notification preferences' },
             { icon: '🔒', label: 'Privacy & security' },
           ].map((row) => (
-            <TouchableOpacity key={row.label} style={styles.settingsRow} onPress={() => Alert.alert(row.label)}>
-              <View style={[styles.infoIcon, { backgroundColor: Colors.grayBg }]}>
+            <TouchableOpacity key={row.label} style={styles.settingsRow} onPress={() => Alert.alert(row.label, 'Coming soon')}>
+              <View style={[styles.infoIcon, { backgroundColor: colors.grayBg }]}>
                 <Text>{row.icon}</Text>
               </View>
               <Text style={styles.settingsLabel}>{row.label}</Text>
-              <Text style={{ color: Colors.textHint, fontSize: 14 }}>›</Text>
+              <Text style={{ color: colors.textHint, fontSize: 14 }}>›</Text>
             </TouchableOpacity>
           ))}
         </View>
 
         <TouchableOpacity
-          style={[styles.editBtn, { backgroundColor: Colors.tealLight }]}
-          onPress={() => Alert.alert('Edit profile')}
+          style={[styles.editBtn, { backgroundColor: colors.tealLight }]}
+          onPress={() => Alert.alert('Edit profile', 'Coming soon')}
         >
-          <Text style={[styles.editBtnText, { color: Colors.tealDark }]}>✏️ Edit profile</Text>
+          <Text style={[styles.editBtnText, { color: colors.tealDark }]}>✏️ Edit profile</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
@@ -121,7 +141,7 @@ export default function CitizenProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,

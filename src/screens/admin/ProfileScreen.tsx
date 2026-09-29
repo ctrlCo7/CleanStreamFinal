@@ -1,29 +1,56 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert } from 'react-native';
-import { Colors } from '../../constants/colors';
+import React, { useMemo, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert, Switch } from 'react-native';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { logout } from '../../store/authSlice';
-import { useAppSelector as useSelector } from '../../store/hooks';
+import { rowsToCsv, exportCsv } from '../../utils/csvExport';
 
 export default function AdminProfileScreen() {
   const dispatch = useAppDispatch();
+  const { colors, isDark, setMode } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAppSelector((s) => s.auth);
   const { reports } = useAppSelector((s) => s.reports);
+  const [exporting, setExporting] = useState(false);
 
-  const totalManaged = reports.length || 142;
-  const resolved = reports.filter((r) => r.status === 'resolved').length || 112;
-  const resolutionRate = totalManaged > 0 ? Math.round((resolved / totalManaged) * 100) : 79;
+  const totalManaged = reports.length;
+  const resolved = reports.filter((r) => r.status === 'completed').length;
+  const resolutionRate = totalManaged > 0 ? Math.round((resolved / totalManaged) * 100) : 0;
 
-  const displayName = user ? `${user.firstName} ${user.lastName}` : 'Rodrigo Alcantara';
+  const displayName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
   const initials = displayName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
-  const agency = user?.agency || 'CENRO';
-  const employeeId = user?.employeeId || 'CNRO-2019-004';
+  const agency = user?.agency || '—';
+  const employeeId = user?.employeeId || '—';
 
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign out', style: 'destructive', onPress: () => dispatch(logout()) },
     ]);
+  };
+
+  const exportMyData = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const csv = rowsToCsv(
+        ['Field', 'Value'],
+        [
+          ['Full name', displayName],
+          ['Email', user?.email || ''],
+          ['Agency', agency],
+          ['Employee ID', employeeId],
+          ['Role', 'Administrator'],
+          ['Reports managed', totalManaged],
+          ['Reports resolved', resolved],
+          ['Resolution rate', `${resolutionRate}%`],
+        ],
+      );
+      await exportCsv(`cleanstream-profile-${employeeId !== '—' ? employeeId : user?.uid || 'admin'}.csv`, csv);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -48,10 +75,10 @@ export default function AdminProfileScreen() {
         {/* Performance stats */}
         <View style={styles.statsRow}>
           {[
-            { val: totalManaged, label: 'Managed', color: Colors.blue },
-            { val: resolved, label: 'Resolved', color: Colors.green },
-            { val: `${resolutionRate}%`, label: 'Resolution', color: Colors.teal },
-            { val: '14h', label: 'Avg resp.', color: Colors.amber },
+            { val: totalManaged, label: 'Managed', color: colors.blue },
+            { val: resolved, label: 'Resolved', color: colors.green },
+            { val: `${resolutionRate}%`, label: 'Resolution', color: colors.teal },
+            { val: '—', label: 'Avg resp.', color: colors.amber },
           ].map((s) => (
             <View key={s.label} style={styles.statCard}>
               <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
@@ -65,7 +92,7 @@ export default function AdminProfileScreen() {
           <Text style={styles.cardTitle}>Account Information</Text>
           {[
             { k: 'Full name', v: displayName },
-            { k: 'Email', v: user?.email || 'rodrigo.alcantara@cenro.gov.ph' },
+            { k: 'Email', v: user?.email || '—' },
             { k: 'Agency', v: agency },
             { k: 'Employee ID', v: employeeId },
             { k: 'Role', v: 'Administrator' },
@@ -77,30 +104,22 @@ export default function AdminProfileScreen() {
           ))}
         </View>
 
-        {/* Cleanup performance */}
-        <View style={styles.infoCard}>
-          <Text style={styles.cardTitle}>Cleanup Performance</Text>
-          {[
-            { k: 'Teams dispatched', v: '38' },
-            { k: 'Avg cleanup time', v: '4h 12m' },
-            { k: 'Critical resolved', v: '29 / 31' },
-            { k: 'Hazmat incidents', v: '12 handled' },
-            { k: 'CNN scans reviewed', v: `${totalManaged}` },
-          ].map((row) => (
-            <View key={row.k} style={styles.infoRow}>
-              <Text style={styles.infoKey}>{row.k}</Text>
-              <Text style={styles.infoVal}>{row.v}</Text>
-            </View>
-          ))}
-        </View>
-
         {/* Settings */}
         <View style={styles.settingsCard}>
+          <View style={styles.settingsRow}>
+            <Text style={styles.settingsLabel}>Dark mode</Text>
+            <Switch
+              value={isDark}
+              onValueChange={(v) => setMode(v ? 'dark' : 'light')}
+              trackColor={{ false: colors.grayMid, true: colors.teal }}
+              thumbColor="#fff"
+            />
+          </View>
           {[
             { label: 'Edit profile', onPress: () => Alert.alert('Edit profile', 'Coming soon') },
-            { label: 'Notification settings', onPress: () => Alert.alert('Notifications', 'All alerts enabled') },
-            { label: 'System preferences', onPress: () => Alert.alert('System', 'No changes available') },
-            { label: 'Export my data', onPress: () => Alert.alert('Export', 'CSV exported') },
+            { label: 'Notification settings', onPress: () => Alert.alert('Notification settings', 'Coming soon') },
+            { label: 'System preferences', onPress: () => Alert.alert('System preferences', 'Coming soon') },
+            { label: 'Export my data', onPress: () => exportMyData() },
           ].map((item, i, arr) => (
             <TouchableOpacity
               key={item.label}
@@ -123,7 +142,7 @@ export default function AdminProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,

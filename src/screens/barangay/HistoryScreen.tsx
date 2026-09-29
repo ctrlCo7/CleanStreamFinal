@@ -1,26 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { useAppSelector } from '../../store/hooks';
 
 const FILTER_OPTIONS = ['All', 'Verified', 'Pending review', 'Flagged'];
 
-const COND_COLORS: Record<string, string> = {
-  Clean: Colors.teal,
-  Mild: Colors.green,
-  Moderate: Colors.amber,
-  Heavy: Colors.red,
-  Critical: Colors.critical,
-};
+function buildCondColors(colors: ThemeColors): Record<string, string> {
+  return {
+    Clean: colors.teal,
+    Mild: colors.green,
+    Moderate: colors.amber,
+    Heavy: colors.red,
+    Critical: colors.critical,
+  };
+}
 
-const STATUS_COLORS: Record<string, string> = {
-  verified: Colors.teal,
-  pending: Colors.amber,
-  flagged: Colors.red,
-};
+function buildStatusColors(colors: ThemeColors): Record<string, string> {
+  return {
+    verified: colors.teal,
+    pending: colors.amber,
+    flagged: colors.red,
+  };
+}
 
 interface FieldCheckpoint {
   id: string;
@@ -33,6 +38,10 @@ interface FieldCheckpoint {
 }
 
 export default function BarangayHistoryScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const COND_COLORS = useMemo(() => buildCondColors(colors), [colors]);
+  const STATUS_COLORS = useMemo(() => buildStatusColors(colors), [colors]);
   const { user } = useAppSelector((s) => s.auth);
   const [checkpoints, setCheckpoints] = useState<FieldCheckpoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,10 +99,10 @@ export default function BarangayHistoryScreen() {
         {/* Stats */}
         <View style={styles.statsRow}>
           {[
-            { val: checkpoints.length, label: 'Total', color: Colors.brgy },
-            { val: verified, label: 'Verified', color: Colors.green },
-            { val: pending, label: 'Pending', color: Colors.amber },
-            { val: flagged, label: 'Flagged', color: Colors.red },
+            { val: checkpoints.length, label: 'Total', color: colors.brgy },
+            { val: verified, label: 'Verified', color: colors.green },
+            { val: pending, label: 'Pending', color: colors.amber },
+            { val: flagged, label: 'Flagged', color: colors.red },
           ].map((s) => (
             <View key={s.label} style={styles.statCard}>
               <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
@@ -116,25 +125,25 @@ export default function BarangayHistoryScreen() {
         </ScrollView>
 
         {loading && (
-          <ActivityIndicator size="small" color={Colors.brgy} style={{ alignSelf: 'center', marginVertical: 16 }} />
+          <ActivityIndicator size="small" color={colors.brgy} style={{ alignSelf: 'center', marginVertical: 16 }} />
         )}
 
         {/* Checkpoint cards */}
         {filtered.map((item) => (
           <View key={item.id} style={[styles.checkCard, item.status === 'flagged' && styles.checkCardFlagged]}>
             <View style={styles.checkTop}>
-              <View style={[styles.condBadge, { backgroundColor: (COND_COLORS[item.condition] ?? Colors.grayMid) + '20', borderColor: (COND_COLORS[item.condition] ?? Colors.grayMid) + '40' }]}>
-                <Text style={[styles.condText, { color: COND_COLORS[item.condition] ?? Colors.textMuted }]}>{item.condition}</Text>
+              <View style={[styles.condBadge, { backgroundColor: (COND_COLORS[item.condition] ?? colors.grayMid) + '20', borderColor: (COND_COLORS[item.condition] ?? colors.grayMid) + '40' }]}>
+                <Text style={[styles.condText, { color: COND_COLORS[item.condition] ?? colors.textMuted }]}>{item.condition}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.checkType}>{item.type}</Text>
                 <Text style={styles.checkBarangay}>{item.barangay} · {item.officer}</Text>
               </View>
-              <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[item.status] ?? Colors.grayMid }]} />
+              <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[item.status] ?? colors.grayMid }]} />
             </View>
             <View style={styles.checkMeta}>
               <Text style={styles.checkDate}>{item.date}</Text>
-              <Text style={[styles.checkStatus, { color: STATUS_COLORS[item.status] ?? Colors.textMuted }]}>
+              <Text style={[styles.checkStatus, { color: STATUS_COLORS[item.status] ?? colors.textMuted }]}>
                 {item.status === 'pending' ? 'Pending review' : item.status.charAt(0).toUpperCase() + item.status.slice(1)}
               </Text>
             </View>
@@ -151,7 +160,7 @@ export default function BarangayHistoryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,

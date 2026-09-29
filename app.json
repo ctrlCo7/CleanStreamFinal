@@ -8,14 +8,17 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.cleanstream.app",
       "config": {
-        "googleMapsApiKey": "YOUR_IOS_GOOGLE_MAPS_API_KEY"
+        "googleMapsApiKey": "AIzaSyA9Q5o9e9Q2b_mxUErEM6LV-MD-tACvWas"
       },
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "CleanStream uses your location to show nearby waste reports on the map and to tag new reports accurately."
+        "NSLocationWhenInUseUsageDescription": "CleanStream uses your location to show nearby waste reports on the map and to tag new reports accurately.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
+      "package": "com.cleanstream.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -24,10 +27,18 @@
       },
       "config": {
         "googleMaps": {
-          "apiKey": "YOUR_ANDROID_GOOGLE_MAPS_API_KEY"
+          "apiKey": "AIzaSyA9Q5o9e9Q2b_mxUErEM6LV-MD-tACvWas"
         }
       },
-      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM"
+      ]
     },
     "web": {
       "output": "single",
@@ -45,7 +56,21 @@
         {
           "locationWhenInUsePermission": "CleanStream uses your location to show nearby waste reports on the map and to tag new reports accurately."
         }
+      ],
+      "expo-sharing",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#2E86DE",
+          "sounds": []
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2279a8e0-22c2-4892-b6ed-a152eec4ff8a"
+      }
+    }
   }
 }

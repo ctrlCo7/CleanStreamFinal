@@ -1,11 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { RootStackParamList, Message } from '../../types';
 import { BackIcon, SendIcon } from '../../components/common/TabIcons';
 import { useAppSelector } from '../../store/hooks';
@@ -16,6 +17,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'AdminChat'>;
 const QUICK_REPLIES = ['Team dispatched', 'Hazmat en route', 'Maintain 20m distance', 'Cleanup scheduled', 'Thank you!'];
 
 export default function AdminChatScreen({ navigation, route }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { conversationId, participantName, reportTag } = route.params;
   const { user } = useAppSelector((s) => s.auth);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -73,8 +76,8 @@ export default function AdminChatScreen({ navigation, route }: Props) {
     <SafeAreaView style={styles.container}>
       <View style={styles.chatHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon /></TouchableOpacity>
-        <View style={[styles.avatar, { backgroundColor: Colors.tealLight }]}>
-          <Text style={[styles.avatarText, { color: Colors.tealDark }]}>
+        <View style={[styles.avatar, { backgroundColor: colors.tealLight }]}>
+          <Text style={[styles.avatarText, { color: colors.tealDark }]}>
             {participantName.slice(0, 2).toUpperCase()}
           </Text>
         </View>
@@ -116,7 +119,7 @@ export default function AdminChatScreen({ navigation, route }: Props) {
           <TextInput
             style={styles.input}
             placeholder="Reply..."
-            placeholderTextColor={Colors.textHint}
+            placeholderTextColor={colors.textHint}
             value={input}
             onChangeText={setInput}
             onSubmitEditing={() => send()}
@@ -131,7 +134,7 @@ export default function AdminChatScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   chatHeader: {
     backgroundColor: Colors.white, padding: 10, paddingHorizontal: 14,

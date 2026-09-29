@@ -146,6 +146,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "isActive",     "order": "ASCENDING" },
+        { "fieldPath": "targetRoles",  "arrayConfig": "CONTAINS" },
         { "fieldPath": "isPinned",     "order": "DESCENDING" },
         { "fieldPath": "publishedAt",  "order": "DESCENDING" }
       ]
@@ -226,6 +227,28 @@
       ]
     },
 
+    // ─── fieldCheckpoints ────────────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "fieldCheckpoints",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+
+    // ─── waterwayAlarms ──────────────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "waterwayAlarms",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+
     // ─── conversations ───────────────────────────────────────────────────────────
 
     {
@@ -245,13 +268,6 @@
       "fields": [
         { "fieldPath": "receiverId", "order": "ASCENDING" },
         { "fieldPath": "read",       "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "messages",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "timestamp", "order": "ASCENDING" }
       ]
     }
 

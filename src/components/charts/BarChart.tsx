@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 
 interface BarData {
   label: string;
@@ -16,6 +17,8 @@ interface BarChartProps {
 }
 
 export function BarChart({ data, maxValue, height = 70, title }: BarChartProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const max = maxValue || Math.max(...data.map((d) => d.value), 1);
 
   return (
@@ -29,7 +32,7 @@ export function BarChart({ data, maxValue, height = 70, title }: BarChartProps) 
               <View
                 style={[
                   styles.bar,
-                  { height: barH, backgroundColor: d.color || Colors.teal },
+                  { height: barH, backgroundColor: d.color || colors.teal },
                 ]}
               />
               <Text style={styles.label}>{d.label}</Text>
@@ -41,7 +44,7 @@ export function BarChart({ data, maxValue, height = 70, title }: BarChartProps) 
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   card: {
     backgroundColor: Colors.white,
     borderRadius: 14,

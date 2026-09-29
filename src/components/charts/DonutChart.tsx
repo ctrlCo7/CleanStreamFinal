@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle, Text as SvgText } from 'react-native-svg';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 
 interface DonutSegment {
   label: string;
@@ -16,6 +17,8 @@ interface DonutChartProps {
 }
 
 export function DonutChart({ segments, total, title }: DonutChartProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const radius = 28;
   const circumference = 2 * Math.PI * radius;
   let offset = 0;
@@ -25,7 +28,7 @@ export function DonutChart({ segments, total, title }: DonutChartProps) {
       {title && <Text style={styles.title}>{title}</Text>}
       <View style={styles.row}>
         <Svg width={80} height={80} viewBox="0 0 80 80" style={{ flexShrink: 0 }}>
-          <Circle cx="40" cy="40" r={radius} fill="none" stroke={Colors.grayBg} strokeWidth="14" />
+          <Circle cx="40" cy="40" r={radius} fill="none" stroke={colors.grayBg} strokeWidth="14" />
           {segments.map((seg, i) => {
             const dash = (seg.percentage / 100) * circumference;
             const element = (
@@ -47,7 +50,7 @@ export function DonutChart({ segments, total, title }: DonutChartProps) {
             return element;
           })}
           {total !== undefined && (
-            <SvgText x="40" y="44" textAnchor="middle" fontSize="9" fill={Colors.textMuted}>
+            <SvgText x="40" y="44" textAnchor="middle" fontSize="9" fill={colors.textMuted}>
               {total}
             </SvgText>
           )}
@@ -65,7 +68,7 @@ export function DonutChart({ segments, total, title }: DonutChartProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   card: {
     backgroundColor: Colors.white,
     borderRadius: 14,

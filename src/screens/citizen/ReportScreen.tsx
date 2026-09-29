@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, SafeAreaView,
   ScrollView, ActivityIndicator, Alert, Image,
@@ -6,13 +6,16 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
-import { Colors } from '../../constants/colors';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { upsertReport } from '../../store/reportsSlice';
 import { getCurrentLocation } from '../../services/locationService';
-import { analyzeWastePhoto } from '../../services/aiService';
+import { analyzeWastePhoto, loadLocalModel } from '../../services/aiService';
 import { createReport, updateReportWithAI } from '../../services/reportsService';
+import { sendReportNotification } from '../../services/notificationService';
 import { GeoLocation } from '../../types';
 import { BackIcon, CameraIcon, CheckIcon } from '../../components/common/TabIcons';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
@@ -28,6 +31,8 @@ const AI_STEPS = [
 ];
 
 export default function CitizenReportScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((s) => s.auth);
@@ -48,6 +53,10 @@ export default function CitizenReportScreen() {
         setGeoStatus('error');
       }
     })();
+    // Start downloading/warming the on-device AI models as soon as this screen
+    // opens, so they're likely already loaded by the time the user finishes
+    // framing and capturing their photo.
+    loadLocalModel();
   }, []);
 
   const handleCamera = async () => {
@@ -62,7 +71,25 @@ export default function CitizenReportScreen() {
       allowsEditing: false,
     });
     if (!result.canceled && result.assets[0]) {
-      setPhotoUri(result.assets[0].uri);
+      // Device cameras capture at full sensor resolution (often 12MP+). That
+      // one file then gets used three ways at once -- on-screen preview,
+      // Storage upload blob, on-device AI tensor decode -- and holding all
+      // three in native memory simultaneously is what was causing an
+      // OS-level out-of-memory kill after a few report submissions in the
+      // same session. Downscaling once immediately after capture (before
+      // anything else touches it) fixes it at the source instead of trying
+      // to shrink memory use separately in each downstream consumer.
+      try {
+        const resized = await manipulateAsync(
+          result.assets[0].uri,
+          [{ resize: { width: 1280 } }],
+          { compress: 0.7, format: SaveFormat.JPEG },
+        );
+        setPhotoUri(resized.uri);
+      } catch (e) {
+        console.warn('[Report] Photo downscale failed, using original capture:', e);
+        setPhotoUri(result.assets[0].uri);
+      }
     }
   };
 
@@ -90,6 +117,9 @@ export default function CitizenReportScreen() {
         photoUri,
         location,
         notes,
+        undefined,
+        location.barangayId,
+        location.barangay,
       );
       reportId = result.reportId;
       reportNumber = result.reportNumber;
@@ -105,6 +135,9 @@ export default function CitizenReportScreen() {
     // Report is saved. All remaining steps are non-critical.
     const now = new Date().toISOString();
     const userName = `${user.firstName} ${user.lastName}`;
+
+    sendReportNotification(user.uid, 'report_submitted', reportId, reportNumber)
+      .catch((e) => console.warn('[Submit] Notification send failed (non-fatal):', e));
 
     // ── STEP 2: AI analysis (NON-CRITICAL) ────────────────────────────────
     let aiResult: Awaited<ReturnType<typeof analyzeWastePhoto>> | null = null;
@@ -227,7 +260,7 @@ export default function CitizenReportScreen() {
         {/* Anti-fake notice */}
         <View style={styles.antiFake}>
           <Svg width={13} height={13} viewBox="0 0 16 16" fill="none">
-            <Path d="M8 2l1.5 4.5L14 8l-4.5 1.5L8 14l-1.5-4.5L2 8l4.5-1.5z" stroke={Colors.greenText} strokeWidth="2" strokeLinecap="round" />
+            <Path d="M8 2l1.5 4.5L14 8l-4.5 1.5L8 14l-1.5-4.5L2 8l4.5-1.5z" stroke={colors.greenText} strokeWidth="2" strokeLinecap="round" />
           </Svg>
           <Text style={styles.antiFakeText}>
             <Text style={{ fontWeight: '600' }}>Camera-only reporting.</Text> Gallery uploads disabled. Auto-GPS tag + timestamp watermark applied on every capture.
@@ -237,7 +270,7 @@ export default function CitizenReportScreen() {
         {/* AI feature chips */}
         <View style={styles.featureRow}>
           <View style={styles.featureChip}>
-            <CheckIcon color={Colors.teal} size={14} />
+            <CheckIcon color={colors.teal} size={14} />
             <View>
               <Text style={styles.featureTitle}>Waste Classification</Text>
               <Text style={styles.featureSub}>5 types · CNN Model v2.4</Text>
@@ -245,8 +278,8 @@ export default function CitizenReportScreen() {
           </View>
           <View style={styles.featureChip}>
             <Svg width={14} height={14} viewBox="0 0 16 16" fill="none">
-              <Rect x="2" y="2" width="12" height="12" rx="1" stroke={Colors.blueText} strokeWidth="1.8" strokeLinecap="round" />
-              <Path d="M6 10V6M8 10V8M10 10V4" stroke={Colors.blueText} strokeWidth="1.8" strokeLinecap="round" />
+              <Rect x="2" y="2" width="12" height="12" rx="1" stroke={colors.blueText} strokeWidth="1.8" strokeLinecap="round" />
+              <Path d="M6 10V6M8 10V8M10 10V4" stroke={colors.blueText} strokeWidth="1.8" strokeLinecap="round" />
             </Svg>
             <View>
               <Text style={styles.featureTitle}>Volume Estimate</Text>
@@ -268,8 +301,8 @@ export default function CitizenReportScreen() {
 
           <View style={styles.geoItem}>
             <Svg width={12} height={12} viewBox="0 0 16 16" fill="none">
-              <Path d="M8 2a5 5 0 0 1 5 5c0 3.5-5 8-5 8S3 10 3 7a5 5 0 0 1 5-5z" stroke={Colors.teal} strokeWidth="2" strokeLinecap="round" />
-              <Circle cx="8" cy="7" r="1.5" stroke={Colors.teal} strokeWidth="2" />
+              <Path d="M8 2a5 5 0 0 1 5 5c0 3.5-5 8-5 8S3 10 3 7a5 5 0 0 1 5-5z" stroke={colors.teal} strokeWidth="2" strokeLinecap="round" />
+              <Circle cx="8" cy="7" r="1.5" stroke={colors.teal} strokeWidth="2" />
             </Svg>
             <View>
               <Text style={styles.geoLabel}>GPS coordinates</Text>
@@ -281,8 +314,8 @@ export default function CitizenReportScreen() {
 
           <View style={styles.geoItem}>
             <Svg width={12} height={12} viewBox="0 0 16 16" fill="none">
-              <Path d="M2 13V7l6-5 6 5v6" stroke={Colors.teal} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <Path d="M6 13v-3h4v3" stroke={Colors.teal} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <Path d="M2 13V7l6-5 6 5v6" stroke={colors.teal} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <Path d="M6 13v-3h4v3" stroke={colors.teal} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
             <View>
               <Text style={styles.geoLabel}>Barangay · Cebu City</Text>
@@ -292,8 +325,8 @@ export default function CitizenReportScreen() {
 
           <View style={styles.geoItem}>
             <Svg width={12} height={12} viewBox="0 0 16 16" fill="none">
-              <Rect x="2" y="3" width="12" height="11" rx="1" stroke={Colors.teal} strokeWidth="2" strokeLinecap="round" />
-              <Path d="M5 1v4M11 1v4M2 7h12" stroke={Colors.teal} strokeWidth="2" strokeLinecap="round" />
+              <Rect x="2" y="3" width="12" height="11" rx="1" stroke={colors.teal} strokeWidth="2" strokeLinecap="round" />
+              <Path d="M5 1v4M11 1v4M2 7h12" stroke={colors.teal} strokeWidth="2" strokeLinecap="round" />
             </Svg>
             <View>
               <Text style={styles.geoLabel}>Timestamp</Text>
@@ -320,7 +353,7 @@ export default function CitizenReportScreen() {
       {/* AI Processing overlay */}
       {processing && (
         <View style={styles.overlay}>
-          <ActivityIndicator size="large" color={Colors.teal} />
+          <ActivityIndicator size="large" color={colors.teal} />
           <Text style={styles.overlayTitle}>AI Classification Running</Text>
           <View style={styles.steps}>
             {AI_STEPS.map((step, i) => (
@@ -330,8 +363,8 @@ export default function CitizenReportScreen() {
                 </Text>
                 <Text style={[
                   styles.stepText,
-                  i < aiStep && { color: Colors.tealDark },
-                  i === aiStep && { color: Colors.amberText },
+                  i < aiStep && { color: colors.tealDark },
+                  i === aiStep && { color: colors.amberText },
                 ]}>
                   {step}
                 </Text>
@@ -347,7 +380,7 @@ export default function CitizenReportScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,

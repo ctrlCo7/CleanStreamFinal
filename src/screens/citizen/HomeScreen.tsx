@@ -1,10 +1,11 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchUserReports } from '../../store/reportsSlice';
@@ -13,6 +14,7 @@ import { Badge } from '../../components/common/Badge';
 import { StatCard } from '../../components/common/StatCard';
 import { MapPreview } from '../../components/common/MapPreview';
 import { BellIcon } from '../../components/common/TabIcons';
+import { subscribeToNotifications } from '../../services/notificationService';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -20,8 +22,11 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function CitizenHomeScreen() {
   const navigation = useNavigation<Nav>();
   const dispatch = useAppDispatch();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAppSelector((s) => s.auth);
   const { userReports, loading } = useAppSelector((s) => s.reports);
+  const [hasUnreadNotifs, setHasUnreadNotifs] = useState(false);
 
   const load = useCallback(() => {
     if (user?.uid) dispatch(fetchUserReports(user.uid));
@@ -29,18 +34,28 @@ export default function CitizenHomeScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = subscribeToNotifications(user.uid, (notifs) => {
+      setHasUnreadNotifs(notifs.some((n) => !n.read));
+    });
+    return unsub;
+  }, [user?.uid]);
+
   const totalReports = userReports.length;
   const pending = userReports.filter((r) => r.status === 'pending').length;
-  const resolved = userReports.filter((r) => r.status === 'resolved').length;
+  const resolved = userReports.filter((r) => r.status === 'completed').length;
 
   const recentReports = userReports.slice(0, 3);
 
-  const hotspots = recentReports.map((r, i) => ({
-    id: r.id,
-    latitude: r.location?.latitude || 10.3157 + i * 0.002,
-    longitude: r.location?.longitude || 123.8854 + i * 0.003,
-    severity: r.severity,
-  }));
+  const hotspots = recentReports
+    .filter((r) => typeof r.location?.latitude === 'number' && typeof r.location?.longitude === 'number')
+    .map((r) => ({
+      id: r.id,
+      latitude: r.location.latitude,
+      longitude: r.location.longitude,
+      severity: r.severity,
+    }));
 
   const hour = new Date().getHours();
   const greeting =
@@ -57,13 +72,13 @@ export default function CitizenHomeScreen() {
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Map', {})}>
             <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-              <Path d="M8 2a5 5 0 0 1 5 5c0 3.5-5 8-5 8S3 10 3 7a5 5 0 0 1 5-5z" stroke={Colors.textMuted} strokeWidth="1.8" strokeLinecap="round" />
-              <Circle cx="8" cy="7" r="1.5" stroke={Colors.textMuted} strokeWidth="1.8" />
+              <Path d="M8 2a5 5 0 0 1 5 5c0 3.5-5 8-5 8S3 10 3 7a5 5 0 0 1 5-5z" stroke={colors.textMuted} strokeWidth="1.8" strokeLinecap="round" />
+              <Circle cx="8" cy="7" r="1.5" stroke={colors.textMuted} strokeWidth="1.8" />
             </Svg>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.iconBtn, styles.iconBtnRelative]} onPress={() => navigation.navigate('CitizenTabs', {} as never)}>
-            <BellIcon color={Colors.textMuted} size={16} />
-            <View style={styles.notifDot} />
+          <TouchableOpacity style={[styles.iconBtn, styles.iconBtnRelative]} onPress={() => navigation.navigate('CitizenNotifications')}>
+            <BellIcon color={colors.textMuted} size={16} />
+            {hasUnreadNotifs && <View style={styles.notifDot} />}
           </TouchableOpacity>
         </View>
       </View>
@@ -72,7 +87,7 @@ export default function CitizenHomeScreen() {
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={Colors.teal} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.teal} />}
       >
         {/* Role pill + sign out */}
         <View style={styles.roleRow}>
@@ -113,10 +128,10 @@ export default function CitizenHomeScreen() {
         {/* Legend */}
         <View style={styles.legend}>
           {[
-            { label: 'Critical', color: Colors.critical },
-            { label: 'High', color: Colors.red },
-            { label: 'Moderate', color: Colors.amber },
-            { label: 'Low', color: Colors.teal },
+            { label: 'Critical', color: colors.critical },
+            { label: 'High', color: colors.red },
+            { label: 'Moderate', color: colors.amber },
+            { label: 'Low', color: colors.teal },
           ].map((item) => (
             <View key={item.label} style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: item.color }]} />
@@ -127,9 +142,9 @@ export default function CitizenHomeScreen() {
 
         {/* Stats */}
         <View style={styles.statsRow}>
-          <StatCard value={totalReports} label="My reports" valueColor={Colors.teal} />
-          <StatCard value={pending} label="Pending" valueColor={Colors.amber} />
-          <StatCard value={resolved} label="Resolved" valueColor={Colors.green} />
+          <StatCard value={totalReports} label="My reports" valueColor={colors.teal} />
+          <StatCard value={pending} label="Pending" valueColor={colors.amber} />
+          <StatCard value={resolved} label="Resolved" valueColor={colors.green} />
         </View>
 
         {/* Recent reports */}
@@ -166,7 +181,7 @@ export default function CitizenHomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white,

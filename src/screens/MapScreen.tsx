@@ -11,7 +11,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import MapView, { Marker, PROVIDER_GOOGLE, Callout } from 'react-native-maps';
-import { Colors } from '../constants/colors';
+import { useTheme } from '../hooks/useTheme';
+import { ThemeColors } from '../constants/theme';
 import { RootStackParamList, WasteReport, SeverityLevel } from '../types';
 import { BackIcon } from '../components/common/TabIcons';
 import { useMapReports } from '../hooks/useMapReports';
@@ -41,10 +42,11 @@ const FILTER_OPTIONS = ['All', 'Critical', 'High', 'Moderate', 'Low'] as const;
 interface SeverityMarkerProps {
   report: WasteReport;
   onNavigate: (reportId: string) => void;
+  styles: ReturnType<typeof createStyles>;
 }
 
 const SeverityMarker = memo(
-  ({ report, onNavigate }: SeverityMarkerProps) => {
+  ({ report, onNavigate, styles }: SeverityMarkerProps) => {
     const color    = getMarkerColor(report.severity);
     const bgColor  = SEVERITY_BG[report.severity as SeverityLevel] ?? '#F9F9F9';
     const emoji    = SEVERITY_EMOJIS[report.severity as SeverityLevel] ?? '⚪';
@@ -103,9 +105,10 @@ interface StatsBarProps {
   counts: SeverityCount;
   activeFilter: string;
   onFilter: (sev: string) => void;
+  styles: ReturnType<typeof createStyles>;
 }
 
-const StatsBar = memo(({ counts, activeFilter, onFilter }: StatsBarProps) => (
+const StatsBar = memo(({ counts, activeFilter, onFilter, styles }: StatsBarProps) => (
   <View style={styles.statsBar}>
     {ORDERED_SEVERITIES.map((sev) => {
       const label = sev.charAt(0).toUpperCase() + sev.slice(1);
@@ -128,7 +131,7 @@ const StatsBar = memo(({ counts, activeFilter, onFilter }: StatsBarProps) => (
 
 // ─── Legend overlay ───────────────────────────────────────────────────────────
 
-const MapLegend = memo(() => (
+const MapLegend = memo(({ styles }: { styles: ReturnType<typeof createStyles> }) => (
   <View style={styles.legend}>
     <Text style={styles.legendTitle}>Legend</Text>
     {ORDERED_SEVERITIES.map((sev) => (
@@ -143,6 +146,8 @@ const MapLegend = memo(() => (
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function MapScreen({ navigation }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { reports, loading, counts, total } = useMapReports();
   const [filter, setFilter] = useState('All');
 
@@ -196,7 +201,7 @@ export default function MapScreen({ navigation }: Props) {
       </View>
 
       {/* ── Severity counts (above map) ── */}
-      <StatsBar counts={counts} activeFilter={filter} onFilter={handleFilter} />
+      <StatsBar counts={counts} activeFilter={filter} onFilter={handleFilter} styles={styles} />
 
       {/* ── Map ── */}
       <View style={styles.mapContainer}>
@@ -209,7 +214,10 @@ export default function MapScreen({ navigation }: Props) {
           </View>
         ) : (
           <MapView
-            provider={PROVIDER_GOOGLE}
+            // Expo Go on iOS has no Google Maps SDK baked in (only Android's does) --
+            // forcing PROVIDER_GOOGLE there renders a blank map. Let iOS use the
+            // default Apple Maps provider; Android keeps Google Maps.
+            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
             style={styles.map}
             initialRegion={CEBU}
             showsUserLocation
@@ -221,6 +229,7 @@ export default function MapScreen({ navigation }: Props) {
                 key={report.id}
                 report={report}
                 onNavigate={handleNavigate}
+                styles={styles}
               />
             ))}
           </MapView>
@@ -229,13 +238,13 @@ export default function MapScreen({ navigation }: Props) {
         {/* Loading overlay */}
         {Platform.OS !== 'web' && loading && (
           <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={Colors.teal} />
+            <ActivityIndicator size="large" color={colors.teal} />
             <Text style={styles.loadingText}>Loading map data…</Text>
           </View>
         )}
 
         {/* Legend */}
-        <MapLegend />
+        <MapLegend styles={styles} />
 
         {/* Live badge */}
         <View style={styles.liveBadge}>
@@ -257,7 +266,7 @@ export default function MapScreen({ navigation }: Props) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container:  { flex: 1, backgroundColor: Colors.grayBg },
 
   // Header
@@ -373,10 +382,13 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
   },
-  legendTitle: { fontSize: 9, fontWeight: '700', color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
+  // Legend's background is a fixed light overlay regardless of theme, so its
+  // text stays a fixed dark color too (Colors.textMuted/textPrimary would go
+  // near-white in dark mode and disappear against it).
+  legendTitle: { fontSize: 9, fontWeight: '700', color: '#6B6A64', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
   legendItem:  { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendEmoji: { fontSize: 11 },
-  legendText:  { fontSize: 10, color: Colors.textPrimary, fontWeight: '500' },
+  legendText:  { fontSize: 10, color: '#1A1A18', fontWeight: '500' },
 
   // Live badge
   liveBadge: {
@@ -387,7 +399,8 @@ const styles = StyleSheet.create({
     borderWidth: 0.5, borderColor: Colors.border,
   },
   liveDot:  { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#22C55E' },
-  liveText: { fontSize: 11, fontWeight: '600', color: Colors.textPrimary },
+  // Same fixed-light-overlay reasoning as the legend above.
+  liveText: { fontSize: 11, fontWeight: '600', color: '#1A1A18' },
 
   // Loading overlay
   loadingOverlay: {

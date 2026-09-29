@@ -1,5 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,30 +9,39 @@ import {
   Text, TextInput, TouchableOpacity,
   View,
 } from 'react-native';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { clearError, register, setUser } from '../../store/authSlice';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { RootStackParamList, UserRole } from '../../types';
+import { CEBU_BARANGAYS } from '../../services/locationService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 
-const ROLES: { id: UserRole; label: string; bg: string; textColor: string }[] = [
-  { id: 'citizen', label: 'Citizen', bg: Colors.tealLight, textColor: Colors.tealDark },
-  { id: 'admin', label: 'Admin', bg: Colors.blueBg, textColor: Colors.blueText },
-  { id: 'barangay', label: 'Barangay', bg: Colors.purpleBg, textColor: Colors.purpleText },
-];
+function buildRoles(colors: ThemeColors) {
+  return [
+    { id: 'citizen' as UserRole, label: 'Citizen', bg: colors.tealLight, textColor: colors.tealDark },
+    { id: 'admin' as UserRole, label: 'Admin', bg: colors.blueBg, textColor: colors.blueText },
+    { id: 'barangay' as UserRole, label: 'Barangay', bg: colors.purpleBg, textColor: colors.purpleText },
+  ];
+}
 
 export default function SignupScreen({ navigation }: Props) {
   const dispatch = useAppDispatch();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const ROLES = useMemo(() => buildRoles(colors), [colors]);
   const { loading } = useAppSelector((s) => s.auth);
   const [role, setRole] = useState<UserRole>('citizen');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [barangay, setBarangay] = useState('');
+  const [barangayId, setBarangayId] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [agency, setAgency] = useState('');
+
+  const selectedBarangay = CEBU_BARANGAYS.find((b) => b.id === barangayId);
 
   const handleRegister = async () => {
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim()) {
@@ -43,9 +52,27 @@ export default function SignupScreen({ navigation }: Props) {
       Alert.alert('Weak password', 'Password must be at least 6 characters.');
       return;
     }
+    if ((role === 'citizen' || role === 'barangay') && !selectedBarangay) {
+      Alert.alert('Barangay required', 'Please select your barangay.');
+      return;
+    }
+    if (role === 'barangay' && !employeeId.trim()) {
+      Alert.alert('Employee ID required', 'Please enter your BSP employee ID.');
+      return;
+    }
     dispatch(clearError());
     const result = await dispatch(
-      register({ email: email.trim(), password, firstName, lastName, role, barangay, employeeId, agency }),
+      register({
+        email: email.trim(),
+        password,
+        firstName,
+        lastName,
+        role,
+        barangay: selectedBarangay?.name,
+        barangayId: selectedBarangay?.id,
+        employeeId,
+        agency,
+      }),
     );
     if (register.fulfilled.match(result)) {
       dispatch(setUser(null));
@@ -73,7 +100,7 @@ export default function SignupScreen({ navigation }: Props) {
               onPress={() => setRole(r.id)}
               activeOpacity={0.85}
             >
-              <Text style={[styles.roleLabel, { color: role === r.id ? r.textColor : Colors.textMuted }]}>{r.label}</Text>
+              <Text style={[styles.roleLabel, { color: role === r.id ? r.textColor : colors.textMuted }]}>{r.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -81,23 +108,43 @@ export default function SignupScreen({ navigation }: Props) {
         <View style={styles.twoCol}>
           <View style={[styles.field, styles.flex]}>
             <Text style={styles.fieldLabel}>First name</Text>
-            <TextInput style={styles.input} placeholder="Juan" placeholderTextColor={Colors.textHint} value={firstName} onChangeText={setFirstName} />
+            <TextInput style={styles.input} placeholder="Juan" placeholderTextColor={colors.textHint} value={firstName} onChangeText={setFirstName} />
           </View>
           <View style={[styles.field, styles.flex]}>
             <Text style={styles.fieldLabel}>Last name</Text>
-            <TextInput style={styles.input} placeholder="Dela Cruz" placeholderTextColor={Colors.textHint} value={lastName} onChangeText={setLastName} />
+            <TextInput style={styles.input} placeholder="Dela Cruz" placeholderTextColor={colors.textHint} value={lastName} onChangeText={setLastName} />
           </View>
         </View>
 
         <View style={styles.field}>
           <Text style={styles.fieldLabel}>Email</Text>
-          <TextInput style={styles.input} placeholder="you@example.com" placeholderTextColor={Colors.textHint} keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
+          <TextInput style={styles.input} placeholder="you@example.com" placeholderTextColor={colors.textHint} keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
         </View>
 
         {(role === 'citizen' || role === 'barangay') && (
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Barangay</Text>
-            <TextInput style={styles.input} placeholder="e.g. Punta Princesa" placeholderTextColor={Colors.textHint} value={barangay} onChangeText={setBarangay} />
+            <View style={styles.barangayWrap}>
+              {CEBU_BARANGAYS.map((b) => (
+                <TouchableOpacity
+                  key={b.id}
+                  style={[styles.barangayChip, barangayId === b.id && styles.barangayChipActive]}
+                  onPress={() => setBarangayId(b.id)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.barangayChipText, barangayId === b.id && styles.barangayChipTextActive]}>
+                    {b.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {role === 'barangay' && (
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Employee ID (BSP)</Text>
+            <TextInput style={styles.input} placeholder="BSP-2024-XXXX" placeholderTextColor={colors.textHint} value={employeeId} onChangeText={setEmployeeId} />
           </View>
         )}
 
@@ -105,18 +152,18 @@ export default function SignupScreen({ navigation }: Props) {
           <>
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Employee ID</Text>
-              <TextInput style={styles.input} placeholder="CENRO-2024-XXXX" placeholderTextColor={Colors.textHint} value={employeeId} onChangeText={setEmployeeId} />
+              <TextInput style={styles.input} placeholder="CENRO-2024-XXXX" placeholderTextColor={colors.textHint} value={employeeId} onChangeText={setEmployeeId} />
             </View>
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Agency</Text>
-              <TextInput style={styles.input} placeholder="CENRO, Cebu City" placeholderTextColor={Colors.textHint} value={agency} onChangeText={setAgency} />
+              <TextInput style={styles.input} placeholder="CENRO, Cebu City" placeholderTextColor={colors.textHint} value={agency} onChangeText={setAgency} />
             </View>
           </>
         )}
 
         <View style={styles.field}>
           <Text style={styles.fieldLabel}>Password</Text>
-          <TextInput style={styles.input} placeholder="Create password (min 6 chars)" placeholderTextColor={Colors.textHint} secureTextEntry value={password} onChangeText={setPassword} />
+          <TextInput style={styles.input} placeholder="Create password (min 6 chars)" placeholderTextColor={colors.textHint} secureTextEntry value={password} onChangeText={setPassword} />
         </View>
 
         <TouchableOpacity style={styles.primaryBtn} onPress={handleRegister} disabled={loading} activeOpacity={0.85}>
@@ -134,7 +181,7 @@ export default function SignupScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.white },
   container: { flexGrow: 1, padding: 22, paddingTop: 48 },
   header: { alignItems: 'center', marginBottom: 16 },
@@ -156,7 +203,18 @@ const styles = StyleSheet.create({
     borderRadius: 10, paddingHorizontal: 13, paddingVertical: 10,
     fontSize: 13, color: Colors.textPrimary,
   },
-  primaryBtn: { backgroundColor: Colors.teal, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 4 },
+  barangayWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  barangayChip: {
+    borderRadius: 20, borderWidth: 0.5, borderColor: Colors.borderMid,
+    paddingHorizontal: 12, paddingVertical: 7, backgroundColor: Colors.white,
+  },
+  barangayChipActive: { backgroundColor: Colors.tealLight, borderColor: Colors.teal },
+  barangayChipText: { fontSize: 11, color: Colors.textMuted, fontWeight: '500' },
+  barangayChipTextActive: { color: Colors.tealDark },
+  primaryBtn: {
+    backgroundColor: Colors.teal, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 4,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 8, elevation: 3,
+  },
   primaryBtnText: { color: '#fff', fontSize: 13, fontWeight: '500' },
   switchRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 14 },
   switchText: { fontSize: 11, color: Colors.textMuted },

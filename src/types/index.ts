@@ -168,6 +168,13 @@ export interface WasteReport {
   assignedAt?: string;
   resolvedAt?: string;
   rejectionReason?: string;
+  // Human-confirmed labels captured at verification time -- when a barangay official
+  // verifies a report, they confirm or correct the AI's severity/waste-type call.
+  // This is the ground truth ml-waste-detection's export script trains on; an
+  // unmodified confirmation (groundTruth* equal to the AI's own severity/wasteTypes[0])
+  // is itself a valid positive training example, not just corrections.
+  groundTruthSeverity?: SeverityLevel;
+  groundTruthWasteType?: AIWasteType;
   statusHistory: StatusHistoryEntry[];
   createdAt: string;
   updatedAt: string;
@@ -560,10 +567,15 @@ export type RootStackParamList = {
   CitizenAIResult: { report: WasteReport };
   CitizenDetail: { reportId: string };
   CitizenChat: { conversationId: string; participantName: string };
+  CitizenNotifications: undefined;
   AdminSchedule: { reportId?: string };
+  AdminAlerts: undefined;
   AdminChat: { conversationId: string; participantName: string; reportTag?: string };
   BarangaySchedule: { reportId?: string };
+  BarangayVerify: undefined;
+  BarangayVerifyDetail: { reportId: string };
   BarangayChat: { conversationId: string; participantName: string; reportTag?: string };
+  BarangayAlarms: undefined;
 };
 
 export type CitizenTabParamList = {

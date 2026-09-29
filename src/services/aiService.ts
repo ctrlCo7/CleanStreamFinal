@@ -1,16 +1,8 @@
 /**
- * AI Service — integrates Firebase Cloud Functions (multi-scale YOLO + CNN) with a local
- * simulation fallback for development / offline use.
- *
- * Production flow:
- *   1. Photo uploaded to Storage by createReport (reports/{reportId}/photo.jpg)
- *   2. analyzeWastePhoto() calls the 'analyzeWasteImage' Cloud Function
- *   3. Cloud Function runs preprocessing → YOLO detection → CNN classification →
- *      environmental scoring → saves AIPredictionDoc
- *   4. Response is mapped to AIAnalysisResult and stored on the WasteReport
- *
- * Fallback flow (Cloud Function unavailable / dev mode):
- *   - simulateLocalAnalysis() returns deterministic mock data per photo URI
+ * AI Service — real on-device inference (COCO-SSD + MobileNet via onDeviceAI.ts) is
+ * the primary analysis path, with the Firebase Cloud Functions pipeline and a
+ * deterministic local simulation as fallbacks. See analyzeWastePhoto()'s docstring
+ * for the exact priority order and why.
  */
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -25,6 +17,7 @@ import {
   WasteClassification,
 } from '../types';
 import app from './firebase';
+import { analyzeOnDevice, warmUpOnDeviceModels } from './onDeviceAI';
 
 // ─── Cloud Function response shape ───────────────────────────────────────────
 
@@ -362,14 +355,29 @@ const simulateLocalAnalysis = (photoUri: string): Promise<AIAnalysisResult> => {
 
 /**
  * Analyze a waste photo.
- * Uses Cloud Function pipeline when reportId + userId are available.
- * Falls back to deterministic local simulation otherwise.
+ *
+ * Priority order:
+ *   1. On-device (real COCO-SSD + MobileNet inference via onDeviceAI.ts) — the
+ *      primary path. Free, no backend, works without Cloud Functions deployed.
+ *   2. Cloud Function pipeline, only if reportId + userId are available — kept as
+ *      an opportunistic secondary path for if/when Cloud Functions get deployed
+ *      (they aren't currently: the project is on the free Spark plan, which can't
+ *      run Cloud Functions v2 at all).
+ *   3. Deterministic local simulation — absolute last resort if on-device TF
+ *      itself fails to load/run (e.g. an unsupported device), so report
+ *      submission never hard-blocks on AI analysis.
  */
 export const analyzeWastePhoto = async (
   photoUri: string,
   reportId?: string,
   userId?: string,
 ): Promise<AIAnalysisResult> => {
+  try {
+    return await analyzeOnDevice(photoUri);
+  } catch (err) {
+    console.warn('[AI] On-device analysis failed, trying cloud/simulation fallback:', err);
+  }
+
   if (reportId && userId) {
     const storagePath = `reports/${reportId}/photo.jpg`;
     try {
@@ -382,5 +390,5 @@ export const analyzeWastePhoto = async (
 };
 
 export const loadLocalModel = async (): Promise<void> => {
-  console.log('[AI] Local model placeholder — integrate TFLite here for on-device inference');
+  warmUpOnDeviceModels();
 };

@@ -1,17 +1,65 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert } from 'react-native';
-import { Colors } from '../../constants/colors';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert, Switch } from 'react-native';
+import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { db } from '../../services/firebase';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { logout } from '../../store/authSlice';
 
+interface FieldCheckpoint {
+  id: string;
+  type: string;
+  status: 'verified' | 'pending' | 'flagged';
+  createdAt: Date;
+}
+
 export default function BarangayProfileScreen() {
   const dispatch = useAppDispatch();
+  const { colors, isDark, setMode } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAppSelector((s) => s.auth);
+  const [checkpoints, setCheckpoints] = useState<FieldCheckpoint[]>([]);
 
-  const displayName = user ? `${user.firstName} ${user.lastName}` : 'Leni Reyes';
+  const displayName = user ? `${user.firstName} ${user.lastName}` : 'Barangay Official';
   const initials = displayName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
-  const barangay = user?.barangay || 'Guadalupe';
-  const employeeId = user?.employeeId || 'BHW-GLG-007';
+  const barangay = user?.barangay || '—';
+  const employeeId = user?.employeeId || '—';
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const q = query(
+      collection(db, 'fieldCheckpoints'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc'),
+      limit(50),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setCheckpoints(
+        snap.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            type: data.type || '—',
+            status: (data.status || 'pending') as 'verified' | 'pending' | 'flagged',
+            createdAt: data.createdAt?.toDate?.() ?? new Date(data.createdAt ?? Date.now()),
+          };
+        }),
+      );
+    });
+    return unsub;
+  }, [user?.uid]);
+
+  const verifiedCount = checkpoints.filter((c) => c.status === 'verified').length;
+  const pendingCount = checkpoints.filter((c) => c.status === 'pending').length;
+  const flaggedCount = checkpoints.filter((c) => c.status === 'flagged').length;
+  const alertsIssued = checkpoints.filter((c) => c.type === 'Community alert').length;
+  const lastCheckpoint = checkpoints[0]
+    ? checkpoints[0].createdAt.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : 'No checkpoints yet';
+  const activeSince = user?.createdAt
+    ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : '—';
 
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
@@ -34,7 +82,7 @@ export default function BarangayProfileScreen() {
           </View>
           <Text style={styles.displayName}>{displayName}</Text>
           <View style={styles.rolePill}>
-            <Text style={styles.rolePillText}>BHW OFFICER · {barangay.toUpperCase()}</Text>
+            <Text style={styles.rolePillText}>BARANGAY OFFICIAL (BSP) · {barangay.toUpperCase()}</Text>
           </View>
           <Text style={styles.empId}>{employeeId}</Text>
         </View>
@@ -42,10 +90,10 @@ export default function BarangayProfileScreen() {
         {/* Stats */}
         <View style={styles.statsRow}>
           {[
-            { val: 24, label: 'Checkpoints', color: Colors.brgy },
-            { val: 18, label: 'Verified', color: Colors.green },
-            { val: 4, label: 'Cleanups', color: Colors.teal },
-            { val: 2, label: 'Flagged', color: Colors.red },
+            { val: checkpoints.length, label: 'Checkpoints', color: colors.brgy },
+            { val: verifiedCount, label: 'Verified', color: colors.green },
+            { val: pendingCount, label: 'Pending', color: colors.teal },
+            { val: flaggedCount, label: 'Flagged', color: colors.red },
           ].map((s) => (
             <View key={s.label} style={styles.statCard}>
               <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
@@ -59,10 +107,10 @@ export default function BarangayProfileScreen() {
           <Text style={styles.cardTitle}>Account Information</Text>
           {[
             { k: 'Full name', v: displayName },
-            { k: 'Email', v: user?.email || 'leni.reyes@bhw.gov.ph' },
+            { k: 'Email', v: user?.email || '—' },
             { k: 'Barangay', v: barangay },
             { k: 'Employee ID', v: employeeId },
-            { k: 'Role', v: 'BHW Officer' },
+            { k: 'Role', v: 'Barangay Official (BSP)' },
           ].map((row) => (
             <View key={row.k} style={styles.infoRow}>
               <Text style={styles.infoKey}>{row.k}</Text>
@@ -75,11 +123,9 @@ export default function BarangayProfileScreen() {
         <View style={styles.infoCard}>
           <Text style={styles.cardTitle}>Field Activity</Text>
           {[
-            { k: 'Last checkpoint', v: 'Apr 3, 2026 · 2:14 PM' },
-            { k: 'Cleanup attended', v: '4 operations' },
-            { k: 'Volunteers rallied', v: '48 total' },
-            { k: 'Community alerts', v: '6 issued' },
-            { k: 'Active since', v: 'March 2024' },
+            { k: 'Last checkpoint', v: lastCheckpoint },
+            { k: 'Community alerts', v: `${alertsIssued} issued` },
+            { k: 'Active since', v: activeSince },
           ].map((row) => (
             <View key={row.k} style={styles.infoRow}>
               <Text style={styles.infoKey}>{row.k}</Text>
@@ -88,29 +134,20 @@ export default function BarangayProfileScreen() {
           ))}
         </View>
 
-        {/* Achievements */}
-        <View style={styles.infoCard}>
-          <Text style={styles.cardTitle}>Achievements</Text>
-          <View style={styles.achievementsRow}>
-            {[
-              { emoji: '🏅', label: 'First responder' },
-              { emoji: '🌿', label: 'Eco guardian' },
-              { emoji: '📋', label: 'Field analyst' },
-              { emoji: '⭐', label: 'Top officer' },
-            ].map((a) => (
-              <View key={a.label} style={styles.achieveCard}>
-                <Text style={styles.achieveEmoji}>{a.emoji}</Text>
-                <Text style={styles.achieveLabel}>{a.label}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
         {/* Settings */}
         <View style={styles.settingsCard}>
+          <View style={styles.settingsRow}>
+            <Text style={styles.settingsLabel}>Dark mode</Text>
+            <Switch
+              value={isDark}
+              onValueChange={(v) => setMode(v ? 'dark' : 'light')}
+              trackColor={{ false: colors.grayMid, true: colors.brgy }}
+              thumbColor="#fff"
+            />
+          </View>
           {[
             { label: 'Edit profile', onPress: () => Alert.alert('Edit profile', 'Coming soon') },
-            { label: 'Notification settings', onPress: () => Alert.alert('Notifications', 'All alerts enabled') },
+            { label: 'Notification settings', onPress: () => Alert.alert('Notification settings', 'Coming soon') },
             { label: 'Report a problem', onPress: () => Alert.alert('Support', 'Contact CENRO admin') },
           ].map((item, i, arr) => (
             <TouchableOpacity
@@ -134,7 +171,7 @@ export default function BarangayProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,
@@ -162,10 +199,6 @@ const styles = StyleSheet.create({
   },
   infoKey: { fontSize: 11, color: Colors.textMuted },
   infoVal: { fontSize: 11, fontWeight: '500', color: Colors.textPrimary, maxWidth: '55%', textAlign: 'right' },
-  achievementsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  achieveCard: { width: '47%', backgroundColor: Colors.brgyLight, borderRadius: 12, padding: 10, alignItems: 'center', gap: 4 },
-  achieveEmoji: { fontSize: 22 },
-  achieveLabel: { fontSize: 10, color: Colors.brgyDark, fontWeight: '500', textAlign: 'center' },
   settingsCard: { backgroundColor: Colors.white, borderRadius: 14, borderWidth: 0.5, borderColor: Colors.border, overflow: 'hidden' },
   settingsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 13, paddingVertical: 13, borderBottomWidth: 0.5, borderBottomColor: Colors.border },
   settingsLabel: { fontSize: 12, color: Colors.textPrimary },

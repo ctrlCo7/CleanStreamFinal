@@ -1,9 +1,10 @@
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useEffect, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Colors } from '../../constants/colors';
-import { subscribeToConversations } from '../../services/messagingService';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
+import { subscribeToConversations, getOrCreateAdminConversation, sendMessage } from '../../services/messagingService';
 import { useAppSelector } from '../../store/hooks';
 import { Conversation, RootStackParamList } from '../../types';
 
@@ -17,9 +18,12 @@ const QUICK_MESSAGES = [
 ];
 
 export default function CitizenMessagesScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const { user } = useAppSelector((s) => s.auth);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [contactingAdmin, setContactingAdmin] = useState(false);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -37,6 +41,26 @@ export default function CitizenMessagesScreen() {
 
   const getInitials = (name: string) => name.split(' ').map((w) => w[0]).slice(0, 2).join('');
 
+  const messageAdmin = async (prefill?: string) => {
+    if (!user?.uid || contactingAdmin) return;
+    setContactingAdmin(true);
+    try {
+      const result = await getOrCreateAdminConversation(user.uid, `${user.firstName} ${user.lastName}`, 'citizen');
+      if (!result) {
+        Alert.alert('No admin available', 'No admin account was found to message right now.');
+        return;
+      }
+      if (prefill) {
+        await sendMessage(result.conversationId, user.uid, `${user.firstName} ${user.lastName}`, 'citizen', result.adminUid, prefill);
+      }
+      navigation.navigate('CitizenChat', { conversationId: result.conversationId, participantName: result.adminName });
+    } catch {
+      Alert.alert('Couldn’t open chat', 'Please try again.');
+    } finally {
+      setContactingAdmin(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -53,27 +77,19 @@ export default function CitizenMessagesScreen() {
           )}
         </View>
 
-        {/* Mock conversation (Admin Support always visible) */}
-        <TouchableOpacity
-          style={[styles.convItem, styles.convUnread]}
-          onPress={() => navigation.navigate('CitizenChat', { conversationId: 'admin_support', participantName: 'Admin Support' })}
-          activeOpacity={0.85}
-        >
-          <View style={[styles.avatar, { backgroundColor: Colors.tealLight }]}>
-            <Text style={[styles.avatarText, { color: Colors.tealDark }]}>AD</Text>
-          </View>
-          <View style={styles.convBody}>
-            <Text style={styles.convName}>Admin Support</Text>
-            <Text style={styles.convPreview} numberOfLines={1}>Hazmat team dispatched to your area.</Text>
-            <View style={styles.convTag}>
-              <Text style={styles.convTagText}>Report #082 · Punta Princesa</Text>
+        {conversations.length === 0 && (
+          <TouchableOpacity style={styles.convItem} onPress={() => messageAdmin()} disabled={contactingAdmin} activeOpacity={0.85}>
+            <View style={[styles.avatar, { backgroundColor: colors.tealLight }]}>
+              <Text style={[styles.avatarText, { color: colors.tealDark }]}>AD</Text>
             </View>
-          </View>
-          <View style={styles.convMeta}>
-            <Text style={styles.convTime}>9:41 AM</Text>
-            <View style={styles.unreadDot} />
-          </View>
-        </TouchableOpacity>
+            <View style={styles.convBody}>
+              <Text style={styles.convName}>Message admin support</Text>
+              <Text style={styles.convPreview} numberOfLines={1}>
+                {contactingAdmin ? 'Opening…' : 'Start a conversation with the CleanStream admin team'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {conversations.map((conv) => {
           const otherName = Object.entries(conv.participantNames)
@@ -86,8 +102,8 @@ export default function CitizenMessagesScreen() {
               onPress={() => openChat(conv)}
               activeOpacity={0.85}
             >
-              <View style={[styles.avatar, { backgroundColor: Colors.blueBg }]}>
-                <Text style={[styles.avatarText, { color: Colors.blueText }]}>{getInitials(otherName)}</Text>
+              <View style={[styles.avatar, { backgroundColor: colors.blueBg }]}>
+                <Text style={[styles.avatarText, { color: colors.blueText }]}>{getInitials(otherName)}</Text>
               </View>
               <View style={styles.convBody}>
                 <Text style={styles.convName}>{otherName}</Text>
@@ -116,7 +132,8 @@ export default function CitizenMessagesScreen() {
               <TouchableOpacity
                 key={msg}
                 style={styles.quickChip}
-                onPress={() => navigation.navigate('CitizenChat', { conversationId: 'admin_support', participantName: 'Admin Support' })}
+                onPress={() => messageAdmin(msg)}
+                disabled={contactingAdmin}
               >
                 <Text style={styles.quickChipText}>{msg}</Text>
               </TouchableOpacity>
@@ -128,7 +145,7 @@ export default function CitizenMessagesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,

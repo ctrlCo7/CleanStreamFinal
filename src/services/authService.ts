@@ -19,6 +19,7 @@ export const registerUser = async (
   barangay?: string,
   employeeId?: string,
   agency?: string,
+  barangayId?: string,
 ): Promise<User> => {
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   const { uid } = credential.user;
@@ -30,6 +31,7 @@ export const registerUser = async (
     lastName,
     role,
     barangay,
+    barangayId,
     employeeId,
     agency,
     isActive: true,
@@ -37,10 +39,15 @@ export const registerUser = async (
     createdAt: new Date().toISOString(),
   };
 
-  await setDoc(doc(db, 'users', uid), {
-    ...userData,
-    createdAt: serverTimestamp(),
-  });
+  // Firestore's setDoc rejects `undefined` field values outright (throws
+  // "Unsupported field value: undefined"), so optional fields that don't apply to
+  // this role (e.g. barangay for an admin) must be omitted, not passed through as-is.
+  const firestorePayload: Record<string, unknown> = { ...userData, createdAt: serverTimestamp() };
+  for (const key of Object.keys(firestorePayload)) {
+    if (firestorePayload[key] === undefined) delete firestorePayload[key];
+  }
+
+  await setDoc(doc(db, 'users', uid), firestorePayload);
 
   return userData;
 };

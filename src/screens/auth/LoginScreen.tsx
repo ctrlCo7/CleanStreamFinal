@@ -1,5 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,101 +10,107 @@ import {
   View,
 } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { clearError, login } from '../../store/authSlice';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { RootStackParamList, UserRole } from '../../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
-const ROLES: { id: UserRole; label: string; bg: string; textColor: string; icon: React.ReactNode }[] = [
-  {
-    id: 'citizen',
-    label: 'Citizen',
-    bg: Colors.tealLight,
-    textColor: Colors.tealDark,
-    icon: (
-      <Svg width={18} height={18} viewBox="0 0 16 16" fill="none">
-        <Circle cx="8" cy="5" r="3" stroke={Colors.teal} strokeWidth="1.8" strokeLinecap="round" />
-        <Path d="M2 14c0-4 12-4 12 0" stroke={Colors.teal} strokeWidth="1.8" strokeLinecap="round" />
-      </Svg>
-    ),
-  },
-  {
-    id: 'admin',
-    label: 'Admin',
-    bg: Colors.blueBg,
-    textColor: Colors.blueText,
-    icon: (
-      <Svg width={18} height={18} viewBox="0 0 16 16" fill="none">
-        <Rect x="2" y="8" width="12" height="7" rx="1" stroke={Colors.blueText} strokeWidth="1.8" strokeLinecap="round" />
-        <Path d="M5 8V6a3 3 0 0 1 6 0v2" stroke={Colors.blueText} strokeWidth="1.8" strokeLinecap="round" />
-      </Svg>
-    ),
-  },
-  {
-    id: 'barangay',
-    label: 'Barangay',
-    bg: Colors.purpleBg,
-    textColor: Colors.purpleText,
-    icon: (
-      <Svg width={18} height={18} viewBox="0 0 16 16" fill="none">
-        <Path d="M2 13V7l6-5 6 5v6" stroke={Colors.purpleText} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <Path d="M6 13v-3h4v3" stroke={Colors.purpleText} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </Svg>
-    ),
-  },
-];
+function buildRoles(colors: ThemeColors) {
+  return [
+    {
+      id: 'citizen' as UserRole,
+      label: 'Citizen',
+      bg: colors.tealLight,
+      textColor: colors.tealDark,
+      icon: (
+        <Svg width={18} height={18} viewBox="0 0 16 16" fill="none">
+          <Circle cx="8" cy="5" r="3" stroke={colors.teal} strokeWidth="1.8" strokeLinecap="round" />
+          <Path d="M2 14c0-4 12-4 12 0" stroke={colors.teal} strokeWidth="1.8" strokeLinecap="round" />
+        </Svg>
+      ),
+    },
+    {
+      id: 'admin' as UserRole,
+      label: 'Admin',
+      bg: colors.blueBg,
+      textColor: colors.blueText,
+      icon: (
+        <Svg width={18} height={18} viewBox="0 0 16 16" fill="none">
+          <Rect x="2" y="8" width="12" height="7" rx="1" stroke={colors.blueText} strokeWidth="1.8" strokeLinecap="round" />
+          <Path d="M5 8V6a3 3 0 0 1 6 0v2" stroke={colors.blueText} strokeWidth="1.8" strokeLinecap="round" />
+        </Svg>
+      ),
+    },
+    {
+      id: 'barangay' as UserRole,
+      label: 'Barangay',
+      bg: colors.purpleBg,
+      textColor: colors.purpleText,
+      icon: (
+        <Svg width={18} height={18} viewBox="0 0 16 16" fill="none">
+          <Path d="M2 13V7l6-5 6 5v6" stroke={colors.purpleText} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <Path d="M6 13v-3h4v3" stroke={colors.purpleText} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
+      ),
+    },
+  ];
+}
 
 export default function LoginScreen({ navigation }: Props) {
   const dispatch = useAppDispatch();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const ROLES = useMemo(() => buildRoles(colors), [colors]);
   const { loading, error } = useAppSelector((s) => s.auth);
   const [selectedRole, setSelectedRole] = useState<UserRole>('citizen');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const handleLogin = async () => {
-  if (!email.trim() || !password.trim()) {
-    Alert.alert('Missing fields', 'Please enter email and password.');
-    return;
-  }
-
-  dispatch(clearError());
-
-  const result = await dispatch(
-    login({
-      email: email.trim(),
-      password,
-    })
-  );
-
-  if (login.rejected.match(result)) {
-    Alert.alert(
-      'Sign in failed',
-      (result.payload as string) || 'Please check your credentials.'
-    );
-    return;
-  }
-
-  if (login.fulfilled.match(result)) {
-    const user = result.payload;
-
-    switch (user.role) {
-      case 'admin':
-        navigation.replace('AdminTabs');
-        break;
-
-      case 'barangay':
-        navigation.replace('BarangayTabs');
-        break;
-
-      case 'citizen':
-      default:
-        navigation.replace('CitizenTabs');
-        break;
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Missing fields', 'Please enter email and password.');
+      return;
     }
-  }
-};
+
+    dispatch(clearError());
+
+    const result = await dispatch(
+      login({
+        email: email.trim(),
+        password,
+      })
+    );
+
+    if (login.rejected.match(result)) {
+      Alert.alert(
+        'Sign in failed',
+        (result.payload as string) || 'Please check your credentials.'
+      );
+      return;
+    }
+
+    if (login.fulfilled.match(result)) {
+      const user = result.payload;
+
+      switch (user.role) {
+        case 'admin':
+          navigation.replace('AdminTabs');
+          break;
+
+        case 'barangay':
+          navigation.replace('BarangayTabs');
+          break;
+
+        case 'citizen':
+        default:
+          navigation.replace('CitizenTabs');
+          break;
+      }
+    }
+  };
 
   return (
     <KeyboardAvoidingView
@@ -120,9 +126,9 @@ export default function LoginScreen({ navigation }: Props) {
         <View style={styles.logoWrap}>
           <View style={styles.logo}>
             <Svg width={36} height={36} viewBox="0 0 36 36" fill="none">
-              <Path d="M4 24 Q9 18 14 21 Q19 24 24 18 Q29 12 32 15" stroke={Colors.teal} strokeWidth="2.5" strokeLinecap="round" />
-              <Path d="M13 8 L18 5 L23 8 L23 17 Q18 21 13 17 Z" stroke={Colors.teal} strokeWidth="1.8" strokeLinejoin="round" fill={Colors.tealLight} />
-              <Circle cx="18" cy="12" r="2.5" fill={Colors.teal} />
+              <Path d="M4 24 Q9 18 14 21 Q19 24 24 18 Q29 12 32 15" stroke={colors.teal} strokeWidth="2.5" strokeLinecap="round" />
+              <Path d="M13 8 L18 5 L23 8 L23 17 Q18 21 13 17 Z" stroke={colors.teal} strokeWidth="1.8" strokeLinejoin="round" fill={colors.tealLight} />
+              <Circle cx="18" cy="12" r="2.5" fill={colors.teal} />
             </Svg>
           </View>
           <Text style={styles.heading}>Welcome back</Text>
@@ -149,7 +155,7 @@ export default function LoginScreen({ navigation }: Props) {
               <View style={[styles.roleIcon, { backgroundColor: role.bg }]}>
                 {role.icon}
               </View>
-              <Text style={[styles.roleLabel, { color: selectedRole === role.id ? role.textColor : Colors.textMuted }]}>
+              <Text style={[styles.roleLabel, { color: selectedRole === role.id ? role.textColor : colors.textMuted }]}>
                 {role.label}
               </Text>
             </TouchableOpacity>
@@ -162,7 +168,7 @@ export default function LoginScreen({ navigation }: Props) {
           <TextInput
             style={styles.input}
             placeholder="you@example.com"
-            placeholderTextColor={Colors.textHint}
+            placeholderTextColor={colors.textHint}
             keyboardType="email-address"
             autoCapitalize="none"
             value={email}
@@ -176,7 +182,7 @@ export default function LoginScreen({ navigation }: Props) {
           <TextInput
             style={styles.input}
             placeholder="Enter password"
-            placeholderTextColor={Colors.textHint}
+            placeholderTextColor={colors.textHint}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -210,7 +216,7 @@ export default function LoginScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.white },
   container: { flexGrow: 1, padding: 22, paddingTop: 48 },
   logoWrap: { alignItems: 'center', marginBottom: 20 },
@@ -249,6 +255,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     marginTop: 4,
+    shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 3,
   },
   primaryBtnText: { color: '#fff', fontSize: 13, fontWeight: '500' },
   switchRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 14 },

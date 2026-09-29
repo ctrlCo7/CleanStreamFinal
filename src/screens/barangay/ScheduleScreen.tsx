@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
 import { CleanupEvent } from '../../types';
@@ -22,6 +23,8 @@ function buildCalendar(year: number, month: number): (number | null)[][] {
 }
 
 export default function BarangayScheduleScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAppSelector((s) => s.auth);
   const [events, setEvents] = useState<CleanupEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +54,7 @@ export default function BarangayScheduleScreen() {
         const d = new Date(e.eventDate);
         if (d.getFullYear() === viewYear && d.getMonth() === viewMonth) {
           const day = d.getDate();
-          const color = e.barangay === user?.barangay ? Colors.teal : Colors.amber;
+          const color = e.barangay === user?.barangay ? colors.teal : colors.amber;
           if (!map[day]) map[day] = color;
         }
       } catch { /* skip malformed dates */ }
@@ -106,7 +109,7 @@ export default function BarangayScheduleScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Schedule</Text>
         <View style={styles.rolePill}>
-          <Text style={styles.rolePillText}>BHW Officer</Text>
+          <Text style={styles.rolePillText}>Barangay Official</Text>
         </View>
       </View>
 
@@ -152,8 +155,8 @@ export default function BarangayScheduleScreen() {
             </View>
           ))}
           <View style={styles.calLegend}>
-            <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: Colors.teal }]} /><Text style={styles.legendText}>My barangay</Text></View>
-            <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: Colors.amber }]} /><Text style={styles.legendText}>Other area</Text></View>
+            <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: colors.teal }]} /><Text style={styles.legendText}>My barangay</Text></View>
+            <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: colors.amber }]} /><Text style={styles.legendText}>Other area</Text></View>
           </View>
         </View>
 
@@ -161,7 +164,7 @@ export default function BarangayScheduleScreen() {
         {selectedDay && dayEvents.length > 0 && (
           <>
             <Text style={styles.daySectionTitle}>{MONTH_LABEL.split(' ')[0]} {selectedDay} events</Text>
-            {dayEvents.map((ev) => <EventCard key={ev.id} event={ev} user={user} onJoin={handleJoin} joiningId={joiningId} />)}
+            {dayEvents.map((ev) => <EventCard key={ev.id} event={ev} user={user} onJoin={handleJoin} joiningId={joiningId} colors={colors} styles={styles} />)}
           </>
         )}
         {selectedDay && dayEvents.length === 0 && (
@@ -172,23 +175,25 @@ export default function BarangayScheduleScreen() {
 
         {/* All upcoming events */}
         <Text style={styles.daySectionTitle}>All upcoming cleanups</Text>
-        {loading && <ActivityIndicator size="small" color={Colors.brgy} style={{ alignSelf: 'center', marginVertical: 12 }} />}
+        {loading && <ActivityIndicator size="small" color={colors.brgy} style={{ alignSelf: 'center', marginVertical: 12 }} />}
         {!loading && events.length === 0 && (
           <View style={styles.emptyDay}>
             <Text style={styles.emptyDayText}>No upcoming events scheduled</Text>
           </View>
         )}
-        {events.map((ev) => <EventCard key={ev.id} event={ev} user={user} onJoin={handleJoin} joiningId={joiningId} />)}
+        {events.map((ev) => <EventCard key={ev.id} event={ev} user={user} onJoin={handleJoin} joiningId={joiningId} colors={colors} styles={styles} />)}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function EventCard({ event, user, onJoin, joiningId }: {
+function EventCard({ event, user, onJoin, joiningId, colors, styles }: {
   event: CleanupEvent;
   user: { uid: string; barangay?: string } | null;
   onJoin: (e: CleanupEvent) => void;
   joiningId: string | null;
+  colors: ThemeColors;
+  styles: ReturnType<typeof createStyles>;
 }) {
   const isJoined = user ? event.participantIds?.includes(user.uid) : false;
   const isMyBarangay = user?.barangay && event.barangay === user.barangay;
@@ -199,8 +204,8 @@ function EventCard({ event, user, onJoin, joiningId }: {
     dateStr = new Date(event.eventDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   } catch { /* skip */ }
 
-  const accentColor = isMyBarangay ? Colors.brgy : Colors.blue;
-  const accentBg = isMyBarangay ? Colors.brgyLight : Colors.blueBg;
+  const accentColor = isMyBarangay ? colors.brgy : colors.blue;
+  const accentBg = isMyBarangay ? colors.brgyLight : colors.blueBg;
 
   return (
     <View style={[styles.schedCard, { borderLeftColor: accentColor }]}>
@@ -215,13 +220,13 @@ function EventCard({ event, user, onJoin, joiningId }: {
           <Text style={styles.participantCount}>{event.currentParticipants ?? 0}/{event.maxParticipants ?? '?'} volunteers</Text>
         </View>
         <TouchableOpacity
-          style={[styles.joinBtn, { backgroundColor: isJoined ? Colors.grayBg : accentColor }]}
+          style={[styles.joinBtn, { backgroundColor: isJoined ? colors.grayBg : accentColor }]}
           onPress={() => onJoin(event)}
           disabled={isLoading}
         >
           {isLoading
-            ? <ActivityIndicator size="small" color={isJoined ? Colors.textMuted : '#fff'} />
-            : <Text style={[styles.joinBtnText, { color: isJoined ? Colors.textMuted : '#fff' }]}>{isJoined ? 'Leave event' : 'Confirm attendance'}</Text>
+            ? <ActivityIndicator size="small" color={isJoined ? colors.textMuted : '#fff'} />
+            : <Text style={[styles.joinBtnText, { color: isJoined ? colors.textMuted : '#fff' }]}>{isJoined ? 'Leave event' : 'Confirm attendance'}</Text>
           }
         </TouchableOpacity>
       </View>
@@ -229,7 +234,7 @@ function EventCard({ event, user, onJoin, joiningId }: {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,

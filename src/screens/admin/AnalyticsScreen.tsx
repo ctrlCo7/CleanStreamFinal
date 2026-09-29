@@ -1,17 +1,22 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BarChart } from '../../components/charts/BarChart';
 import { DonutChart } from '../../components/charts/DonutChart';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { buildDashboardAnalytics } from '../../services/analyticsService';
 import { useAppSelector } from '../../store/hooks';
 import { AnalyticsData } from '../../types';
+import { rowsToCsv, exportCsv } from '../../utils/csvExport';
 
 export default function AdminAnalyticsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { reports } = useAppSelector((s) => s.reports);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     buildDashboardAnalytics()
@@ -27,14 +32,14 @@ export default function AdminAnalyticsScreen() {
   const hazardous = analytics?.hazardousCount ?? reports.filter((r) => r.aiAnalysis?.hazardousDetected).length;
 
   const monthlyData = analytics?.monthlyData
-    ? analytics.monthlyData.map((d) => ({ label: d.month, value: d.count, color: Colors.blueBg }))
+    ? analytics.monthlyData.map((d) => ({ label: d.month, value: d.count, color: colors.blueBg }))
     : [
-        { label: 'Jan', value: 0, color: Colors.blueBg },
-        { label: 'Feb', value: 0, color: Colors.blueBg },
-        { label: 'Mar', value: 0, color: Colors.blueBg },
-        { label: 'Apr', value: total, color: Colors.teal },
-        { label: 'May', value: 0, color: Colors.grayMid },
-        { label: 'Jun', value: 0, color: Colors.grayMid },
+        { label: 'Jan', value: 0, color: colors.blueBg },
+        { label: 'Feb', value: 0, color: colors.blueBg },
+        { label: 'Mar', value: 0, color: colors.blueBg },
+        { label: 'Apr', value: total, color: colors.teal },
+        { label: 'May', value: 0, color: colors.grayMid },
+        { label: 'Jun', value: 0, color: colors.grayMid },
       ];
 
   const wasteSegments = analytics?.wasteTypeDistribution && analytics.wasteTypeDistribution.length > 0
@@ -44,45 +49,66 @@ export default function AdminAnalyticsScreen() {
         color: w.color,
       }))
     : [
-        { label: 'Plastic', percentage: 68, color: Colors.blue },
-        { label: 'Organic', percentage: 16, color: Colors.green },
-        { label: 'Hazardous', percentage: 10, color: Colors.critical },
+        { label: 'Plastic', percentage: 68, color: colors.blue },
+        { label: 'Organic', percentage: 16, color: colors.green },
+        { label: 'Hazardous', percentage: 10, color: colors.critical },
       ];
 
   const barangays = analytics?.barangayPollution && analytics.barangayPollution.length > 0
     ? analytics.barangayPollution.map((b, i) => ({
         name: b.name,
         pct: b.percentage,
-        color: [Colors.critical, Colors.red, Colors.amber, Colors.blue, Colors.teal][i % 5],
+        color: [colors.critical, colors.red, colors.amber, colors.blue, colors.teal][i % 5],
       }))
     : [
-        { name: 'Guadalupe', pct: 0, color: Colors.critical },
-        { name: 'Punta Princesa', pct: 0, color: Colors.red },
-        { name: 'Labangon', pct: 0, color: Colors.amber },
-        { name: 'Mambaling', pct: 0, color: Colors.blue },
-        { name: 'Kinasang-an', pct: 0, color: Colors.teal },
+        { name: 'Guadalupe', pct: 0, color: colors.critical },
+        { name: 'Punta Princesa', pct: 0, color: colors.red },
+        { name: 'Labangon', pct: 0, color: colors.amber },
+        { name: 'Mambaling', pct: 0, color: colors.blue },
+        { name: 'Kinasang-an', pct: 0, color: colors.teal },
       ];
 
   const avgConfidence = analytics?.aiStats.avgConfidence
     ? `${analytics.aiStats.avgConfidence}%`
     : '—';
 
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const csv = rowsToCsv(
+        ['Metric', 'Value'],
+        [
+          ['Total reports', total],
+          ['Resolution rate', `${resolutionRate}%`],
+          ['Resolved', resolved],
+          ['Hazardous', hazardous],
+          ['Avg AI confidence', avgConfidence],
+          ['Model version', analytics?.aiStats.modelVersion || 'CNN v2.4'],
+          ...monthlyData.map((d) => [`Reports — ${d.label}`, d.value]),
+          ...wasteSegments.map((w) => [`Waste type — ${w.label}`, `${w.percentage}%`]),
+          ...barangays.map((b) => [`Barangay — ${b.name}`, `${b.pct}%`]),
+        ],
+      );
+      await exportCsv(`cleanstream-analytics-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Analytics</Text>
-        <TouchableOpacity
-          style={styles.exportBtn}
-          onPress={() => Alert.alert('Export', 'CSV exported successfully')}
-        >
-          <Text style={styles.exportBtnText}>Export</Text>
+        <TouchableOpacity style={styles.exportBtn} onPress={handleExport} disabled={exporting}>
+          <Text style={styles.exportBtnText}>{exporting ? 'Exporting…' : 'Export'}</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {loading && (
           <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color={Colors.teal} />
+            <ActivityIndicator size="small" color={colors.teal} />
             <Text style={styles.loadingText}>Loading analytics…</Text>
           </View>
         )}
@@ -90,10 +116,10 @@ export default function AdminAnalyticsScreen() {
         {/* KPIs */}
         <View style={styles.kpiGrid}>
           {[
-            { val: total, label: 'Total reports', color: Colors.teal, trend: '↑ Real-time', trendUp: true },
-            { val: `${resolutionRate}%`, label: 'Resolution rate', color: Colors.green, trend: resolved > 0 ? `${resolved} completed` : 'No completions yet', trendUp: true },
-            { val: '—', label: 'Avg response', color: Colors.amber, trend: 'Tracking disabled', trendUp: false },
-            { val: hazardous, label: 'Hazardous', color: Colors.red, trend: hazardous > 0 ? `${hazardous} flagged` : 'None detected', trendUp: false },
+            { val: total, label: 'Total reports', color: colors.teal, trend: '↑ Real-time', trendUp: true },
+            { val: `${resolutionRate}%`, label: 'Resolution rate', color: colors.green, trend: resolved > 0 ? `${resolved} completed` : 'No completions yet', trendUp: true },
+            { val: '—', label: 'Avg response', color: colors.amber, trend: 'Tracking disabled', trendUp: false },
+            { val: hazardous, label: 'Hazardous', color: colors.red, trend: hazardous > 0 ? `${hazardous} flagged` : 'None detected', trendUp: false },
           ].map((kpi) => (
             <View key={kpi.label} style={styles.kpiCard}>
               <Text style={[styles.kpiVal, { color: kpi.color }]}>{kpi.val}</Text>
@@ -128,8 +154,8 @@ export default function AdminAnalyticsScreen() {
           <Text style={styles.chartTitle}>AI classification summary</Text>
           {[
             { k: 'Total CNN scans', v: `${analytics?.aiStats.totalScans ?? total}` },
-            { k: 'Avg confidence', v: avgConfidence, color: Colors.teal },
-            { k: 'Hazardous flags', v: `${hazardous}`, color: Colors.red },
+            { k: 'Avg confidence', v: avgConfidence, color: colors.teal },
+            { k: 'Hazardous flags', v: `${hazardous}`, color: colors.red },
             { k: 'Model version', v: analytics?.aiStats.modelVersion || 'CNN v2.4' },
           ].map((row) => (
             <View key={row.k} style={styles.aiRow}>
@@ -143,7 +169,7 @@ export default function AdminAnalyticsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,

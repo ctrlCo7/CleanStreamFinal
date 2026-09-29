@@ -1,34 +1,36 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform,
+  StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { RootStackParamList, Message } from '../../types';
 import { useAppSelector } from '../../store/hooks';
-import { subscribeToMessages, sendMessage } from '../../services/messagingService';
+import { subscribeToMessages, sendMessage, markMessagesRead } from '../../services/messagingService';
 import { BackIcon, SendIcon } from '../../components/common/TabIcons';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CitizenChat'>;
 
 const QUICK_REPLIES = ['When will it be cleaned?', 'Is it safe nearby?', 'Thank you!', 'Waste looks worse'];
 
-const MOCK_MESSAGES: Message[] = [
-  { id: '1', senderId: 'admin', senderName: 'Admin', senderRole: 'admin', receiverId: 'me', content: 'Hazardous waste detected in your report. Specialist team dispatched.', timestamp: new Date(Date.now() - 600000).toISOString(), read: true },
-  { id: '2', senderId: 'me', senderName: 'Me', senderRole: 'citizen', receiverId: 'admin', content: 'Is it safe to be nearby?', timestamp: new Date(Date.now() - 540000).toISOString(), read: true },
-  { id: '3', senderId: 'admin', senderName: 'Admin', senderRole: 'admin', receiverId: 'me', content: 'Please maintain 20-meter distance until cleanup on April 5.', timestamp: new Date(Date.now() - 480000).toISOString(), read: true },
-];
-
 export default function CitizenChatScreen({ navigation, route }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { conversationId, participantName } = route.params;
   const { user } = useAppSelector((s) => s.auth);
-  const [messages, setMessages] = useState<Message[]>(MOCK_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const scrollRef = useRef<ScrollView>(null);
 
+  // Derive the other participant's ID from conversationId (format: uid1_uid2)
+  const receiverId = conversationId.includes('_')
+    ? conversationId.split('_').find((p) => p !== user?.uid) ?? ''
+    : '';
+
   useEffect(() => {
-    if (conversationId === 'admin_support') return;
+    if (!conversationId) return;
     const unsub = subscribeToMessages(conversationId, (msgs) => {
       setMessages(msgs);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 100);
@@ -36,28 +38,22 @@ export default function CitizenChatScreen({ navigation, route }: Props) {
     return unsub;
   }, [conversationId]);
 
+  useEffect(() => {
+    if (conversationId && user?.uid) {
+      markMessagesRead(conversationId, user.uid).catch(() => null);
+    }
+  }, [conversationId, user?.uid]);
+
   const doSend = async (text?: string) => {
     const content = (text || input).trim();
-    if (!content || !user) return;
+    if (!content || !user || !receiverId) return;
     setInput('');
 
-    const optimistic: Message = {
-      id: Date.now().toString(),
-      senderId: user.uid,
-      senderName: `${user.firstName} ${user.lastName}`,
-      senderRole: user.role,
-      receiverId: 'admin',
-      content,
-      timestamp: new Date().toISOString(),
-      read: false,
-    };
-    setMessages((m) => [...m, optimistic]);
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-
-    if (conversationId !== 'admin_support') {
-      try {
-        await sendMessage(conversationId, user.uid, `${user.firstName} ${user.lastName}`, user.role, 'admin', content);
-      } catch { /* optimistic update stands */ }
+    try {
+      await sendMessage(conversationId, user.uid, `${user.firstName} ${user.lastName}`, user.role, receiverId, content);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch {
+      Alert.alert('Message not sent', 'Please check your connection and try again.');
     }
   };
 
@@ -71,8 +67,8 @@ export default function CitizenChatScreen({ navigation, route }: Props) {
       {/* Header */}
       <View style={styles.chatHeader}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon /></TouchableOpacity>
-        <View style={[styles.chatAvatar, { backgroundColor: Colors.tealLight }]}>
-          <Text style={[styles.chatAvatarText, { color: Colors.tealDark }]}>
+        <View style={[styles.chatAvatar, { backgroundColor: colors.tealLight }]}>
+          <Text style={[styles.chatAvatarText, { color: colors.tealDark }]}>
             {participantName.slice(0, 2).toUpperCase()}
           </Text>
         </View>
@@ -94,7 +90,7 @@ export default function CitizenChatScreen({ navigation, route }: Props) {
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
         >
           {messages.map((msg) => {
-            const isMe = msg.senderId === user?.uid || msg.senderId === 'me';
+            const isMe = msg.senderId === user?.uid;
             return (
               <View key={msg.id}>
                 <View style={[styles.bubble, isMe ? styles.bubbleOut : styles.bubbleIn]}>
@@ -122,7 +118,7 @@ export default function CitizenChatScreen({ navigation, route }: Props) {
           <TextInput
             style={styles.input}
             placeholder="Type a message..."
-            placeholderTextColor={Colors.textHint}
+            placeholderTextColor={colors.textHint}
             value={input}
             onChangeText={setInput}
             onSubmitEditing={() => doSend()}
@@ -138,7 +134,7 @@ export default function CitizenChatScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   chatHeader: {
     backgroundColor: Colors.white, padding: 10, paddingHorizontal: 14,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Colors } from '../constants/colors';
+import { useTheme } from '../hooks/useTheme';
 import { AdminTabParamList } from '../types';
 
 import AdminDashboardScreen from '../screens/admin/DashboardScreen';
@@ -20,6 +20,7 @@ import {
 const Tab = createBottomTabNavigator<AdminTabParamList>();
 
 export default function AdminNavigator() {
+  const { colors } = useTheme();
   return (
     <Tab.Navigator
       screenOptions={{
@@ -27,12 +28,12 @@ export default function AdminNavigator() {
         tabBarStyle: {
           height: 56,
           borderTopWidth: 0.5,
-          borderTopColor: Colors.border,
-          backgroundColor: Colors.white,
+          borderTopColor: colors.border,
+          backgroundColor: colors.white,
           paddingBottom: 4,
         },
-        tabBarActiveTintColor: Colors.blue,
-        tabBarInactiveTintColor: Colors.grayHint,
+        tabBarActiveTintColor: colors.blue,
+        tabBarInactiveTintColor: colors.grayHint,
         tabBarLabelStyle: { fontSize: 9, fontWeight: '500' },
       }}
     >

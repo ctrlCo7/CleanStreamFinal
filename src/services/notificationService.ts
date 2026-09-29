@@ -22,11 +22,15 @@ const COL = 'notifications';
 export const createNotification = async (
   data: Omit<Notification, 'id' | 'createdAt' | 'read'>,
 ): Promise<string> => {
-  const ref = await addDoc(collection(db, COL), {
-    ...data,
-    read: false,
-    createdAt: serverTimestamp(),
-  });
+  // Firestore rejects `undefined` field values outright. Optional fields like
+  // `severity` are declared as named params on callers like sendReportNotification,
+  // so the key is always present here even when the caller didn't supply a value —
+  // strip those before writing rather than let addDoc throw.
+  const payload: Record<string, unknown> = { ...data, read: false, createdAt: serverTimestamp() };
+  for (const key of Object.keys(payload)) {
+    if (payload[key] === undefined) delete payload[key];
+  }
+  const ref = await addDoc(collection(db, COL), payload);
   return ref.id;
 };
 

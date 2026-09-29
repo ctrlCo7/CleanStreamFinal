@@ -1,43 +1,78 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
-import { Colors } from '../../constants/colors';
+import React, { useEffect, useState, useMemo } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTheme } from '../../hooks/useTheme';
+import { ThemeColors } from '../../constants/theme';
 import { Badge } from '../../components/common/Badge';
+import { BackIcon } from '../../components/common/TabIcons';
+import { useAppSelector } from '../../store/hooks';
+import { subscribeToNotifications, markNotificationRead, markAllNotificationsRead } from '../../services/notificationService';
+import { Notification, NotificationType, RootStackParamList } from '../../types';
 
-interface NotifItem {
-  id: string;
-  title: string;
-  body: string;
-  type: 'critical' | 'resolved' | 'update' | 'message' | 'ai';
-  section: 'Today' | 'Yesterday';
-  read: boolean;
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+function buildTypeColors(colors: ThemeColors): Record<NotificationType, string> {
+  return {
+    report_submitted: colors.blue,
+    report_verified: colors.purple,
+    report_assigned: colors.amber,
+    report_in_progress: colors.amber,
+    report_completed: colors.teal,
+    report_rejected: colors.red,
+    task_assigned: colors.amber,
+    task_updated: colors.amber,
+    event_reminder: colors.blue,
+    announcement: colors.purple,
+    message: colors.blue,
+    ai_result: colors.purple,
+    system: colors.grayMuted,
+  };
 }
 
-const MOCK_NOTIFS: NotifItem[] = [
-  { id: '1', title: 'Critical — Guadalupe Waterway', body: 'Hazardous waste. Avoid contact.', type: 'critical', section: 'Today', read: false },
-  { id: '2', title: 'Cleanup complete — Labangon', body: 'Report #065 resolved. Area clean! · 2h ago', type: 'resolved', section: 'Today', read: false },
-  { id: '3', title: 'Status update — Punta Princesa', body: 'Cleanup team dispatched. ETA: Apr 5, 7 AM', type: 'update', section: 'Today', read: true },
-  { id: '4', title: 'Admin replied', body: 'Team A arrives Apr 5 at 7 AM', type: 'message', section: 'Yesterday', read: true },
-  { id: '5', title: 'AI analysis complete', body: 'Report #082: Plastic 72% + Hazardous 9%', type: 'ai', section: 'Yesterday', read: true },
-];
-
-const NOTIF_COLORS: Record<string, string> = {
-  critical: Colors.critical,
-  resolved: Colors.teal,
-  update: Colors.amber,
-  message: Colors.blue,
-  ai: Colors.purple,
-};
+function sectionFor(date: Date): 'Today' | 'Yesterday' | 'Earlier' {
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return 'Earlier';
+}
 
 export default function CitizenNotificationsScreen() {
-  const [notifs, setNotifs] = useState(MOCK_NOTIFS);
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const TYPE_COLORS = useMemo(() => buildTypeColors(colors), [colors]);
+  const navigation = useNavigation<Nav>();
+  const { user } = useAppSelector((s) => s.auth);
+  const [notifs, setNotifs] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const clearAll = () => setNotifs((n) => n.map((x) => ({ ...x, read: true })));
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = subscribeToNotifications(user.uid, (n) => {
+      setNotifs(n);
+      setLoading(false);
+    });
+    return unsub;
+  }, [user?.uid]);
 
-  const sections = ['Today', 'Yesterday'] as const;
+  const clearAll = () => {
+    if (!user?.uid) return;
+    markAllNotificationsRead(user.uid).catch(() => null);
+  };
+
+  const handlePress = (notif: Notification) => {
+    if (!notif.read) markNotificationRead(notif.id).catch(() => null);
+    if (notif.reportId) navigation.navigate('CitizenDetail', { reportId: notif.reportId });
+  };
+
+  const sections: Array<'Today' | 'Yesterday' | 'Earlier'> = ['Today', 'Yesterday', 'Earlier'];
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon /></TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
         <TouchableOpacity onPress={clearAll} style={styles.clearBtn}>
           <Text style={styles.clearBtnText}>Clear all</Text>
@@ -45,39 +80,48 @@ export default function CitizenNotificationsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        {loading && (
+          <ActivityIndicator size="small" color={colors.teal} style={{ marginVertical: 16, alignSelf: 'center' }} />
+        )}
+
+        {!loading && notifs.length === 0 && (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>No notifications yet</Text>
+          </View>
+        )}
+
         {sections.map((section) => {
-          const items = notifs.filter((n) => n.section === section);
+          const items = notifs.filter((n) => sectionFor(new Date(n.createdAt)) === section);
           if (!items.length) return null;
           return (
             <View key={section}>
               <Text style={styles.sectionHdr}>{section}</Text>
-              {items.map((notif) => (
-                <TouchableOpacity
-                  key={notif.id}
-                  style={[styles.notifItem, notif.type === 'critical' && styles.notifCritical]}
-                  onPress={() => setNotifs((n) => n.map((x) => x.id === notif.id ? { ...x, read: true } : x))}
-                  activeOpacity={0.85}
-                >
-                  <View style={[styles.dot, { backgroundColor: NOTIF_COLORS[notif.type] }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.notifTitle, notif.type === 'critical' && { color: Colors.criticalText }]}>
-                      {notif.title}
-                    </Text>
-                    <Text style={styles.notifBody}>{notif.body}</Text>
-                    {notif.type === 'critical' && (
-                      <View style={{ marginTop: 5 }}>
-                        <Badge variant="critical" label="Stay away" />
-                      </View>
-                    )}
-                    {notif.type === 'resolved' && (
-                      <View style={{ marginTop: 5 }}>
-                        <Badge variant="resolved" label="Resolved ✓" />
-                      </View>
-                    )}
-                  </View>
-                  {!notif.read && <View style={styles.unreadDot} />}
-                </TouchableOpacity>
-              ))}
+              {items.map((notif) => {
+                const color = TYPE_COLORS[notif.type] ?? colors.grayMuted;
+                const isCritical = notif.severity === 'critical';
+                return (
+                  <TouchableOpacity
+                    key={notif.id}
+                    style={[styles.notifItem, isCritical && styles.notifCritical]}
+                    onPress={() => handlePress(notif)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={[styles.dot, { backgroundColor: color }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.notifTitle, isCritical && { color: colors.criticalText }]}>
+                        {notif.title}
+                      </Text>
+                      <Text style={styles.notifBody}>{notif.body}</Text>
+                      {notif.severity && (
+                        <View style={{ marginTop: 5 }}>
+                          <Badge variant={notif.severity} />
+                        </View>
+                      )}
+                    </View>
+                    {!notif.read && <View style={styles.unreadDot} />}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           );
         })}
@@ -86,7 +130,7 @@ export default function CitizenNotificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,
@@ -94,9 +138,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: Colors.border,
   },
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
+  backBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
   clearBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   clearBtnText: { fontSize: 12, color: Colors.teal },
   body: { padding: 14, gap: 6, paddingBottom: 20 },
+  emptyCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 32, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  emptyText: { fontSize: 12, color: Colors.textHint },
   sectionHdr: {
     fontSize: 10, fontWeight: '500', color: Colors.textMuted,
     letterSpacing: 0.04, textTransform: 'uppercase', marginTop: 4, marginBottom: 4,

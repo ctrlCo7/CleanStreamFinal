@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors } from '../../constants/colors';
+import { useTheme } from '../../hooks/useTheme';
 
 interface StatCardProps {
   value: string | number;
@@ -8,11 +8,12 @@ interface StatCardProps {
   valueColor?: string;
 }
 
-export function StatCard({ value, label, valueColor = Colors.textPrimary }: StatCardProps) {
+export function StatCard({ value, label, valueColor }: StatCardProps) {
+  const { colors } = useTheme();
   return (
-    <View style={styles.card}>
-      <Text style={[styles.value, { color: valueColor }]}>{value}</Text>
-      <Text style={styles.label}>{label}</Text>
+    <View style={[styles.card, { backgroundColor: colors.white, borderColor: colors.border }]}>
+      <Text style={[styles.value, { color: valueColor ?? colors.textPrimary }]}>{value}</Text>
+      <Text style={[styles.label, { color: colors.textMuted }]}>{label}</Text>
     </View>
   );
 }
@@ -20,12 +21,10 @@ export function StatCard({ value, label, valueColor = Colors.textPrimary }: Stat
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    backgroundColor: Colors.white,
     borderRadius: 12,
     padding: 11,
     alignItems: 'center',
     borderWidth: 0.5,
-    borderColor: Colors.border,
   },
   value: {
     fontSize: 21,
@@ -33,7 +32,6 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 10,
-    color: Colors.textMuted,
     marginTop: 2,
     textAlign: 'center',
     lineHeight: 14,

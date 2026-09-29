@@ -72,12 +72,16 @@ const COCO_TO_WASTE = {
     // Drinks / food containers → plastic/glass bottles
     bottle: 'plastic_bottle',
     'wine glass': 'glass_bottle',
-    cup: 'plastic_bottle',
+    // 'cup' can't distinguish ceramic/glass/paper/plastic drinkware -- confidently
+    // calling every cup a plastic bottle produced wrong disposal instructions for
+    // a real ceramic mug (found via a live misclassification report).
+    cup: 'mixed_waste',
     bowl: 'food_waste',
-    // Cutlery → metal_can (metallic single-use items)
-    fork: 'metal_can',
-    knife: 'metal_can',
-    spoon: 'metal_can',
+    // Cutlery isn't can waste -- "rinse and flatten before recycling" is nonsensical
+    // advice for a fork/knife/spoon (found via the same misclassification report).
+    fork: 'mixed_waste',
+    knife: 'mixed_waste',
+    spoon: 'mixed_waste',
     // Food → food_waste
     banana: 'food_waste',
     apple: 'food_waste',
