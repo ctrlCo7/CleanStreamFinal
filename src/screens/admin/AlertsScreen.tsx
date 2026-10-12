@@ -240,8 +240,8 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   clearBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   clearBtnText: { fontSize: 12, color: Colors.teal },
   composer: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 12, gap: 8,
-    borderWidth: 0.5, borderColor: Colors.border, marginBottom: 4,
+    backgroundColor: Colors.white, borderRadius: 16, padding: 14, gap: 8, marginBottom: 4,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   composerLabel: { fontSize: 11, fontWeight: '500', color: Colors.textPrimary },
   composerInput: {
@@ -253,7 +253,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   checkbox: { width: 16, height: 16, borderRadius: 4, borderWidth: 1.5, borderColor: Colors.borderMid },
   postBtn: { backgroundColor: Colors.blue, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
   postBtnText: { fontSize: 12, fontWeight: '500', color: '#fff' },
-  body: { padding: 14, gap: 6, paddingBottom: 20 },
+  body: { padding: 16, gap: 10, paddingBottom: 20 },
   sectionHdr: { fontSize: 10, fontWeight: '500', color: Colors.textMuted, letterSpacing: 0.04, textTransform: 'uppercase', marginTop: 4, marginBottom: 4 },
   alertItem: {
     borderRadius: 12, padding: 11, paddingHorizontal: 13,
@@ -262,6 +262,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   dot: { width: 9, height: 9, borderRadius: 4.5, flexShrink: 0, marginTop: 3 },
   alertTitle: { fontSize: 12, fontWeight: '500' },
   alertBody: { fontSize: 11, marginTop: 2 },
-  emptyCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 32, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  emptyCard: {
+    backgroundColor: Colors.white, borderRadius: 18, padding: 32, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   emptyText: { fontSize: 12, color: Colors.textHint },
 });

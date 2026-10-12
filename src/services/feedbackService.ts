@@ -11,8 +11,8 @@ import {
   serverTimestamp,
   limit,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { db } from './firebase';
+import { uploadToCloudinary } from './cloudinaryService';
 import { Feedback, FeedbackType, FeedbackStatus, UserRole } from '../types';
 
 const COL = 'feedback';
@@ -96,13 +96,8 @@ export const uploadFeedbackScreenshot = async (
   uri: string,
   feedbackId: string,
   index: number,
-): Promise<string> => {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  const storageRef = ref(storage, `feedback/${feedbackId}/screenshot_${index}.jpg`);
-  await uploadBytes(storageRef, blob);
-  return getDownloadURL(storageRef);
-};
+): Promise<string> =>
+  uploadToCloudinary(uri, `feedback/${feedbackId}`, `screenshot_${index}.jpg`);
 
 export const addScreenshotToFeedback = async (
   feedbackId: string,

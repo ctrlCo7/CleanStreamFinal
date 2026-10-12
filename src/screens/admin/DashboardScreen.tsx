@@ -53,7 +53,7 @@ export default function AdminDashboardScreen() {
           <Text style={styles.headerSub}>CleanStream · Cebu City</Text>
         </View>
         <TouchableOpacity style={[styles.iconBtn, styles.iconBtnRelative]} onPress={() => navigation.navigate('AdminAlerts')}>
-          <BellIcon color={colors.textMuted} size={16} />
+          <BellIcon color={colors.textMuted} size={18} />
           {(critical > 0 || high > 0) && <View style={styles.notifDot} />}
         </TouchableOpacity>
       </View>
@@ -137,6 +137,19 @@ export default function AdminDashboardScreen() {
             </View>
           </TouchableOpacity>
         ))}
+
+        <TouchableOpacity
+          style={[styles.actionBtn, { backgroundColor: colors.blueBg, borderColor: colors.blue }]}
+          onPress={() => navigation.navigate('AdminCheckpointAlarms')}
+        >
+          <Text style={[styles.actionBtnText, { color: colors.blueText }]}>⏰ Set barangay checkpoint alarms</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionBtn, { backgroundColor: colors.purpleBg, borderColor: colors.purple, marginTop: 6 }]}
+          onPress={() => navigation.navigate('AdminUserManagement')}
+        >
+          <Text style={[styles.actionBtnText, { color: colors.purpleText }]}>👤 Manage user accounts</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -151,24 +164,30 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
   headerSub: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
-  iconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
+  iconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
   iconBtnRelative: { position: 'relative' },
   notifDot: { position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: 3.5, backgroundColor: Colors.red, borderWidth: 1.5, borderColor: Colors.white },
-  body: { padding: 14, gap: 10, paddingBottom: 20 },
+  body: { padding: 16, gap: 14, paddingBottom: 20 },
   roleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   rolePill: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 20 },
   rolePillText: { fontSize: 10, fontWeight: '500' },
   profileLink: { fontSize: 10, fontWeight: '500' },
   statsGrid: { flexDirection: 'row', gap: 7 },
-  statCard: { flex: 1, backgroundColor: Colors.white, borderRadius: 12, padding: 11, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  statCard: {
+    flex: 1, backgroundColor: Colors.white, borderRadius: 16, padding: 14, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   statVal: { fontSize: 16, fontWeight: '500' },
   statLabel: { fontSize: 10, color: Colors.textMuted, marginTop: 2 },
   legend: { flexDirection: 'row', gap: 11 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 9, height: 9, borderRadius: 4.5 },
   legendText: { fontSize: 11, color: Colors.textMuted },
-  sectionTitle: { fontSize: 13, fontWeight: '500', color: Colors.textPrimary },
-  emptyCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  sectionTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
+  emptyCard: {
+    backgroundColor: Colors.white, borderRadius: 18, padding: 18, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   emptyText: { fontSize: 12, color: Colors.textHint },
   alertCard: {
     flexDirection: 'row', gap: 10, padding: 11, paddingHorizontal: 13,
@@ -178,4 +197,6 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   alertDot: { width: 9, height: 9, borderRadius: 4.5, marginTop: 3 },
   alertTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
   alertBody: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  actionBtn: { borderRadius: 12, paddingVertical: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5 },
+  actionBtnText: { fontSize: 11, fontWeight: '500', textAlign: 'center' },
 });

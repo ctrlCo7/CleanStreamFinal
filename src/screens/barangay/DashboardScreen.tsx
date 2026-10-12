@@ -229,7 +229,7 @@ export default function BarangayDashboardScreen() {
           style={[styles.actionBtn, { backgroundColor: colors.brgyLight, borderColor: colors.brgyMid, marginTop: 6 }]}
           onPress={() => navigation.navigate('BarangayAlarms')}
         >
-          <Text style={[styles.actionBtnText, { color: colors.brgyDark }]}>⏰ Set waterway check alarms</Text>
+          <Text style={[styles.actionBtnText, { color: colors.brgyDark }]}>⏰ View daily checkpoint alarm</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -247,7 +247,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   subGreeting: { fontSize: 10, color: Colors.textMuted, marginTop: 2 },
   rolePill: { backgroundColor: Colors.brgyLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   rolePillText: { fontSize: 10, color: Colors.brgyDark, fontWeight: '500' },
-  body: { padding: 14, gap: 10, paddingBottom: 24 },
+  body: { padding: 16, gap: 14, paddingBottom: 24 },
   announceCard: {
     backgroundColor: Colors.brgyLight, borderRadius: 13, padding: 12,
     borderWidth: 0.5, borderColor: Colors.brgyMid, gap: 8,
@@ -256,8 +256,11 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   announceItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   announceTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
   announceBody: { fontSize: 11, color: Colors.textMuted, marginTop: 2, lineHeight: 15 },
-  statsRow: { flexDirection: 'row', gap: 7 },
-  statCard: { flex: 1, backgroundColor: Colors.white, borderRadius: 12, padding: 10, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  statsRow: { flexDirection: 'row', gap: 10 },
+  statCard: {
+    flex: 1, backgroundColor: Colors.white, borderRadius: 16, padding: 13, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   statVal: { fontSize: 18, fontWeight: '500' },
   statLabel: { fontSize: 9, color: Colors.textMuted, marginTop: 2 },
   criticalBanner: {
@@ -277,13 +280,16 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   pendingSub: { fontSize: 10, color: Colors.amberText, opacity: 0.8, marginTop: 2 },
   pendingArrow: { fontSize: 18, color: Colors.amberText },
   sectionHeader: { marginTop: 4 },
-  sectionTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
-  emptyCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  sectionTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
+  emptyCard: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 18, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   emptyText: { fontSize: 12, color: Colors.textHint },
   taskCard: {
-    backgroundColor: Colors.white, borderRadius: 13, padding: 11,
+    backgroundColor: Colors.white, borderRadius: 17, padding: 14,
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    borderWidth: 0.5, borderColor: Colors.border,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   taskLeft: { width: 20, alignItems: 'center' },
   taskDot: { width: 9, height: 9, borderRadius: 4.5 },

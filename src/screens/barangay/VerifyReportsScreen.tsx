@@ -43,7 +43,7 @@ export default function BarangayVerifyReportsScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon /></TouchableOpacity>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon size={18} /></TouchableOpacity>
         <Text style={styles.headerTitle}>Pending Review</Text>
         <View style={{ width: 34 }} />
       </View>
@@ -101,14 +101,17 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: Colors.border,
   },
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
-  backBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
-  body: { padding: 14, gap: 8, paddingBottom: 24 },
-  emptyCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 32, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
+  body: { padding: 16, gap: 14, paddingBottom: 24 },
+  emptyCard: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 34, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   emptyText: { fontSize: 12, color: Colors.textHint },
   card: {
-    backgroundColor: Colors.white, borderRadius: 13, padding: 10,
+    backgroundColor: Colors.white, borderRadius: 17, padding: 13,
     flexDirection: 'row', gap: 10, alignItems: 'center',
-    borderWidth: 0.5, borderColor: Colors.border,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   thumb: { width: 54, height: 54, borderRadius: 10, backgroundColor: '#C0DD97' },
   thumbPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.grayBg },

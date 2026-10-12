@@ -136,11 +136,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ─── Waterway Alarms (barangay officer's own recurring check reminders) ────
-    match /waterwayAlarms/{alarmId} {
-      allow read: if isBarangayOfficer() && isOwner(resource.data.userId);
-      allow create: if isBarangayOfficer() && request.resource.data.userId == currentUid();
-      allow update, delete: if isBarangayOfficer() && isOwner(resource.data.userId);
+    // ─── Checkpoint Alarms (admin sets each barangay's daily check time; ───────
+    // ─── barangay officers can only read their own barangay's config) ─────────
+    match /checkpointAlarms/{barangayId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
     // ─── Cleanup Tasks ──────────────────────────────────────────────────────────

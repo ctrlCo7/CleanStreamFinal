@@ -168,9 +168,12 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: Colors.border,
   },
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
-  body: { padding: 14, gap: 8, paddingBottom: 24 },
-  statsRow: { flexDirection: 'row', gap: 7 },
-  statCard: { flex: 1, backgroundColor: Colors.white, borderRadius: 12, padding: 10, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  body: { padding: 16, gap: 14, paddingBottom: 24 },
+  statsRow: { flexDirection: 'row', gap: 10 },
+  statCard: {
+    flex: 1, backgroundColor: Colors.white, borderRadius: 16, padding: 13, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   statVal: { fontSize: 18, fontWeight: '500' },
   statLabel: { fontSize: 9, color: Colors.textMuted, marginTop: 2 },
   filterRow: { gap: 6, paddingVertical: 2 },
@@ -179,8 +182,8 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   filterChipText: { fontSize: 11, color: Colors.textMuted },
   filterChipTextActive: { color: '#fff', fontWeight: '500' },
   checkCard: {
-    backgroundColor: Colors.white, borderRadius: 13, padding: 12,
-    borderWidth: 0.5, borderColor: Colors.border, gap: 7,
+    backgroundColor: Colors.white, borderRadius: 17, padding: 15,
+    gap: 7, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   checkCardFlagged: { borderLeftWidth: 3, borderLeftColor: Colors.red },
   checkTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
@@ -192,6 +195,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   checkMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   checkDate: { fontSize: 10, color: Colors.textHint },
   checkStatus: { fontSize: 11, fontWeight: '500' },
-  emptyCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 32, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  emptyCard: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 34, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   emptyText: { fontSize: 12, color: Colors.textHint },
 });

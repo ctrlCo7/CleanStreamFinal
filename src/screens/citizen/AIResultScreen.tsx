@@ -46,10 +46,10 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <BackIcon />
+          <BackIcon size={18} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>AI Analysis</Text>
-        <View style={{ width: 34 }} />
+        <View style={{ width: 38 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
@@ -246,8 +246,8 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: Colors.border,
   },
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
-  backBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
-  body: { padding: 14, gap: 10, paddingBottom: 24 },
+  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
+  body: { padding: 16, gap: 14, paddingBottom: 24 },
   aiBanner: {
     flexDirection: 'row', gap: 12, alignItems: 'center',
     borderRadius: 14, padding: 14,
@@ -261,8 +261,11 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   aiSub: { fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 2 },
   confBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20, marginTop: 4, alignSelf: 'flex-start' },
   confText: { fontSize: 10, fontWeight: '500', color: '#fff' },
-  sevCard: { backgroundColor: Colors.white, borderRadius: 14, padding: 12, borderWidth: 0.5, borderColor: Colors.border },
-  sevCardTitle: { fontSize: 12, fontWeight: '500', marginBottom: 10, color: Colors.textPrimary },
+  sevCard: {
+    backgroundColor: Colors.white, borderRadius: 18, padding: 15,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
+  sevCardTitle: { fontSize: 14, fontWeight: '600', marginBottom: 10, color: Colors.textPrimary },
   sevRow: { flexDirection: 'row', alignItems: 'center' },
   sevOverlay: { position: 'absolute', left: 0, width: 96, alignItems: 'center' },
   sevScore: { fontSize: 20, fontWeight: '600' },
@@ -270,18 +273,22 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   sevDesc: { flex: 1, marginLeft: 14, gap: 4 },
   sevLevel: { fontSize: 14, fontWeight: '500' },
   sevDescText: { fontSize: 11, color: Colors.textMuted, lineHeight: 15 },
-  sectionTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
+  sectionTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
   wasteGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   wasteCard: {
-    width: '47%', backgroundColor: Colors.white, borderRadius: 12,
-    padding: 10, borderWidth: 0.5, borderColor: Colors.border, gap: 4,
+    width: '47%', backgroundColor: Colors.white, borderRadius: 16,
+    padding: 13, gap: 4,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   wasteName: { fontSize: 11, fontWeight: '500', color: Colors.textPrimary },
   wasteBar: { height: 5, backgroundColor: Colors.grayBg, borderRadius: 3, overflow: 'hidden' },
   wasteFill: { height: '100%', borderRadius: 3 },
   wastePct: { fontSize: 10, color: Colors.textMuted },
-  infoCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 11, borderWidth: 0.5, borderColor: Colors.border },
-  infoCardTitle: { fontSize: 12, fontWeight: '500', marginBottom: 8, color: Colors.textPrimary },
+  infoCard: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 14,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
+  infoCardTitle: { fontSize: 14, fontWeight: '600', marginBottom: 8, color: Colors.textPrimary },
   infoRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingVertical: 5, borderBottomWidth: 0.5, borderBottomColor: Colors.border,
@@ -305,8 +312,8 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   historyBtnText: { fontSize: 12, fontWeight: '500', color: Colors.teal },
   // ─── Detected objects ───────────────────────────────────────────────────────
   detectionList: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 10,
-    borderWidth: 0.5, borderColor: Colors.border, gap: 6,
+    backgroundColor: Colors.white, borderRadius: 16, padding: 13, gap: 6,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   detectionRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -320,8 +327,8 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   detectionConf: { fontSize: 10, fontWeight: '600' },
   // ─── CNN category ───────────────────────────────────────────────────────────
   cnnCard: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 10,
-    borderWidth: 0.5, borderColor: Colors.border,
+    backgroundColor: Colors.white, borderRadius: 16, padding: 13,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   cnnLabel: { fontSize: 11, color: Colors.textMuted, marginBottom: 6 },
   cnnBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -332,8 +339,8 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   cnnConf: { fontSize: 11, color: Colors.textMuted },
   // ─── Disposal recommendations ───────────────────────────────────────────────
   recCard: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 11,
-    borderWidth: 0.5, borderColor: Colors.border, gap: 6,
+    backgroundColor: Colors.white, borderRadius: 16, padding: 14, gap: 6,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   recHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   recIcon: { fontSize: 20 },

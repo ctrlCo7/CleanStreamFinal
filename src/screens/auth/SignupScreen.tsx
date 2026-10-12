@@ -191,8 +191,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   sectionLabel: { fontSize: 11, fontWeight: '500', color: Colors.textSecondary, marginBottom: 7 },
   roleRow: { flexDirection: 'row', gap: 7, marginBottom: 16 },
   roleCard: {
-    flex: 1, borderRadius: 12, borderWidth: 0.5, borderColor: Colors.borderMid,
-    padding: 11, alignItems: 'center', backgroundColor: Colors.white,
+    flex: 1, borderRadius: 16,
+    padding: 14, alignItems: 'center', backgroundColor: Colors.white,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   roleLabel: { fontSize: 10, fontWeight: '500', textAlign: 'center' },
   twoCol: { flexDirection: 'row', gap: 9, marginBottom: 0 },

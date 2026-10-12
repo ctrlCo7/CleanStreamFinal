@@ -1,65 +1,46 @@
 /**
- * Waterway check alarms -- lets a barangay official set recurring times
- * ("every Mon/Wed/Fri at 7:00 AM, check the waterway near the Public
- * Market") and have their phone actually ring/notify them at that time,
- * routed through a dedicated high-importance Android channel so it behaves
- * like an alarm rather than a quiet background notification.
+ * Daily waterway checkpoint alarm -- admin sets one time per barangay
+ * ("every day at 7:00 AM, check the waterway"), and every barangay official
+ * assigned to that barangay gets their phone ring/notify at that time.
+ * Barangay officials cannot set or edit this themselves (see firestore.rules:
+ * checkpointAlarms is admin-write, authenticated-read only) -- it is purely
+ * admin-configured, then fanned out to devices via local scheduling.
  *
- * This is entirely on-device local scheduling via expo-notifications --
- * no backend, no Cloud Functions, no push server -- so it works the same
+ * This is entirely on-device local scheduling via expo-notifications -- no
+ * backend, no Cloud Functions, no push server -- so it works the same
  * whether or not Firebase Functions/Blaze billing is ever enabled. Firestore
- * is only the source of truth for what the user configured (so alarms show
- * up correctly if they reinstall or switch devices); the actual ringing is
- * scheduled with the OS via scheduleNotificationAsync.
+ * is only the source of truth for what the admin configured (so the alarm
+ * shows up correctly if an official reinstalls or switches devices); the
+ * actual ringing is scheduled with the OS via scheduleNotificationAsync,
+ * using a fixed identifier so re-scheduling after an admin change just
+ * replaces the one standing alarm rather than accumulating duplicates.
  */
 import * as Notifications from 'expo-notifications';
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  updateDoc,
-  where,
-} from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
-const COL = 'waterwayAlarms';
+const COL = 'checkpointAlarms';
 const CHANNEL_ID = 'waterway-alarm';
+const CHECKPOINT_NOTIFICATION_ID = 'daily-checkpoint-alarm';
 
-// expo-notifications weekday convention: 1 = Sunday ... 7 = Saturday.
-export const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-export interface WaterwayAlarmRecord {
-  id: string;
-  userId: string;
+export interface CheckpointAlarmConfig {
   barangayId: string;
-  barangay: string;
-  label: string;
+  barangayName: string;
   hour: number;
   minute: number;
-  days: number[]; // subset of 1..7
-  isActive: boolean;
-  notificationIds: Record<string, string>; // day (as string) -> scheduled notification id
-  createdAt: string;
+  updatedBy: string;
+  updatedByName: string;
+  updatedAt: string;
 }
 
-const toRecord = (id: string, data: Record<string, unknown>): WaterwayAlarmRecord => ({
-  id,
-  userId: (data.userId as string) ?? '',
-  barangayId: (data.barangayId as string) ?? '',
-  barangay: (data.barangay as string) ?? '—',
-  label: (data.label as string) ?? 'Waterway check',
-  hour: typeof data.hour === 'number' ? data.hour : 8,
+const toConfig = (barangayId: string, data: Record<string, unknown>): CheckpointAlarmConfig => ({
+  barangayId,
+  barangayName: (data.barangayName as string) ?? '—',
+  hour: typeof data.hour === 'number' ? data.hour : 7,
   minute: typeof data.minute === 'number' ? data.minute : 0,
-  days: Array.isArray(data.days) ? (data.days as number[]) : [],
-  isActive: (data.isActive as boolean) ?? true,
-  notificationIds: (data.notificationIds as Record<string, string>) ?? {},
-  createdAt: (data.createdAt as { toDate?: () => Date })?.toDate?.().toISOString() ?? new Date().toISOString(),
+  updatedBy: (data.updatedBy as string) ?? '',
+  updatedByName: (data.updatedByName as string) ?? 'Admin',
+  updatedAt: (data.updatedAt as { toDate?: () => Date })?.toDate?.().toISOString() ?? new Date().toISOString(),
 });
 
 // ─── Notification handler / channel setup ──────────────────────────────────
@@ -94,7 +75,7 @@ export async function initAlarmChannel(): Promise<void> {
   if (channelReady) return;
   configureAlarmNotificationHandler();
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-    name: 'Waterway check alarms',
+    name: 'Daily checkpoint alarm',
     importance: Notifications.AndroidImportance.MAX,
     sound: 'default',
     vibrationPattern: [0, 500, 250, 500, 250, 500],
@@ -108,126 +89,86 @@ export async function initAlarmChannel(): Promise<void> {
   channelReady = true;
 }
 
-// ─── Scheduling helpers ─────────────────────────────────────────────────────
+// ─── Admin: set the checkpoint time for a barangay ─────────────────────────
 
-async function scheduleForDays(
-  label: string,
-  hour: number,
-  minute: number,
-  days: number[],
-): Promise<Record<string, string>> {
-  await initAlarmChannel();
-  const ids: Record<string, string> = {};
-  for (const weekday of days) {
-    // eslint-disable-next-line no-await-in-loop -- sequential is fine, at most 7 calls
-    const id = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '🌊 Waterway check time',
-        body: label,
-        sound: 'default',
-        data: { type: 'waterway_alarm' },
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-        weekday,
-        hour,
-        minute,
-        channelId: CHANNEL_ID,
-      },
-    });
-    ids[String(weekday)] = id;
-  }
-  return ids;
-}
-
-async function cancelAll(notificationIds: Record<string, string>): Promise<void> {
-  await Promise.all(
-    Object.values(notificationIds).map((id) =>
-      Notifications.cancelScheduledNotificationAsync(id).catch(() => {}),
-    ),
-  );
-}
-
-// ─── CRUD ───────────────────────────────────────────────────────────────────
-
-export const createAlarm = async (
-  userId: string,
+export const setCheckpointAlarm = async (
   barangayId: string,
-  barangay: string,
-  label: string,
+  barangayName: string,
   hour: number,
   minute: number,
-  days: number[],
-): Promise<string> => {
-  const granted = await requestAlarmPermissions();
-  if (!granted) {
-    throw new Error('Notification permission was not granted, so the alarm cannot ring.');
-  }
-  const notificationIds = await scheduleForDays(label, hour, minute, days);
-  const ref = await addDoc(collection(db, COL), {
-    userId,
+  adminUid: string,
+  adminName: string,
+): Promise<void> => {
+  await setDoc(doc(db, COL, barangayId), {
     barangayId,
-    barangay,
-    label,
+    barangayName,
     hour,
     minute,
-    days,
-    isActive: true,
-    notificationIds,
-    createdAt: serverTimestamp(),
+    updatedBy: adminUid,
+    updatedByName: adminName,
+    updatedAt: serverTimestamp(),
   });
-  return ref.id;
 };
 
-export const deleteAlarm = async (alarm: WaterwayAlarmRecord): Promise<void> => {
-  await cancelAll(alarm.notificationIds);
-  await deleteDoc(doc(db, COL, alarm.id));
-};
-
-export const setAlarmActive = async (alarm: WaterwayAlarmRecord, isActive: boolean): Promise<void> => {
-  if (isActive) {
-    const notificationIds = await scheduleForDays(alarm.label, alarm.hour, alarm.minute, alarm.days);
-    await updateDoc(doc(db, COL, alarm.id), { isActive: true, notificationIds });
-  } else {
-    await cancelAll(alarm.notificationIds);
-    await updateDoc(doc(db, COL, alarm.id), { isActive: false, notificationIds: {} });
-  }
-};
-
-export const subscribeToUserAlarms = (
-  userId: string,
-  callback: (alarms: WaterwayAlarmRecord[]) => void,
+/** Admin dashboard: live list of every barangay's current checkpoint config. */
+export const subscribeToAllCheckpointAlarms = (
+  callback: (configs: CheckpointAlarmConfig[]) => void,
 ) => {
-  const q = query(collection(db, COL), where('userId', '==', userId), orderBy('createdAt', 'desc'));
-  return onSnapshot(q, (snap) => callback(snap.docs.map((d) => toRecord(d.id, d.data()))));
+  // No query needed -- admin can read the whole small (one doc per barangay)
+  // collection directly; sorted client-side by barangay name for a stable list.
+  return onSnapshot(collection(db, COL), (snap) => {
+    const configs = snap.docs.map((d) => toConfig(d.id, d.data()));
+    configs.sort((a, b) => a.barangayName.localeCompare(b.barangayName));
+    callback(configs);
+  });
 };
 
-/** Defensive re-sync: the OS can silently drop scheduled local notifications
- * (app reinstall, notification permission revoked then regranted, Android
- * force-stop) even though Firestore still says the alarm is active. Call on
- * barangay login/dashboard mount so the phone's real alarm state always
- * matches what the user configured, without making them recreate alarms
- * by hand every time. */
-export const reconcileAlarmsOnDevice = async (userId: string): Promise<void> => {
+// ─── Barangay official: read + locally schedule their own barangay's alarm ─
+
+export const getCheckpointAlarm = async (barangayId: string): Promise<CheckpointAlarmConfig | null> => {
+  const snap = await getDoc(doc(db, COL, barangayId));
+  if (!snap.exists()) return null;
+  return toConfig(snap.id, snap.data());
+};
+
+export const subscribeToCheckpointAlarm = (
+  barangayId: string,
+  callback: (config: CheckpointAlarmConfig | null) => void,
+) => {
+  return onSnapshot(doc(db, COL, barangayId), (snap) => {
+    callback(snap.exists() ? toConfig(snap.id, snap.data()) : null);
+  });
+};
+
+/** Cancels any existing locally-scheduled checkpoint alarm and, if a config
+ * is given, reschedules it as a daily OS-level alarm at that time. Call this
+ * whenever the barangay official's screen mounts and whenever their
+ * barangay's config changes (including becoming unset), so the phone's real
+ * alarm state always matches what the admin last configured -- the OS can
+ * also silently drop scheduled notifications (app reinstall, notification
+ * permission revoked then regranted, Android force-stop), so this doubles
+ * as the defensive re-sync for that case too. */
+export const reconcileDailyCheckpointAlarm = async (config: CheckpointAlarmConfig | null): Promise<void> => {
   await initAlarmChannel();
+  await Notifications.cancelScheduledNotificationAsync(CHECKPOINT_NOTIFICATION_ID).catch(() => {});
+  if (!config) return;
+
   const granted = await requestAlarmPermissions();
   if (!granted) return;
 
-  const q = query(collection(db, COL), where('userId', '==', userId), where('isActive', '==', true));
-  const snap = await getDocs(q);
-  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  const liveIds = new Set(scheduled.map((n) => n.identifier));
-
-  await Promise.all(
-    snap.docs.map(async (d) => {
-      const alarm = toRecord(d.id, d.data());
-      const isMissing = alarm.days.some(
-        (day) => !alarm.notificationIds[String(day)] || !liveIds.has(alarm.notificationIds[String(day)]),
-      );
-      if (!isMissing) return;
-      await cancelAll(alarm.notificationIds);
-      const notificationIds = await scheduleForDays(alarm.label, alarm.hour, alarm.minute, alarm.days);
-      await updateDoc(doc(db, COL, d.id), { notificationIds });
-    }),
-  );
+  await Notifications.scheduleNotificationAsync({
+    identifier: CHECKPOINT_NOTIFICATION_ID,
+    content: {
+      title: '🌊 Daily waterway checkpoint',
+      body: `Time to check the waterway in ${config.barangayName}.`,
+      sound: 'default',
+      data: { type: 'checkpoint_alarm', barangayId: config.barangayId },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour: config.hour,
+      minute: config.minute,
+      channelId: CHANNEL_ID,
+    },
+  });
 };

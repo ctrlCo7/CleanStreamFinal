@@ -75,7 +75,7 @@ export default function BarangayChatScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.chatHeader}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon /></TouchableOpacity>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon size={18} /></TouchableOpacity>
         <View style={[styles.avatar, { backgroundColor: colors.brgyLight }]}>
           <Text style={[styles.avatarText, { color: colors.brgyDark }]}>
             {participantName.slice(0, 2).toUpperCase()}
@@ -126,7 +126,7 @@ export default function BarangayChatScreen({ navigation, route }: Props) {
             returnKeyType="send"
           />
           <TouchableOpacity style={styles.sendBtn} onPress={() => send()} disabled={sending}>
-            {sending ? <ActivityIndicator size="small" color="#fff" /> : <SendIcon />}
+            {sending ? <ActivityIndicator size="small" color="#fff" /> : <SendIcon size={16} />}
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -141,7 +141,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 11,
     borderBottomWidth: 0.5, borderBottomColor: Colors.border,
   },
-  backBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
+  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
   avatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 13, fontWeight: '500' },
   chatName: { fontSize: 14, fontWeight: '500', color: Colors.textPrimary },
@@ -161,5 +161,5 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   qrText: { fontSize: 11, color: Colors.brgyDark },
   inputBar: { backgroundColor: Colors.white, borderTopWidth: 0.5, borderTopColor: Colors.border, padding: 8, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   input: { flex: 1, backgroundColor: Colors.grayBg, borderRadius: 22, paddingHorizontal: 13, paddingVertical: 8, fontSize: 12, color: Colors.textPrimary },
-  sendBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.brgy, alignItems: 'center', justifyContent: 'center' },
+  sendBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.brgy, alignItems: 'center', justifyContent: 'center' },
 });

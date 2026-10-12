@@ -1,16 +1,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  TextInput, Alert, ActivityIndicator,
+  TextInput, Alert, ActivityIndicator, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { db } from '../../services/firebase';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
 import { useAppSelector } from '../../store/hooks';
 import { createCheckpoint } from '../../services/checkpointService';
+import { getCurrentLocation } from '../../services/locationService';
 import { getNotificationRecipientsByRole, sendBulkNotification } from '../../services/notificationService';
+import { CameraIcon } from '../../components/common/TabIcons';
+import { GeoLocation } from '../../types';
 
 const CHECKPOINT_TYPES = ['Pre-cleanup assessment', 'During cleanup progress', 'Post-cleanup verification', 'Hazmat status update', 'Community alert'];
 const CONDITIONS = ['Clean', 'Mild', 'Moderate', 'Heavy', 'Critical'];
@@ -48,8 +53,49 @@ export default function BarangayReportScreen() {
   const [typeIdx, setTypeIdx] = useState(0);
   const [condIdx, setCondIdx] = useState(2);
   const [recentCheckpoints, setRecentCheckpoints] = useState<FieldCheckpoint[]>([]);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [location, setLocation] = useState<GeoLocation | null>(null);
+  const [geoStatus, setGeoStatus] = useState<'detecting' | 'found' | 'error'>('detecting');
 
   const barangay = user?.barangay || 'Guadalupe';
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const loc = await getCurrentLocation();
+        setLocation(loc);
+        setGeoStatus('found');
+      } catch {
+        setGeoStatus('error');
+      }
+    })();
+  }, []);
+
+  const handleCamera = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Camera permission is needed to capture checkpoint photos.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: 'images',
+      quality: 0.85,
+      allowsEditing: false,
+    });
+    if (!result.canceled && result.assets[0]) {
+      try {
+        const resized = await manipulateAsync(
+          result.assets[0].uri,
+          [{ resize: { width: 1280 } }],
+          { compress: 0.7, format: SaveFormat.JPEG },
+        );
+        setPhotoUri(resized.uri);
+      } catch (e) {
+        console.warn('[Checkpoint] Photo downscale failed, using original capture:', e);
+        setPhotoUri(result.assets[0].uri);
+      }
+    }
+  };
 
   // Subscribe to recent checkpoints for this user
   useEffect(() => {
@@ -79,6 +125,10 @@ export default function BarangayReportScreen() {
   }, [user?.uid]);
 
   const handleSubmit = async () => {
+    if (!photoUri) {
+      Alert.alert('Photo required', 'Please capture a photo of the checkpoint first.');
+      return;
+    }
     if (!notes.trim()) {
       Alert.alert('Notes required', 'Please add field notes before submitting.');
       return;
@@ -95,6 +145,8 @@ export default function BarangayReportScreen() {
         condition,
         wasteType,
         notes.trim(),
+        photoUri,
+        location ?? undefined,
       );
 
       // Notify admins so checkpoint completions actually surface somewhere, per the
@@ -113,6 +165,7 @@ export default function BarangayReportScreen() {
 
       setSubmitted(true);
       setNotes('');
+      setPhotoUri(null);
       setTimeout(() => {
         setSubmitted(false);
         Alert.alert('Checkpoint submitted', 'Your field report has been sent to the admin.');
@@ -150,6 +203,24 @@ export default function BarangayReportScreen() {
         <View style={styles.infoBanner}>
           <Text style={styles.infoTitle}>Submit checkpoint report</Text>
           <Text style={styles.infoSub}>Document conditions before, during, and after cleanup operations. Your field reports help the admin prioritize resources.</Text>
+        </View>
+
+        {/* Photo capture */}
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>Checkpoint photo</Text>
+          {photoUri ? (
+            <TouchableOpacity onPress={handleCamera} activeOpacity={0.85}>
+              <Image source={{ uri: photoUri }} style={styles.photoPreview} />
+              <View style={styles.retakeBadge}>
+                <Text style={styles.retakeBadgeText}>Retake</Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.cameraBtn} onPress={handleCamera} activeOpacity={0.85}>
+              <CameraIcon color={colors.brgy} size={22} />
+              <Text style={styles.cameraBtnText}>Capture checkpoint photo</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Checkpoint type */}
@@ -194,6 +265,12 @@ export default function BarangayReportScreen() {
           <Text style={styles.cardTitle}>Auto-detected location</Text>
           {[
             { k: 'Barangay', v: barangay },
+            {
+              k: 'GPS',
+              v: geoStatus === 'found' && location
+                ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`
+                : geoStatus === 'detecting' ? 'Detecting…' : 'Unavailable',
+            },
             { k: 'Officer', v: user ? `${user.firstName} ${user.lastName}` : 'Barangay Official' },
             { k: 'Date/Time', v: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
           ].map((row) => (
@@ -263,7 +340,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
   rolePill: { backgroundColor: Colors.brgyLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   rolePillText: { fontSize: 10, color: Colors.brgyDark, fontWeight: '500' },
-  body: { padding: 14, gap: 10, paddingBottom: 28 },
+  body: { padding: 16, gap: 14, paddingBottom: 28 },
   infoBanner: {
     backgroundColor: Colors.brgyLight, borderRadius: 12, padding: 12,
     borderWidth: 0.5, borderColor: Colors.brgyMid, borderLeftWidth: 3, borderLeftColor: Colors.brgy,
@@ -272,10 +349,24 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   infoSub: { fontSize: 10, color: Colors.brgyDark, opacity: 0.8, marginTop: 3, lineHeight: 15 },
   field: { gap: 5 },
   fieldLabel: { fontSize: 11, color: Colors.textMuted },
+  cameraBtn: {
+    backgroundColor: Colors.white, borderRadius: 16, paddingVertical: 24,
+    alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderWidth: 1, borderColor: Colors.brgyMid, borderStyle: 'dashed',
+  },
+  cameraBtnText: { fontSize: 12, fontWeight: '500', color: Colors.brgy },
+  photoPreview: { width: '100%', height: 180, borderRadius: 16 },
+  retakeBadge: {
+    position: 'absolute', bottom: 10, right: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 6,
+  },
+  retakeBadgeText: { fontSize: 11, fontWeight: '600', color: '#fff' },
   selector: {
-    backgroundColor: Colors.white, borderWidth: 0.5, borderColor: Colors.borderMid,
-    borderRadius: 10, padding: 10, paddingHorizontal: 12,
+    backgroundColor: Colors.white,
+    borderRadius: 16, padding: 13, paddingHorizontal: 14,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   selectorText: { fontSize: 12, color: Colors.textPrimary },
   selectorArrow: { fontSize: 14, color: Colors.grayHint },
@@ -286,7 +377,10 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   chipActive: { backgroundColor: Colors.brgy, borderColor: Colors.brgy },
   chipText: { fontSize: 11, color: Colors.textMuted },
   chipTextActive: { color: '#fff', fontWeight: '500' },
-  infoCard: { backgroundColor: Colors.white, borderRadius: 13, padding: 12, borderWidth: 0.5, borderColor: Colors.border },
+  infoCard: {
+    backgroundColor: Colors.white, borderRadius: 17, padding: 15,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   cardTitle: { fontSize: 11, fontWeight: '500', color: Colors.textPrimary, marginBottom: 7 },
   infoRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -295,8 +389,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   infoKey: { fontSize: 10, color: Colors.textMuted },
   infoVal: { fontSize: 11, fontWeight: '500', color: Colors.textPrimary },
   notesInput: {
-    backgroundColor: Colors.white, borderRadius: 12, borderWidth: 0.5, borderColor: Colors.border,
-    padding: 12, fontSize: 12, color: Colors.textPrimary, minHeight: 110,
+    backgroundColor: Colors.white, borderRadius: 16,
+    padding: 15, fontSize: 12, color: Colors.textPrimary, minHeight: 110,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   submitBtn: { backgroundColor: Colors.brgy, borderRadius: 13, paddingVertical: 13, alignItems: 'center' },
   submitBtnSuccess: { backgroundColor: Colors.green },
@@ -304,8 +399,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   prevSection: { gap: 7 },
   prevTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
   prevCard: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 10, paddingHorizontal: 13,
-    flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 0.5, borderColor: Colors.border,
+    backgroundColor: Colors.white, borderRadius: 16, padding: 13, paddingHorizontal: 15,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   prevDot: { width: 9, height: 9, borderRadius: 4.5 },
   prevType: { fontSize: 11, fontWeight: '500', color: Colors.textPrimary },

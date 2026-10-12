@@ -53,9 +53,9 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon /></TouchableOpacity>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon size={18} /></TouchableOpacity>
           <Text style={styles.headerTitle}>Report details</Text>
-          <View style={{ width: 34 }} />
+          <View style={{ width: 38 }} />
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: colors.textMuted }}>Loading...</Text>
@@ -169,13 +169,16 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: Colors.border,
   },
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
-  backBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
-  body: { padding: 14, gap: 10, paddingBottom: 24 },
+  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
+  body: { padding: 16, gap: 14, paddingBottom: 24 },
   photo: { borderRadius: 14, height: 180, backgroundColor: '#C0DD97' },
   photoPlaceholder: { borderRadius: 14, height: 90, backgroundColor: '#C0DD97', alignItems: 'center', justifyContent: 'center' },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 14, fontWeight: '500', color: Colors.textPrimary },
-  detailTable: { backgroundColor: Colors.white, borderRadius: 12, borderWidth: 0.5, borderColor: Colors.border },
+  detailTable: {
+    backgroundColor: Colors.white, borderRadius: 16,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   detailRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 13, paddingVertical: 7,

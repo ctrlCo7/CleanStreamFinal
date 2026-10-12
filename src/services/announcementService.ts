@@ -13,8 +13,8 @@ import {
   increment,
   limit,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { uploadToCloudinary } from './cloudinaryService';
+import { db } from './firebase';
 import { Announcement, AnnouncementPriority, AnnouncementType, UserRole } from '../types';
 
 const COL = 'announcements';
@@ -119,13 +119,8 @@ export const recordAnnouncementView = async (id: string): Promise<void> => {
   });
 };
 
-export const uploadAnnouncementImage = async (uri: string, id: string): Promise<string> => {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  const storageRef = ref(storage, `announcements/${id}/cover.jpg`);
-  await uploadBytes(storageRef, blob);
-  return getDownloadURL(storageRef);
-};
+export const uploadAnnouncementImage = async (uri: string, id: string): Promise<string> =>
+  uploadToCloudinary(uri, `announcements/${id}`, 'cover.jpg');
 
 export const subscribeToAnnouncements = (
   userRole: UserRole,

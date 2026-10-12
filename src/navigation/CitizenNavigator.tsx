@@ -16,6 +16,7 @@ import {
   MessageIcon,
   ProfileIcon,
 } from '../components/common/TabIcons';
+import { TabBarIcon } from '../components/common/TabBarIcon';
 
 const Tab = createBottomTabNavigator<CitizenTabParamList>();
 
@@ -29,40 +30,50 @@ export default function CitizenNavigator() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        tabBarShowLabel: false,
         tabBarStyle: {
-          height: 56,
-          borderTopWidth: 0.5,
-          borderTopColor: colors.border,
+          height: 66,
+          borderTopWidth: 0,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
           backgroundColor: colors.white,
-          paddingBottom: 4,
+          paddingTop: 8,
+          paddingBottom: 10,
+          shadowColor: colors.shadow,
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 10,
+          elevation: 8,
         },
         tabBarActiveTintColor: colors.teal,
         tabBarInactiveTintColor: colors.grayHint,
-        tabBarLabelStyle: { fontSize: 9, fontWeight: '500' },
       }}
     >
       <Tab.Screen
         name="CitizenHome"
         component={CitizenHomeScreen}
         options={{
-          tabBarLabel: 'Home',
-          tabBarIcon: ({ color }) => <HomeIcon color={color} />,
+          tabBarIcon: ({ focused, color }) => (
+            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label="Home" icon={<HomeIcon color={color} size={22} />} />
+          ),
         }}
       />
       <Tab.Screen
         name="CitizenHistory"
         component={CitizenHistoryScreen}
         options={{
-          tabBarLabel: 'History',
-          tabBarIcon: ({ color }) => <HistoryIcon color={color} />,
+          tabBarIcon: ({ focused, color }) => (
+            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label="History" icon={<HistoryIcon color={color} size={22} />} />
+          ),
         }}
       />
       <Tab.Screen
         name="MapTab"
         component={MapTabPlaceholder}
         options={{
-          tabBarLabel: 'Map',
-          tabBarIcon: ({ color }) => <MapIcon color={color} />,
+          tabBarIcon: ({ focused, color }) => (
+            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label="Map" icon={<MapIcon color={color} size={22} />} />
+          ),
         }}
         listeners={({ navigation }) => ({
           tabPress: (e) => {
@@ -75,16 +86,18 @@ export default function CitizenNavigator() {
         name="CitizenMessages"
         component={CitizenMessagesScreen}
         options={{
-          tabBarLabel: 'Messages',
-          tabBarIcon: ({ color }) => <MessageIcon color={color} />,
+          tabBarIcon: ({ focused, color }) => (
+            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label="Messages" icon={<MessageIcon color={color} size={22} />} />
+          ),
         }}
       />
       <Tab.Screen
         name="CitizenProfile"
         component={CitizenProfileScreen}
         options={{
-          tabBarLabel: 'Profile',
-          tabBarIcon: ({ color }) => <ProfileIcon color={color} />,
+          tabBarIcon: ({ focused, color }) => (
+            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label="Profile" icon={<ProfileIcon color={color} size={22} />} />
+          ),
         }}
       />
     </Tab.Navigator>

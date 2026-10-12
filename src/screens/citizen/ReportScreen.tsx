@@ -15,7 +15,7 @@ import { upsertReport } from '../../store/reportsSlice';
 import { getCurrentLocation } from '../../services/locationService';
 import { analyzeWastePhoto, loadLocalModel } from '../../services/aiService';
 import { createReport, updateReportWithAI } from '../../services/reportsService';
-import { sendReportNotification } from '../../services/notificationService';
+import { getNotificationRecipientsByRole, sendBulkNotification, sendReportNotification } from '../../services/notificationService';
 import { GeoLocation } from '../../types';
 import { BackIcon, CameraIcon, CheckIcon } from '../../components/common/TabIcons';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
@@ -164,6 +164,25 @@ export default function CitizenReportScreen() {
       } catch (updateErr) {
         console.error('[Submit] AI result save failed (non-fatal):', updateErr);
       }
+
+      // Real-time alert: barangay officials should hear about critical/high
+      // severity reports in their own barangay the moment AI analysis flags
+      // them, not only when they happen to open Verify Reports later.
+      const isUrgent = aiResult.severityLevel === 'critical' || aiResult.severityLevel === 'high';
+      if (isUrgent && location.barangayId) {
+        getNotificationRecipientsByRole(['barangay'], location.barangayId)
+          .then((barangayUserIds) => {
+            if (barangayUserIds.length === 0) return;
+            return sendBulkNotification(
+              barangayUserIds,
+              `${aiResult!.severityLevel === 'critical' ? '🚨 Critical' : '⚠️ High'} severity report`,
+              `A new ${aiResult!.severityLevel} severity report (${reportNumber}) was just submitted in ${location.barangay || 'your barangay'}.`,
+              'system',
+              { severity: aiResult!.severityLevel, reportId },
+            );
+          })
+          .catch((e) => console.warn('[Submit] Barangay severity alert failed (non-fatal):', e));
+      }
     }
 
     clearInterval(stepInterval);
@@ -234,10 +253,10 @@ export default function CitizenReportScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <BackIcon />
+          <BackIcon size={18} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>New report</Text>
-        <View style={{ width: 34 }} />
+        <View style={{ width: 38 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
@@ -389,10 +408,10 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
   backBtn: {
-    width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.grayBg,
+    width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg,
     alignItems: 'center', justifyContent: 'center',
   },
-  body: { padding: 14, gap: 10, paddingBottom: 24 },
+  body: { padding: 16, gap: 14, paddingBottom: 24 },
   camera: {
     borderRadius: 16, backgroundColor: '#1A1A18', height: 160,
     alignItems: 'center', justifyContent: 'center',
@@ -415,14 +434,15 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   antiFakeText: { flex: 1, fontSize: 10, color: Colors.greenText, lineHeight: 15 },
   featureRow: { flexDirection: 'row', gap: 6 },
   featureChip: {
-    flex: 1, backgroundColor: Colors.white, borderRadius: 10, padding: 9,
-    borderWidth: 0.5, borderColor: Colors.border, flexDirection: 'row', gap: 7, alignItems: 'flex-start',
+    flex: 1, backgroundColor: Colors.white, borderRadius: 16, padding: 12,
+    flexDirection: 'row', gap: 7, alignItems: 'flex-start',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   featureTitle: { fontSize: 10, fontWeight: '500', color: Colors.textPrimary },
   featureSub: { fontSize: 9, color: Colors.textMuted, marginTop: 2 },
   geoCard: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 13,
-    borderWidth: 0.5, borderColor: Colors.border, gap: 8,
+    backgroundColor: Colors.white, borderRadius: 16, padding: 16, gap: 8,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   geoCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   geoCardTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, memo } from 'react';
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
@@ -68,13 +69,24 @@ const SeverityMarker = memo(
         // Set to true only while animating/updating, otherwise performance tanks
         tracksViewChanges={false}
       >
-        {/* Custom circular pin */}
-        <View style={[styles.pin, { backgroundColor: color }]}>
-          <View style={styles.pinInner} />
+        {/* Custom circular pin -- critical/high severity gets a soft glow halo
+            behind it so the worst hotspots visually stand out on the map,
+            not just differ by color. */}
+        <View style={styles.markerWrap}>
+          {(report.severity === 'critical' || report.severity === 'high') && (
+            <View style={[styles.pinGlow, { backgroundColor: color }]} />
+          )}
+          <View style={[styles.pin, { backgroundColor: color }]}>
+            <View style={styles.pinInner} />
+          </View>
         </View>
 
-        {/* Info callout */}
+        {/* Info callout -- includes the report's photo so tapping a marker
+            shows what was actually reported, not just text metadata. */}
         <Callout style={styles.callout} onPress={() => onNavigate(report.id)}>
+          {!!report.photoURL && (
+            <Image source={{ uri: report.photoURL }} style={styles.calloutImage} resizeMode="cover" />
+          )}
           <View style={[styles.calloutSeverityBadge, { backgroundColor: bgColor }]}>
             <Text style={[styles.calloutSeverityText, { color }]}>
               {emoji} {sevLabel}
@@ -341,22 +353,34 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   webFallbackText:  { fontSize: 12, color: Colors.textMuted, textAlign: 'center', lineHeight: 18 },
 
   // Markers
-  pin: {
-    width: 18, height: 18, borderRadius: 9,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2.5, borderColor: '#fff',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3, shadowRadius: 2, elevation: 3,
+  markerWrap: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
+  pinGlow: {
+    position: 'absolute',
+    width: 46, height: 46, borderRadius: 23,
+    opacity: 0.22,
   },
-  pinInner: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.9)' },
+  pin: {
+    width: 26, height: 26, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 3, borderColor: '#fff',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35, shadowRadius: 4, elevation: 5,
+  },
+  pinInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.9)' },
 
   // Callout
   callout: {
     backgroundColor: Colors.white,
     borderRadius: 12,
     padding: 10,
-    minWidth: 160,
-    maxWidth: 220,
+    minWidth: 180,
+    maxWidth: 240,
+  },
+  calloutImage: {
+    width: '100%',
+    height: 110,
+    borderRadius: 10,
+    marginBottom: 7,
   },
   calloutSeverityBadge: {
     borderRadius: 6,
@@ -376,11 +400,10 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   legend: {
     position: 'absolute', bottom: 16, left: 12,
     backgroundColor: 'rgba(255,255,255,0.96)',
-    borderRadius: 12, padding: 10,
-    borderWidth: 0.5, borderColor: Colors.border,
-    gap: 4,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
+    borderRadius: 16, padding: 12,
+    gap: 5,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12, shadowRadius: 8, elevation: 3,
   },
   // Legend's background is a fixed light overlay regardless of theme, so its
   // text stays a fixed dark color too (Colors.textMuted/textPrimary would go
@@ -395,8 +418,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     position: 'absolute', top: 12, right: 12,
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
-    borderWidth: 0.5, borderColor: Colors.border,
+    borderRadius: 20, paddingHorizontal: 11, paddingVertical: 6,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1, shadowRadius: 6, elevation: 3,
   },
   liveDot:  { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#22C55E' },
   // Same fixed-light-overlay reasoning as the legend above.

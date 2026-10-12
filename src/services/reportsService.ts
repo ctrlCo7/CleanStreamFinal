@@ -14,8 +14,8 @@ import {
   arrayUnion,
   GeoPoint,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { db } from './firebase';
+import { uploadToCloudinary } from './cloudinaryService';
 import {
   WasteReport,
   GeoLocation,
@@ -26,6 +26,31 @@ import {
   SeverityLevel,
   AIWasteType,
 } from '../types';
+
+// ─── Firestore document normalization ────────────────────────────────────────
+
+// createdAt/updatedAt/verifiedAt/assignedAt/resolvedAt are written with
+// serverTimestamp() and come back from Firestore as Timestamp objects, not
+// the ISO strings WasteReport declares -- new Date(timestampObject) produces
+// "Invalid Date" wherever a screen renders them. Converting every Timestamp
+// field to a real ISO string here, once, means every reader (ReportDetail,
+// History, Map, Home) just gets a plain string like the type promises.
+const TIMESTAMP_FIELDS = ['createdAt', 'updatedAt', 'verifiedAt', 'assignedAt', 'resolvedAt'] as const;
+
+const toISOIfTimestamp = (value: unknown): unknown => {
+  if (value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate: unknown }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate().toISOString();
+  }
+  return value;
+};
+
+const normalizeReport = (id: string, data: Record<string, unknown>): WasteReport => {
+  const normalized: Record<string, unknown> = { ...data };
+  for (const field of TIMESTAMP_FIELDS) {
+    if (field in normalized) normalized[field] = toISOIfTimestamp(normalized[field]);
+  }
+  return { id, ...normalized } as WasteReport;
+};
 
 // ─── Report number generation ─────────────────────────────────────────────────
 
@@ -42,29 +67,11 @@ const generateReportNumber = (userName: string): string => {
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
 
-const localUriToBlob = (uri: string): Promise<Blob> =>
-  new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.onload = () => resolve(xhr.response as Blob);
-    xhr.onerror = () => reject(new Error('Failed to read local file'));
-    xhr.responseType = 'blob';
-    xhr.open('GET', uri, true);
-    xhr.send(null);
-  });
+export const uploadReportPhoto = async (uri: string, reportId: string): Promise<string> =>
+  uploadToCloudinary(uri, `reports/${reportId}`, 'photo.jpg');
 
-export const uploadReportPhoto = async (uri: string, reportId: string): Promise<string> => {
-  const blob = await localUriToBlob(uri);
-  const storageRef = ref(storage, `reports/${reportId}/photo.jpg`);
-  await uploadBytes(storageRef, blob);
-  return getDownloadURL(storageRef);
-};
-
-export const uploadReportThumbnail = async (uri: string, reportId: string): Promise<string> => {
-  const blob = await localUriToBlob(uri);
-  const storageRef = ref(storage, `reports/${reportId}/thumbnail.jpg`);
-  await uploadBytes(storageRef, blob);
-  return getDownloadURL(storageRef);
-};
+export const uploadReportThumbnail = async (uri: string, reportId: string): Promise<string> =>
+  uploadToCloudinary(uri, `reports/${reportId}`, 'thumbnail.jpg');
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 
@@ -246,7 +253,7 @@ export const rejectReport = (
 export const getReportById = async (reportId: string): Promise<WasteReport | null> => {
   const snap = await getDoc(doc(db, 'reports', reportId));
   if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() } as WasteReport;
+  return normalizeReport(snap.id, snap.data());
 };
 
 export const getReportsByUser = async (userId: string): Promise<WasteReport[]> => {
@@ -257,13 +264,13 @@ export const getReportsByUser = async (userId: string): Promise<WasteReport[]> =
       orderBy('createdAt', 'desc'),
     );
     const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as WasteReport));
+    return snap.docs.map((d) => (normalizeReport(d.id, d.data())));
   } catch {
     // Composite index may not exist yet — fall back to unordered query and sort client-side
     console.warn('[Reports] Ordered query failed, using unordered fallback');
     const q = query(collection(db, 'reports'), where('userId', '==', userId));
     const snap = await getDocs(q);
-    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as WasteReport));
+    const docs = snap.docs.map((d) => (normalizeReport(d.id, d.data())));
     return docs.sort((a, b) => {
       const ta = typeof a.createdAt === 'string' ? new Date(a.createdAt).getTime()
                : (a.createdAt as { seconds?: number })?.seconds ?? 0;
@@ -285,7 +292,7 @@ export const getReportsByBarangay = async (
     limit(limitCount),
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as WasteReport));
+  return snap.docs.map((d) => (normalizeReport(d.id, d.data())));
 };
 
 export const getReportsByStatus = async (
@@ -299,7 +306,7 @@ export const getReportsByStatus = async (
     limit(limitCount),
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as WasteReport));
+  return snap.docs.map((d) => (normalizeReport(d.id, d.data())));
 };
 
 export const getAllReports = async (limitCount = 50): Promise<WasteReport[]> => {
@@ -309,7 +316,7 @@ export const getAllReports = async (limitCount = 50): Promise<WasteReport[]> => 
     limit(limitCount),
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as WasteReport));
+  return snap.docs.map((d) => (normalizeReport(d.id, d.data())));
 };
 
 export const getCriticalReports = async (): Promise<WasteReport[]> => {
@@ -320,7 +327,7 @@ export const getCriticalReports = async (): Promise<WasteReport[]> => {
     orderBy('createdAt', 'desc'),
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as WasteReport));
+  return snap.docs.map((d) => (normalizeReport(d.id, d.data())));
 };
 
 export const getPendingVerificationReports = async (
@@ -333,7 +340,7 @@ export const getPendingVerificationReports = async (
     orderBy('createdAt', 'desc'),
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as WasteReport));
+  return snap.docs.map((d) => (normalizeReport(d.id, d.data())));
 };
 
 export const getReportsBySeverity = async (severity: SeverityLevel): Promise<WasteReport[]> => {
@@ -344,7 +351,7 @@ export const getReportsBySeverity = async (severity: SeverityLevel): Promise<Was
     limit(50),
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as WasteReport));
+  return snap.docs.map((d) => (normalizeReport(d.id, d.data())));
 };
 
 // ─── Real-time subscriptions ──────────────────────────────────────────────────
@@ -362,7 +369,7 @@ export const subscribeToReports = (
     : query(collection(db, 'reports'), orderBy('createdAt', 'desc'), limit(50));
 
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WasteReport)));
+    callback(snap.docs.map((d) => (normalizeReport(d.id, d.data()))));
   });
 };
 
@@ -377,7 +384,7 @@ export const subscribeToBarangayReports = (
     limit(50),
   );
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WasteReport)));
+    callback(snap.docs.map((d) => (normalizeReport(d.id, d.data()))));
   });
 };
 
@@ -389,6 +396,6 @@ export const subscribeToCriticalReports = (callback: (reports: WasteReport[]) =>
     orderBy('createdAt', 'desc'),
   );
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WasteReport)));
+    callback(snap.docs.map((d) => (normalizeReport(d.id, d.data()))));
   });
 };

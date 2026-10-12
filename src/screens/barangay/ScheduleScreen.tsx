@@ -210,7 +210,7 @@ function EventCard({ event, user, onJoin, joiningId, colors, styles }: {
   return (
     <View style={[styles.schedCard, { borderLeftColor: accentColor }]}>
       <View style={[styles.schedLeft, { backgroundColor: accentBg }]} />
-      <View style={{ flex: 1, padding: 11, paddingLeft: 10 }}>
+      <View style={{ flex: 1, padding: 14, paddingLeft: 12 }}>
         <Text style={styles.schedTitle}>{event.title}</Text>
         <Text style={styles.schedBarangay}>{event.barangay}</Text>
         <Text style={styles.schedDate}>{dateStr}</Text>
@@ -244,8 +244,11 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
   rolePill: { backgroundColor: Colors.brgyLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   rolePillText: { fontSize: 10, color: Colors.brgyDark, fontWeight: '500' },
-  body: { padding: 14, gap: 10, paddingBottom: 28 },
-  calCard: { backgroundColor: Colors.white, borderRadius: 14, padding: 13, borderWidth: 0.5, borderColor: Colors.border },
+  body: { padding: 16, gap: 14, paddingBottom: 28 },
+  calCard: {
+    backgroundColor: Colors.white, borderRadius: 17, padding: 16,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   calNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   navBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   navArrow: { fontSize: 20, color: Colors.textMuted, fontWeight: '500' },
@@ -265,11 +268,15 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   legendDot: { width: 7, height: 7, borderRadius: 3.5 },
   legendText: { fontSize: 10, color: Colors.textMuted },
   daySectionTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary, marginTop: 4 },
-  emptyDay: { backgroundColor: Colors.white, borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  emptyDay: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 18, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   emptyDayText: { fontSize: 12, color: Colors.textHint },
   schedCard: {
-    backgroundColor: Colors.white, borderRadius: 13, borderWidth: 0.5, borderColor: Colors.border,
+    backgroundColor: Colors.white, borderRadius: 17,
     borderLeftWidth: 3, flexDirection: 'row', overflow: 'hidden',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   schedLeft: { width: 4 },
   schedTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },

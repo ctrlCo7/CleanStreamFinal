@@ -111,9 +111,9 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon /></TouchableOpacity>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon size={18} /></TouchableOpacity>
           <Text style={styles.headerTitle}>Review report</Text>
-          <View style={{ width: 34 }} />
+          <View style={{ width: 38 }} />
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="small" color={colors.brgy} />
@@ -127,9 +127,9 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon /></TouchableOpacity>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon size={18} /></TouchableOpacity>
         <Text style={styles.headerTitle}>Review report</Text>
-        <View style={{ width: 34 }} />
+        <View style={{ width: 38 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
@@ -247,13 +247,16 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: Colors.border,
   },
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
-  backBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
-  body: { padding: 14, gap: 10, paddingBottom: 28 },
+  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
+  body: { padding: 16, gap: 14, paddingBottom: 28 },
   photo: { borderRadius: 14, height: 180, backgroundColor: '#C0DD97' },
   photoPlaceholder: { borderRadius: 14, height: 90, backgroundColor: '#C0DD97', alignItems: 'center', justifyContent: 'center' },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 14, fontWeight: '500', color: Colors.textPrimary },
-  detailTable: { backgroundColor: Colors.white, borderRadius: 12, borderWidth: 0.5, borderColor: Colors.border },
+  detailTable: {
+    backgroundColor: Colors.white, borderRadius: 16,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   detailRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 13, paddingVertical: 7,
@@ -261,7 +264,10 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   detailKey: { fontSize: 11, color: Colors.textMuted },
   detailVal: { fontSize: 11, fontWeight: '500', color: Colors.textPrimary, textAlign: 'right', flex: 1, marginLeft: 8 },
-  confirmCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: Colors.border, gap: 8 },
+  confirmCard: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 15, gap: 8,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   confirmTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
   confirmSub: { fontSize: 10, color: Colors.textMuted, lineHeight: 14 },
   confirmRow: { gap: 4 },
@@ -274,8 +280,8 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   confirmSelectorText: { fontSize: 12, color: Colors.textPrimary },
   selectorArrow: { fontSize: 14, color: Colors.grayHint },
   decidedBanner: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 12,
-    borderWidth: 0.5, borderColor: Colors.border,
+    backgroundColor: Colors.white, borderRadius: 16, padding: 15,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   decidedText: { fontSize: 12, color: Colors.textMuted, lineHeight: 18 },
   actions: { flexDirection: 'row', gap: 8 },
@@ -286,7 +292,10 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     borderRadius: 12, paddingVertical: 12, alignItems: 'center',
   },
   rejectOutlineBtnText: { fontSize: 13, fontWeight: '500', color: Colors.red },
-  rejectForm: { backgroundColor: Colors.white, borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: Colors.border, gap: 8 },
+  rejectForm: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 15, gap: 8,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   rejectLabel: { fontSize: 11, color: Colors.textMuted },
   rejectInput: {
     backgroundColor: Colors.grayBg, borderRadius: 10, borderWidth: 0.5, borderColor: Colors.border,

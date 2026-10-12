@@ -154,7 +154,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: Colors.border,
   },
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
-  body: { padding: 14, gap: 10, paddingBottom: 20 },
+  body: { padding: 16, gap: 14, paddingBottom: 20 },
   statsRow: { flexDirection: 'row', gap: 7 },
   filterRow: { flexDirection: 'row', gap: 6, paddingVertical: 2 },
   chip: {
@@ -164,10 +164,11 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   chipActive: { backgroundColor: Colors.teal, borderColor: Colors.teal },
   chipText: { fontSize: 11, color: Colors.textMuted },
   chipTextActive: { color: '#fff' },
-  sectionTitle: { fontSize: 13, fontWeight: '500', color: Colors.textPrimary },
+  sectionTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
   emptyCard: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 16,
-    alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border,
+    backgroundColor: Colors.white, borderRadius: 18, padding: 16,
+    alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   emptyText: { fontSize: 12, color: Colors.textHint },
   timelineItem: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },

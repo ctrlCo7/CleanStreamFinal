@@ -109,8 +109,12 @@ export function warmUpOnDeviceModels(): void {
 // - fork/knife/spoon: was 'metal_can', now 'mixed_waste' -- cutlery isn't can
 //   waste; "rinse and flatten before recycling" is nonsensical advice for a fork.
 
+// COCO's 'bottle' class is shape-only detection -- it can't distinguish a glass
+// beer bottle from a plastic water bottle from a metal canteen, so it is
+// deliberately left out of this static table and resolved dynamically instead
+// (see resolveBottleWasteType below), using MobileNet's classification on the
+// same image as a material signal.
 const COCO_TO_WASTE: Record<string, AIWasteType> = {
-  bottle: 'plastic_bottle',
   'wine glass': 'glass_bottle',
   cup: 'mixed_waste',
   bowl: 'food_waste',
@@ -211,6 +215,22 @@ const WASTE_TYPE_COLORS: Record<AIWasteType, string> = {
   mixed_waste: '#E74C3C',
   trash_pile: '#922B21',
 };
+
+// COCO's 'bottle' detection is shape-only; disambiguate material using
+// MobileNet's ImageNet classification on the same photo, which does have
+// material-specific bottle synsets. Falls back to plastic_bottle (the most
+// common litter case) when MobileNet gives no useful signal.
+function resolveBottleWasteType(mobileNetLabels: string[]): AIWasteType {
+  const joined = mobileNetLabels.join(' | ');
+  if (/wine bottle|beer bottle/.test(joined)) return 'glass_bottle';
+  if (/canteen|milk can|tin can/.test(joined)) return 'metal_can';
+  return 'plastic_bottle';
+}
+
+function resolveWasteType(cocoClass: string, mobileNetLabels: string[]): AIWasteType {
+  if (cocoClass === 'bottle') return resolveBottleWasteType(mobileNetLabels);
+  return COCO_TO_WASTE[cocoClass] ?? 'mixed_waste';
+}
 
 // ─── CNN category mapping (mirrors functions/src/cnnClassification.ts) ────────
 
@@ -431,11 +451,20 @@ async function readPhotoAsTensor(photoUri: string): Promise<tf.Tensor3D> {
   if (Math.max(height, width) <= MAX_TENSOR_SIDE) return fullSizeTensor;
 
   const scale = MAX_TENSOR_SIDE / Math.max(height, width);
-  const resized = tf.image.resizeBilinear(fullSizeTensor, [
+  const resizedFloat = tf.image.resizeBilinear(fullSizeTensor, [
     Math.round(height * scale),
     Math.round(width * scale),
   ]) as tf.Tensor3D;
   fullSizeTensor.dispose();
+
+  // resizeBilinear always outputs float32 regardless of input dtype, but
+  // coco-ssd's frozen graph requires its image_tensor input to be int32 (the
+  // same dtype decodeJpeg produces) -- without this cast, every photo that
+  // needed downscaling (i.e. virtually every real camera photo) threw
+  // "must be int32, but was float32" and silently fell through to the
+  // fallback chain's random local simulation instead of real detection.
+  const resized = tf.cast(resizedFloat, 'int32') as tf.Tensor3D;
+  resizedFloat.dispose();
   return resized;
 }
 
@@ -462,9 +491,14 @@ export async function analyzeOnDevice(photoUri: string): Promise<AIAnalysisResul
   // accumulating GPU-texture memory across report submissions in the same session.
   tf.engine().startScope();
   try {
-    const predictions = await cocoModel.detect(tensor, 20, 0.25);
+    const [predictions, classifications] = await Promise.all([
+      cocoModel.detect(tensor, 20, 0.25),
+      mobileNetModel.classify(tensor, 5),
+    ]);
+    const mobileNetLabels = classifications.map((c) => c.className.toLowerCase());
+
     detectedObjects = predictions.map((p) => {
-      const wasteType = COCO_TO_WASTE[p.class.toLowerCase()] ?? 'mixed_waste';
+      const wasteType = resolveWasteType(p.class.toLowerCase(), mobileNetLabels);
       return {
         label: p.class,
         wasteType,
@@ -474,7 +508,6 @@ export async function analyzeOnDevice(photoUri: string): Promise<AIAnalysisResul
       };
     });
 
-    const classifications = await mobileNetModel.classify(tensor, 5);
     for (const pred of classifications) {
       const cls = pred.className.toLowerCase();
       const match = IMAGENET_TO_CATEGORY.find(([key]) => cls.includes(key));

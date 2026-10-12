@@ -12,8 +12,8 @@ import {
   serverTimestamp,
   limit,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { db } from './firebase';
+import { uploadToCloudinary } from './cloudinaryService';
 import { CleanupTask, CleanupTaskStatus, SeverityLevel } from '../types';
 
 const COL = 'cleanupTasks';
@@ -97,13 +97,8 @@ export const uploadTaskPhoto = async (
   taskId: string,
   phase: 'before' | 'after',
   index: number,
-): Promise<string> => {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  const storageRef = ref(storage, `cleanupTasks/${taskId}/${phase}_${index}.jpg`);
-  await uploadBytes(storageRef, blob);
-  return getDownloadURL(storageRef);
-};
+): Promise<string> =>
+  uploadToCloudinary(uri, `cleanupTasks/${taskId}`, `${phase}_${index}.jpg`);
 
 export const addTaskPhoto = async (
   taskId: string,

@@ -16,6 +16,7 @@ import {
   MessageIcon,
   ProfileIcon,
 } from '../components/common/TabIcons';
+import { TabBarIcon } from '../components/common/TabBarIcon';
 
 const Tab = createBottomTabNavigator<AdminTabParamList>();
 
@@ -25,42 +26,69 @@ export default function AdminNavigator() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        tabBarShowLabel: false,
         tabBarStyle: {
-          height: 56,
-          borderTopWidth: 0.5,
-          borderTopColor: colors.border,
+          height: 66,
+          borderTopWidth: 0,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
           backgroundColor: colors.white,
-          paddingBottom: 4,
+          paddingTop: 8,
+          paddingBottom: 10,
+          shadowColor: colors.shadow,
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 10,
+          elevation: 8,
         },
         tabBarActiveTintColor: colors.blue,
         tabBarInactiveTintColor: colors.grayHint,
-        tabBarLabelStyle: { fontSize: 9, fontWeight: '500' },
       }}
     >
       <Tab.Screen
         name="AdminDashboard"
         component={AdminDashboardScreen}
-        options={{ tabBarLabel: 'Dashboard', tabBarIcon: ({ color }) => <HomeIcon color={color} /> }}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabBarIcon focused={focused} color={color} activeBg={colors.blueBg} label="Dashboard" icon={<HomeIcon color={color} size={22} />} />
+          ),
+        }}
       />
       <Tab.Screen
         name="AdminAnalytics"
         component={AdminAnalyticsScreen}
-        options={{ tabBarLabel: 'Analytics', tabBarIcon: ({ color }) => <AnalyticsIcon color={color} /> }}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabBarIcon focused={focused} color={color} activeBg={colors.blueBg} label="Analytics" icon={<AnalyticsIcon color={color} size={22} />} />
+          ),
+        }}
       />
       <Tab.Screen
         name="AdminHistory"
         component={AdminHistoryScreen}
-        options={{ tabBarLabel: 'History', tabBarIcon: ({ color }) => <HistoryIcon color={color} /> }}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabBarIcon focused={focused} color={color} activeBg={colors.blueBg} label="History" icon={<HistoryIcon color={color} size={22} />} />
+          ),
+        }}
       />
       <Tab.Screen
         name="AdminMessages"
         component={AdminMessagesScreen}
-        options={{ tabBarLabel: 'Messages', tabBarIcon: ({ color }) => <MessageIcon color={color} /> }}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabBarIcon focused={focused} color={color} activeBg={colors.blueBg} label="Messages" icon={<MessageIcon color={color} size={22} />} />
+          ),
+        }}
       />
       <Tab.Screen
         name="AdminProfile"
         component={AdminProfileScreen}
-        options={{ tabBarLabel: 'Profile', tabBarIcon: ({ color }) => <ProfileIcon color={color} /> }}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabBarIcon focused={focused} color={color} activeBg={colors.blueBg} label="Profile" icon={<ProfileIcon color={color} size={22} />} />
+          ),
+        }}
       />
     </Tab.Navigator>
   );

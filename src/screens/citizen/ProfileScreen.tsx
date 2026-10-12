@@ -37,9 +37,9 @@ export default function CitizenProfileScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon /></TouchableOpacity>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon size={18} /></TouchableOpacity>
         <Text style={styles.headerTitle}>My profile</Text>
-        <View style={{ width: 34 }} />
+        <View style={{ width: 38 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
@@ -149,20 +149,26 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: Colors.border,
   },
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
-  backBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
-  body: { padding: 14, gap: 8, paddingBottom: 24 },
+  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
+  body: { padding: 16, gap: 14, paddingBottom: 24 },
   avatarSection: { alignItems: 'center', paddingVertical: 8 },
   avatar: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 24, fontWeight: '500' },
   name: { fontSize: 18, fontWeight: '500', color: Colors.textPrimary, marginTop: 10 },
   rolePill: { backgroundColor: Colors.tealLight, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginTop: 4 },
   rolePillText: { fontSize: 11, fontWeight: '500', color: Colors.tealDark },
-  statsRow: { flexDirection: 'row', backgroundColor: Colors.white, borderRadius: 14, padding: 12, borderWidth: 0.5, borderColor: Colors.border },
+  statsRow: {
+    flexDirection: 'row', backgroundColor: Colors.white, borderRadius: 18, padding: 15,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   stat: { flex: 1, backgroundColor: Colors.grayBg, borderRadius: 10, padding: 8, alignItems: 'center' },
   statVal: { fontSize: 18, fontWeight: '500' },
   statLabel: { fontSize: 9, color: Colors.textMuted, marginTop: 2 },
   sectionLabel: { fontSize: 11, fontWeight: '500', color: Colors.textMuted, letterSpacing: 0.04, textTransform: 'uppercase', marginTop: 2 },
-  card: { backgroundColor: Colors.white, borderRadius: 14, padding: 12, borderWidth: 0.5, borderColor: Colors.border, gap: 2 },
+  card: {
+    backgroundColor: Colors.white, borderRadius: 18, padding: 15, gap: 2,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: Colors.border },
   infoIcon: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   infoLabel: { fontSize: 11, color: Colors.textMuted, marginBottom: 1 },

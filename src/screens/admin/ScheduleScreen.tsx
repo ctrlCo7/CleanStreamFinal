@@ -112,7 +112,7 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon /></TouchableOpacity>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon size={18} /></TouchableOpacity>
         <Text style={styles.headerTitle}>Schedule cleanup</Text>
         <View style={{ width: 34 }} />
       </View>
@@ -196,17 +196,21 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: Colors.border,
   },
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
-  backBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
-  body: { padding: 14, gap: 10, paddingBottom: 24 },
+  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
+  body: { padding: 16, gap: 14, paddingBottom: 24 },
   sevBanner: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 11, paddingHorizontal: 14,
-    borderWidth: 0.5, borderColor: Colors.border, borderLeftWidth: 3,
+    backgroundColor: Colors.white, borderRadius: 16, padding: 14, paddingHorizontal: 16,
+    borderLeftWidth: 3,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   sevTitle: { fontSize: 14, fontWeight: '500', color: Colors.textPrimary },
   sevSub: { fontSize: 11, color: Colors.textMuted, marginTop: 3 },
   sevBadgeRow: { flexDirection: 'row', gap: 5, marginTop: 6 },
-  schedCard: { backgroundColor: Colors.white, borderRadius: 14, padding: 12, borderWidth: 0.5, borderColor: Colors.border },
-  schedCardTitle: { fontSize: 13, fontWeight: '500', color: Colors.textPrimary, marginBottom: 9 },
+  schedCard: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 15,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
+  schedCardTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary, marginBottom: 9 },
   schedRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingVertical: 6, borderBottomWidth: 0.5, borderBottomColor: Colors.border,
@@ -229,8 +233,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   modifyBtn: { flex: 1, backgroundColor: Colors.white, borderWidth: 0.5, borderColor: Colors.borderMid, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
   modifyBtnText: { fontSize: 12, color: Colors.textPrimary },
   successCard: {
-    backgroundColor: Colors.white, borderRadius: 14, padding: 16,
-    alignItems: 'center', gap: 10, borderWidth: 0.5, borderColor: Colors.border,
+    backgroundColor: Colors.white, borderRadius: 18, padding: 18,
+    alignItems: 'center', gap: 10,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   successIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: Colors.tealLight, alignItems: 'center', justifyContent: 'center' },
   successTitle: { fontSize: 15, fontWeight: '500', color: Colors.textPrimary },

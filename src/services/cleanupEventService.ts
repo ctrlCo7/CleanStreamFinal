@@ -17,8 +17,8 @@ import {
   arrayUnion,
   arrayRemove,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { db } from './firebase';
+import { uploadToCloudinary } from './cloudinaryService';
 import { CleanupEvent, CleanupEventStatus, EventParticipant } from '../types';
 
 const COL = 'cleanupEvents';
@@ -131,13 +131,8 @@ export const getEventParticipants = async (eventId: string): Promise<EventPartic
   return snap.docs.map((d) => d.data() as EventParticipant);
 };
 
-export const uploadEventCoverPhoto = async (uri: string, eventId: string): Promise<string> => {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  const storageRef = ref(storage, `cleanupEvents/${eventId}/cover.jpg`);
-  await uploadBytes(storageRef, blob);
-  return getDownloadURL(storageRef);
-};
+export const uploadEventCoverPhoto = async (uri: string, eventId: string): Promise<string> =>
+  uploadToCloudinary(uri, `cleanupEvents/${eventId}`, 'cover.jpg');
 
 export const subscribeToUpcomingEvents = (callback: (events: CleanupEvent[]) => void) => {
   const q = query(

@@ -576,6 +576,8 @@ export type RootStackParamList = {
   BarangayVerifyDetail: { reportId: string };
   BarangayChat: { conversationId: string; participantName: string; reportTag?: string };
   BarangayAlarms: undefined;
+  AdminCheckpointAlarms: undefined;
+  AdminUserManagement: undefined;
 };
 
 export type CitizenTabParamList = {

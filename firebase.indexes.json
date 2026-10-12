@@ -1,6 +1,17 @@
 {
   "indexes": [
 
+    // ─── barangays ──────────────────────────────────────────────────────────────
+
+    {
+      "collectionGroup": "barangays",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "name",     "order": "ASCENDING" }
+      ]
+    },
+
     // ─── reports ────────────────────────────────────────────────────────────────
 
     {
@@ -231,17 +242,6 @@
 
     {
       "collectionGroup": "fieldCheckpoints",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "userId",    "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-
-    // ─── waterwayAlarms ──────────────────────────────────────────────────────────
-
-    {
-      "collectionGroup": "waterwayAlarms",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "userId",    "order": "ASCENDING" },

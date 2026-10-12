@@ -71,13 +71,13 @@ export default function CitizenHomeScreen() {
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Map', {})}>
-            <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+            <Svg width={18} height={18} viewBox="0 0 16 16" fill="none">
               <Path d="M8 2a5 5 0 0 1 5 5c0 3.5-5 8-5 8S3 10 3 7a5 5 0 0 1 5-5z" stroke={colors.textMuted} strokeWidth="1.8" strokeLinecap="round" />
               <Circle cx="8" cy="7" r="1.5" stroke={colors.textMuted} strokeWidth="1.8" />
             </Svg>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.iconBtn, styles.iconBtnRelative]} onPress={() => navigation.navigate('CitizenNotifications')}>
-            <BellIcon color={colors.textMuted} size={16} />
+            <BellIcon color={colors.textMuted} size={18} />
             {hasUnreadNotifs && <View style={styles.notifDot} />}
           </TouchableOpacity>
         </View>
@@ -197,7 +197,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   headerSub: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
   headerActions: { flexDirection: 'row', gap: 7 },
   iconBtn: {
-    width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.grayBg,
+    width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg,
     alignItems: 'center', justifyContent: 'center',
   },
   iconBtnRelative: { position: 'relative' },
@@ -207,7 +207,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     backgroundColor: Colors.red, borderWidth: 1.5, borderColor: Colors.white,
   },
   body: { flex: 1 },
-  bodyContent: { padding: 14, gap: 10, paddingBottom: 20 },
+  bodyContent: { padding: 16, gap: 14, paddingBottom: 24 },
   roleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   rolePill: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -217,8 +217,8 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   rolePillText: { fontSize: 10, fontWeight: '500', color: Colors.tealDark },
   signOut: { fontSize: 10, color: Colors.textMuted },
   reportCta: {
-    backgroundColor: Colors.teal, borderRadius: 14,
-    padding: 12, paddingHorizontal: 16, gap: 6,
+    backgroundColor: Colors.teal, borderRadius: 18,
+    padding: 16, paddingHorizontal: 18, gap: 7,
   },
   reportCtaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   reportCtaTitle: { fontSize: 13, fontWeight: '500', color: '#fff', flex: 1 },
@@ -232,16 +232,18 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 9, height: 9, borderRadius: 4.5 },
   legendText: { fontSize: 11, color: Colors.textMuted },
-  statsRow: { flexDirection: 'row', gap: 7 },
-  sectionTitle: { fontSize: 13, fontWeight: '500', color: Colors.textPrimary },
+  statsRow: { flexDirection: 'row', gap: 10 },
+  sectionTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
   emptyCard: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 16,
-    alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border,
+    backgroundColor: Colors.white, borderRadius: 18, padding: 20,
+    alignItems: 'center', shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   emptyText: { fontSize: 12, color: Colors.textHint, textAlign: 'center', lineHeight: 18 },
   reportCard: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 11,
-    paddingHorizontal: 13, borderWidth: 0.5, borderColor: Colors.border, gap: 6,
+    backgroundColor: Colors.white, borderRadius: 18, padding: 14,
+    paddingHorizontal: 16, gap: 8, shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   reportCardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   reportLocation: { fontSize: 13, fontWeight: '500', color: Colors.textPrimary, flex: 1, marginRight: 8 },

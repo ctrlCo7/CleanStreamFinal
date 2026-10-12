@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
@@ -139,6 +139,12 @@ export default function AdminHistoryScreen() {
                 </View>
                 <Badge variant={cp.status === 'verified' ? 'completed' : 'pending'} label={cp.status === 'verified' ? 'Verified' : 'Pending'} />
               </View>
+              {!!cp.photoURL && <Image source={{ uri: cp.photoURL }} style={styles.checkpointPhoto} />}
+              {!!cp.location && (
+                <Text style={styles.checkpointGps}>
+                  📍 {cp.location.latitude.toFixed(5)}, {cp.location.longitude.toFixed(5)}
+                </Text>
+              )}
               <View style={styles.historyMeta}>
                 {[
                   { k: 'Condition', v: cp.condition },
@@ -265,11 +271,16 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   viewToggleText: { fontSize: 12, fontWeight: '500', color: Colors.textMuted },
   viewToggleTextActive: { color: '#fff' },
   checkpointNotes: { fontSize: 11, color: Colors.textMuted, lineHeight: 16 },
+  checkpointPhoto: { width: '100%', height: 160, borderRadius: 12 },
+  checkpointGps: { fontSize: 10, color: Colors.textHint },
   verifyBtn: { backgroundColor: Colors.teal, borderRadius: 10, paddingVertical: 9, alignItems: 'center' },
   verifyBtnText: { fontSize: 12, fontWeight: '500', color: '#fff' },
-  body: { padding: 14, gap: 8, paddingBottom: 24 },
+  body: { padding: 16, gap: 14, paddingBottom: 24 },
   statsRow: { flexDirection: 'row', gap: 7 },
-  statCard: { flex: 1, backgroundColor: Colors.white, borderRadius: 12, padding: 10, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  statCard: {
+    flex: 1, backgroundColor: Colors.white, borderRadius: 16, padding: 13, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   statVal: { fontSize: 18, fontWeight: '500' },
   statLabel: { fontSize: 9, color: Colors.textMuted, marginTop: 2 },
   filterRow: { gap: 6, paddingVertical: 2 },
@@ -278,8 +289,8 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   filterChipText: { fontSize: 11, color: Colors.textMuted },
   filterChipTextActive: { color: '#fff', fontWeight: '500' },
   historyCard: {
-    backgroundColor: Colors.white, borderRadius: 13, padding: 12,
-    borderWidth: 0.5, borderColor: Colors.border, gap: 8,
+    backgroundColor: Colors.white, borderRadius: 16, padding: 14, gap: 8,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   historyTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
   dot: { width: 9, height: 9, borderRadius: 4.5, marginTop: 3 },
@@ -290,6 +301,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   metaKey: { fontSize: 9, color: Colors.textMuted },
   metaVal: { fontSize: 11, fontWeight: '500', color: Colors.textPrimary, marginTop: 1 },
   historyBadgeRow: { flexDirection: 'row' },
-  emptyCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 32, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  emptyCard: {
+    backgroundColor: Colors.white, borderRadius: 18, padding: 32, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   emptyText: { fontSize: 12, color: Colors.textHint },
 });

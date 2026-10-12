@@ -87,11 +87,12 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
   unreadBadge: { backgroundColor: Colors.brgyLight, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 },
   unreadText: { fontSize: 11, color: Colors.brgyDark, fontWeight: '500' },
-  body: { padding: 14, gap: 8, paddingBottom: 20 },
-  sectionTitle: { fontSize: 13, fontWeight: '500', color: Colors.textPrimary },
+  body: { padding: 16, gap: 14, paddingBottom: 20 },
+  sectionTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
   convItem: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 11,
-    flexDirection: 'row', alignItems: 'center', gap: 11, borderWidth: 0.5, borderColor: Colors.border,
+    backgroundColor: Colors.white, borderRadius: 16, padding: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 11,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   convUnread: { borderLeftWidth: 3, borderLeftColor: Colors.brgy },
   avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
@@ -105,6 +106,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   convMeta: { alignItems: 'flex-end', gap: 5 },
   convTime: { fontSize: 10, color: Colors.textHint },
   unreadDot: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: Colors.brgy },
-  emptyCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 32, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  emptyCard: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 34, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   emptyText: { fontSize: 12, color: Colors.textHint },
 });

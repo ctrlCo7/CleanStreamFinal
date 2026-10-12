@@ -72,7 +72,7 @@ export default function CitizenNotificationsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon /></TouchableOpacity>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon size={18} /></TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
         <TouchableOpacity onPress={clearAll} style={styles.clearBtn}>
           <Text style={styles.clearBtnText}>Clear all</Text>
@@ -138,22 +138,26 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: Colors.border,
   },
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
-  backBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
+  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
   clearBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   clearBtnText: { fontSize: 12, color: Colors.teal },
-  body: { padding: 14, gap: 6, paddingBottom: 20 },
-  emptyCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 32, alignItems: 'center', borderWidth: 0.5, borderColor: Colors.border },
+  body: { padding: 16, gap: 14, paddingBottom: 20 },
+  emptyCard: {
+    backgroundColor: Colors.white, borderRadius: 18, padding: 32, alignItems: 'center',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
   emptyText: { fontSize: 12, color: Colors.textHint },
   sectionHdr: {
     fontSize: 10, fontWeight: '500', color: Colors.textMuted,
     letterSpacing: 0.04, textTransform: 'uppercase', marginTop: 4, marginBottom: 4,
   },
   notifItem: {
-    backgroundColor: Colors.white, borderRadius: 12, padding: 11,
-    paddingHorizontal: 13, borderWidth: 0.5, borderColor: Colors.border,
+    backgroundColor: Colors.white, borderRadius: 16, padding: 14,
+    paddingHorizontal: 16,
     flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginBottom: 6,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
-  notifCritical: { backgroundColor: Colors.criticalBg, borderColor: 'rgba(192,57,43,0.22)' },
+  notifCritical: { backgroundColor: Colors.criticalBg, borderWidth: 1, borderColor: 'rgba(192,57,43,0.22)' },
   dot: { width: 9, height: 9, borderRadius: 4.5, flexShrink: 0, marginTop: 3 },
   notifTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
   notifBody: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
