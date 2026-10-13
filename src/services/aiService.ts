@@ -92,6 +92,23 @@ interface CloudAnalyzeResponse {
   error?: string;
 }
 
+// On-device inference (model download + WebGL init + detection) has no
+// built-in timeout -- on a slow network or a device where tf.ready()'s WebGL
+// context setup stalls, the awaited promise can simply never settle, leaving
+// the report screen's "Analyzing…" spinner stuck forever with no fallback
+// ever kicking in. Racing it against a timeout guarantees analyzeWastePhoto
+// always settles one way or another.
+const ON_DEVICE_TIMEOUT_MS = 25000;
+
+const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+
 // ─── Cloud Function caller ────────────────────────────────────────────────────
 
 const analyzeWithCloud = async (
@@ -373,9 +390,9 @@ export const analyzeWastePhoto = async (
   userId?: string,
 ): Promise<AIAnalysisResult> => {
   try {
-    return await analyzeOnDevice(photoUri);
+    return await withTimeout(analyzeOnDevice(photoUri), ON_DEVICE_TIMEOUT_MS, 'On-device analysis');
   } catch (err) {
-    console.warn('[AI] On-device analysis failed, trying cloud/simulation fallback:', err);
+    console.warn('[AI] On-device analysis failed or timed out, trying cloud/simulation fallback:', err);
   }
 
   if (reportId && userId) {
