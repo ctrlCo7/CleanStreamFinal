@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, memo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, memo } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import { ThemeColors } from '../constants/theme';
 import { RootStackParamList, WasteReport, SeverityLevel } from '../types';
 import { BackIcon } from '../components/common/TabIcons';
 import { useMapReports } from '../hooks/useMapReports';
+import { MapErrorBoundary } from '../components/common/MapErrorBoundary';
+import { OsmMapView, OsmMarker, escapeHtml } from '../components/common/OsmMapView';
 import {
   getMarkerColor,
   SEVERITY_COLORS,
@@ -26,6 +28,41 @@ import {
   ORDERED_SEVERITIES,
   SeverityCount,
 } from '../utils/mapUtils';
+
+// Google Maps' native view throws during init on devices without Google Play
+// Services (e.g. Huawei phones without GMS) -- if it hasn't reported ready
+// within this window, assume it silently failed and fall back to OSM.
+const MAP_READY_TIMEOUT_MS = 4000;
+
+// Builds the same callout content (photo, severity badge, barangay, waste
+// type, confidence, report number) as the native <Callout>, as HTML for the
+// Leaflet popup fallback.
+function buildPopupHtml(report: WasteReport): string {
+  const color     = getMarkerColor(report.severity);
+  const bgColor   = SEVERITY_BG[report.severity as SeverityLevel] ?? '#F9F9F9';
+  const emoji     = SEVERITY_EMOJIS[report.severity as SeverityLevel] ?? '⚪';
+  const sevLabel  = SEVERITY_LABELS[report.severity as SeverityLevel] ?? report.severity;
+  const barangay  = escapeHtml(report.location.barangay ?? report.barangay ?? 'Unknown');
+  const wasteLabel = escapeHtml(report.aiAnalysis?.wasteTypes?.[0]?.label ?? 'Waste detected');
+  const confidence = report.aiAnalysis?.confidence != null
+    ? `${Number(report.aiAnalysis.confidence).toFixed(1)}%`
+    : '—';
+  const reportNum = escapeHtml(report.reportNumber ?? report.id.slice(0, 12));
+
+  const photoHtml = report.photoURL
+    ? `<img src="${escapeHtml(report.photoURL)}" />`
+    : '';
+
+  return `${photoHtml}
+    <div style="display:inline-block;border-radius:6px;padding:3px 7px;background:${bgColor};margin-bottom:6px;">
+      <span style="font-size:11px;font-weight:700;color:${color};">${emoji} ${escapeHtml(sevLabel)}</span>
+    </div>
+    <div style="font-size:12px;font-weight:600;color:#1A1A18;">${barangay}</div>
+    <div style="font-size:10px;color:#6B6A64;margin-top:2px;">${wasteLabel}</div>
+    <div style="font-size:10px;color:#2E86DE;margin-top:3px;font-weight:600;">AI Confidence: ${confidence}</div>
+    <div style="font-size:9px;color:#9A9890;margin-top:2px;">${reportNum}</div>
+    <div class="cs-popup-tap" onclick="window.csNavigate('${report.id}')">Tap to view full report →</div>`;
+}
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Map'>;
 
@@ -163,6 +200,24 @@ export default function MapScreen({ navigation }: Props) {
   const { reports, loading, counts, total } = useMapReports();
   const [filter, setFilter] = useState('All');
 
+  // Google Maps crashes during native init on devices without Google Play
+  // Services; useFallbackMap switches the whole map to the OSM/Leaflet
+  // implementation, either because the native view threw (caught by
+  // MapErrorBoundary) or because it never reported ready in time.
+  const [useFallbackMap, setUseFallbackMap] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+
+  useEffect(() => {
+    if (useFallbackMap || mapReady || Platform.OS === 'web') return;
+    const timer = setTimeout(() => {
+      if (!mapReady) {
+        console.warn('[Map] Google Maps did not report ready in time, falling back to OSM map');
+        setUseFallbackMap(true);
+      }
+    }, MAP_READY_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [mapReady, useFallbackMap]);
+
   // Filtered marker list — recomputed only when reports or filter change
   const filtered = useMemo(() => {
     if (filter === 'All') return reports;
@@ -179,6 +234,19 @@ export default function MapScreen({ navigation }: Props) {
   );
 
   const handleFilter = useCallback((val: string) => setFilter(val), []);
+
+  const osmMarkers: OsmMarker[] = useMemo(
+    () =>
+      filtered.map((report) => ({
+        id: report.id,
+        latitude: report.location.latitude,
+        longitude: report.location.longitude,
+        color: getMarkerColor(report.severity),
+        glow: report.severity === 'critical' || report.severity === 'high',
+        popupHtml: buildPopupHtml(report),
+      })),
+    [filtered],
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -224,27 +292,32 @@ export default function MapScreen({ navigation }: Props) {
               Open CleanStream on iOS or Android (Expo Go or a dev build) to view the live waste map.
             </Text>
           </View>
+        ) : useFallbackMap ? (
+          <OsmMapView region={CEBU} markers={osmMarkers} onMarkerPress={handleNavigate} style={styles.map} />
         ) : (
-          <MapView
-            // Expo Go on iOS has no Google Maps SDK baked in (only Android's does) --
-            // forcing PROVIDER_GOOGLE there renders a blank map. Let iOS use the
-            // default Apple Maps provider; Android keeps Google Maps.
-            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-            style={styles.map}
-            initialRegion={CEBU}
-            showsUserLocation
-            showsMyLocationButton={false}
-            moveOnMarkerPress={false}
-          >
-            {filtered.map((report) => (
-              <SeverityMarker
-                key={report.id}
-                report={report}
-                onNavigate={handleNavigate}
-                styles={styles}
-              />
-            ))}
-          </MapView>
+          <MapErrorBoundary onError={() => setUseFallbackMap(true)}>
+            <MapView
+              // Expo Go on iOS has no Google Maps SDK baked in (only Android's does) --
+              // forcing PROVIDER_GOOGLE there renders a blank map. Let iOS use the
+              // default Apple Maps provider; Android keeps Google Maps.
+              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+              style={styles.map}
+              initialRegion={CEBU}
+              showsUserLocation
+              showsMyLocationButton={false}
+              moveOnMarkerPress={false}
+              onMapReady={() => setMapReady(true)}
+            >
+              {filtered.map((report) => (
+                <SeverityMarker
+                  key={report.id}
+                  report={report}
+                  onNavigate={handleNavigate}
+                  styles={styles}
+                />
+              ))}
+            </MapView>
+          </MapErrorBoundary>
         )}
 
         {/* Loading overlay */}

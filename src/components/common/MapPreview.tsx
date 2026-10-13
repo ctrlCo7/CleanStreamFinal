@@ -1,7 +1,14 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useTheme } from '../../hooks/useTheme';
+import { MapErrorBoundary } from './MapErrorBoundary';
+import { OsmMapView, OsmMarker } from './OsmMapView';
+
+// Same reasoning as MapScreen: Google Maps crashes on init on devices
+// without Google Play Services (e.g. Huawei without GMS); fall back to the
+// OSM/Leaflet widget if it throws or never reports ready in time.
+const MAP_READY_TIMEOUT_MS = 4000;
 
 interface HotspotPin {
   id: string;
@@ -41,31 +48,66 @@ export function MapPreview({
   };
   const resolvedAccent = accentColor ?? colors.tealDark;
 
+  const [useFallbackMap, setUseFallbackMap] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+
+  useEffect(() => {
+    if (useFallbackMap || mapReady || Platform.OS === 'web') return;
+    const timer = setTimeout(() => {
+      if (!mapReady) setUseFallbackMap(true);
+    }, MAP_READY_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [mapReady, useFallbackMap]);
+
+  const osmMarkers: OsmMarker[] = useMemo(
+    () =>
+      pins.map((pin) => ({
+        id: pin.id,
+        latitude: pin.latitude,
+        longitude: pin.longitude,
+        color: pinColors[pin.severity],
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pins],
+  );
+
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
       <View style={[styles.container, { height, backgroundColor: isDark ? colors.grayMid : '#D4EFE4' }]}>
         {Platform.OS !== 'web' && (
-          <MapView
-            style={StyleSheet.absoluteFill}
-            // Expo Go on iOS has no Google Maps SDK baked in -- forcing
-            // PROVIDER_GOOGLE there renders blank. Android keeps Google Maps.
-            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-            initialRegion={CEBU_REGION}
-            scrollEnabled={false}
-            zoomEnabled={false}
-            pitchEnabled={false}
-            rotateEnabled={false}
-            mapType="standard"
-            userInterfaceStyle={isDark ? 'dark' : 'light'}
-          >
-            {pins.map((pin) => (
-              <Marker
-                key={pin.id}
-                coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
-                pinColor={pinColors[pin.severity]}
-              />
-            ))}
-          </MapView>
+          useFallbackMap ? (
+            <OsmMapView
+              region={CEBU_REGION}
+              markers={osmMarkers}
+              interactive={false}
+              style={StyleSheet.absoluteFill}
+            />
+          ) : (
+            <MapErrorBoundary onError={() => setUseFallbackMap(true)}>
+              <MapView
+                style={StyleSheet.absoluteFill}
+                // Expo Go on iOS has no Google Maps SDK baked in -- forcing
+                // PROVIDER_GOOGLE there renders blank. Android keeps Google Maps.
+                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                initialRegion={CEBU_REGION}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                pitchEnabled={false}
+                rotateEnabled={false}
+                mapType="standard"
+                userInterfaceStyle={isDark ? 'dark' : 'light'}
+                onMapReady={() => setMapReady(true)}
+              >
+                {pins.map((pin) => (
+                  <Marker
+                    key={pin.id}
+                    coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
+                    pinColor={pinColors[pin.severity]}
+                  />
+                ))}
+              </MapView>
+            </MapErrorBoundary>
+          )
         )}
         <View style={[styles.tag, { position: 'absolute', bottom: 8, left: 10, backgroundColor: isDark ? 'rgba(30,30,29,0.88)' : 'rgba(255,255,255,0.88)' }]}>
           <Text style={[styles.tagText, { color: resolvedAccent }]}>{tagText}</Text>
