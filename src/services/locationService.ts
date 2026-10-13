@@ -74,13 +74,53 @@ export const requestLocationPermission = async (): Promise<boolean> => {
   return status === 'granted';
 };
 
+// expo-location's getCurrentPositionAsync has no built-in timeout -- without a
+// clear GPS fix (weak signal, indoors, or no Google Play Services to supply a
+// fast network-based fix) the native call can simply never resolve, leaving
+// the report screen's "Detecting..." state stuck forever since its own catch
+// block never gets a chance to run. Racing it against a timeout, then
+// retrying once at a cheaper accuracy, then falling back to any cached fix,
+// guarantees this always settles one way or another.
+const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Location request timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+
+const getPositionWithFallback = async (): Promise<Location.LocationObject> => {
+  try {
+    return await withTimeout(
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+      12000,
+    );
+  } catch {
+    // High accuracy (GPS-only) can stall with a weak signal -- Balanced mixes
+    // in network-based location and usually resolves much faster.
+  }
+
+  try {
+    return await withTimeout(
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      8000,
+    );
+  } catch {
+    // Still nothing -- fall back to any cached fix rather than failing outright.
+  }
+
+  const lastKnown = await Location.getLastKnownPositionAsync();
+  if (lastKnown) return lastKnown;
+
+  throw new Error('Unable to determine current location');
+};
+
 export const getCurrentLocation = async (): Promise<GeoLocation> => {
   const hasPermission = await requestLocationPermission();
   if (!hasPermission) throw new Error('Location permission denied');
 
-  const loc = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.High,
-  });
+  const loc = await getPositionWithFallback();
 
   const { latitude, longitude, accuracy } = loc.coords;
 
