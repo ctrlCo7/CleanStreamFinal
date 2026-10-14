@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 import { GeoLocation } from '../types';
+import { withTimeout } from '../utils/async';
 
 export const slugifyBarangay = (name: string): string =>
   name
@@ -81,15 +82,6 @@ export const requestLocationPermission = async (): Promise<boolean> => {
 // block never gets a chance to run. Racing it against a timeout, then
 // retrying once at a cheaper accuracy, then falling back to any cached fix,
 // guarantees this always settles one way or another.
-const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
-  new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Location request timed out after ${ms}ms`)), ms);
-    promise.then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (err) => { clearTimeout(timer); reject(err); },
-    );
-  });
-
 const getPositionWithFallback = async (): Promise<Location.LocationObject> => {
   try {
     return await withTimeout(

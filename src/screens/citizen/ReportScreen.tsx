@@ -17,6 +17,7 @@ import { analyzeWastePhoto, loadLocalModel } from '../../services/aiService';
 import { createReport, updateReportWithAI } from '../../services/reportsService';
 import { getNotificationRecipientsByRole, sendBulkNotification, sendReportNotification } from '../../services/notificationService';
 import { GeoLocation } from '../../types';
+import { withTimeout } from '../../utils/async';
 import { BackIcon, CameraIcon, CheckIcon } from '../../components/common/TabIcons';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 
@@ -145,7 +146,9 @@ export default function CitizenReportScreen() {
 
     try {
       console.log('[Submit] Running AI analysis for report:', reportId);
-      aiResult = await analyzeWastePhoto(photoUri, reportId, user.uid);
+      // Outer hard deadline on top of the per-stage timeouts inside analyzeWastePhoto,
+      // so the submit spinner can never outlive this no matter what stalls.
+      aiResult = await withTimeout(analyzeWastePhoto(photoUri, reportId, user.uid), 50000, 'AI analysis');
       console.log('[Submit] AI analysis complete. Severity:', aiResult.severityLevel,
         '| Confidence:', aiResult.confidence,
         '| Objects:', aiResult.objectCount ?? 'N/A',
@@ -159,7 +162,7 @@ export default function CitizenReportScreen() {
     if (aiResult) {
       try {
         console.log('[Submit] Saving AI result to Firestore...');
-        await updateReportWithAI(reportId, aiResult);
+        await withTimeout(updateReportWithAI(reportId, aiResult), 10000, 'Saving AI result');
         console.log('[Submit] AI result saved.');
       } catch (updateErr) {
         console.error('[Submit] AI result save failed (non-fatal):', updateErr);

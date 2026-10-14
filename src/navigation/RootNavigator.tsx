@@ -8,6 +8,7 @@ import { useTheme } from '../hooks/useTheme';
 import { RootStackParamList } from '../types';
 
 import SplashScreen from '../screens/SplashScreen';
+import LoadingScreen from '../screens/LoadingScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
 import SignupScreen from '../screens/auth/SignupScreen';
 import MapScreen from '../screens/MapScreen';
@@ -52,7 +53,7 @@ export default function RootNavigator() {
     return unsub;
   }, [dispatch]);
 
-  if (initializing) return null;
+  if (initializing) return <LoadingScreen />;
 
   const navTheme = {
     ...(isDark ? DarkTheme : DefaultTheme),

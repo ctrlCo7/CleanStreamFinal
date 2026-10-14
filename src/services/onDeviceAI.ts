@@ -68,6 +68,14 @@ async function ensureReady(): Promise<void> {
       // about if init ever needs a retry.
       await import('@tensorflow/tfjs-react-native');
       await tf.ready();
+      // If the GPU backend failed to initialize on this device, tfjs silently
+      // falls back to its pure-JS CPU backend, where coco-ssd/mobilenet inference
+      // blocks the JS thread for minutes -- freezing the UI so completely that
+      // timeouts can't even fire. Fail fast instead so the caller's fallback
+      // path takes over immediately.
+      if (tf.getBackend() !== 'rn-webgl') {
+        throw new Error(`rn-webgl backend unavailable (got "${tf.getBackend()}")`);
+      }
     })();
   }
   return readyPromise;

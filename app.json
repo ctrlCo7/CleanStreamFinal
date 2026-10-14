@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "CleanStreamComplete",
+    "name": "CleanStream",
     "slug": "CleanStreamComplete",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -20,7 +20,7 @@
     "android": {
       "package": "com.cleanstream.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#1D9E75",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -47,7 +47,15 @@
     "plugins": [
       "expo-font",
       "expo-image",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#1D9E75"
+        }
+      ],
       "expo-status-bar",
       "expo-web-browser",
       "react-native-maps",

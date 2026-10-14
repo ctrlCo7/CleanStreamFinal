@@ -3,7 +3,7 @@ import {
   View, Text, Animated, StyleSheet, TouchableOpacity, StatusBar,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import Svg, { Path, Circle } from 'react-native-svg';
+import { LogoMark } from '../components/common/LogoMark';
 import { RootStackParamList } from '../types';
 import { Colors } from '../constants/colors';
 
@@ -37,12 +37,7 @@ export default function SplashScreen({ navigation }: Props) {
 
       <View style={styles.body}>
         <Animated.View style={[styles.iconWrap, { opacity: fadeIcon }]}>
-          <Svg width={52} height={52} viewBox="0 0 52 52" fill="none">
-            <Path d="M6 34 Q13 26 20 30 Q27 34 34 26 Q41 18 46 22" stroke="white" strokeWidth="3" strokeLinecap="round" />
-            <Path d="M6 42 Q13 34 20 38 Q27 42 34 34 Q41 26 46 30" stroke="rgba(255,255,255,0.5)" strokeWidth="2.5" strokeLinecap="round" />
-            <Path d="M18 10 L26 6 L34 10 L34 22 Q26 28 18 22 Z" stroke="white" strokeWidth="2" strokeLinejoin="round" fill="rgba(255,255,255,0.12)" />
-            <Circle cx="26" cy="15" r="3" fill="white" />
-          </Svg>
+          <LogoMark size={52} />
         </Animated.View>
 
         <Animated.Text style={[styles.title, { opacity: fadeTitle }]}>

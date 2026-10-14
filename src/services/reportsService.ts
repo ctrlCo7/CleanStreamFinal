@@ -1,6 +1,6 @@
 import {
   collection,
-  addDoc,
+  setDoc,
   updateDoc,
   doc,
   getDocs,
@@ -15,6 +15,7 @@ import {
   GeoPoint,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { withTimeout } from '../utils/async';
 import { uploadToCloudinary } from './cloudinaryService';
 import {
   WasteReport,
@@ -97,7 +98,10 @@ export const createReport = async (
 
   // ── CRITICAL: create the Firestore document ───────────────────────────────
   console.log('[Report] Creating Firestore document...');
-  const docRef = await addDoc(collection(db, 'reports'), {
+  // Client-generated ID + setDoc (instead of addDoc) so a stalled server ack
+  // can't block us from knowing the report's ID.
+  const docRef = doc(collection(db, 'reports'));
+  const writePromise = setDoc(docRef, {
     reportNumber,
     userId,
     userRole,
@@ -117,21 +121,32 @@ export const createReport = async (
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  console.log('[Report] Firestore document created:', docRef.id);
-
-  // ── NON-CRITICAL: upload photo to Storage ─────────────────────────────────
   try {
-    console.log('[Report] Uploading photo to Firebase Storage...');
-    const photoURL = await uploadReportPhoto(photoUri, docRef.id);
-    await updateDoc(docRef, { photoURL });
-    console.log('[Report] Photo uploaded successfully:', photoURL);
-  } catch (uploadErr) {
-    console.error('[Report] Photo upload failed (non-fatal):', uploadErr);
-    // Store the local URI as a fallback so the rest of the app can still display
-    await updateDoc(docRef, { photoURL: photoUri }).catch((e) =>
-      console.warn('[Report] Could not set fallback photoURL:', e),
-    );
+    // Firestore only resolves once the server acks; offline or on a flaky
+    // connection that can take forever. The write stays queued and syncs when
+    // the connection returns, so after a grace period just carry on.
+    await withTimeout(writePromise, 15000, 'Report write');
+    console.log('[Report] Firestore document created:', docRef.id);
+  } catch (e) {
+    if (!(e instanceof Error) || !e.message.includes('timed out')) throw e;
+    console.warn('[Report] Server ack slow, continuing with queued write:', docRef.id);
+    writePromise.catch((err) => console.error('[Report] Queued write ultimately failed:', err));
   }
+
+  // ── NON-CRITICAL: upload photo (runs in the background so AI analysis and
+  // navigation don't wait on the network round trip) ─────────────────────────
+  uploadReportPhoto(photoUri, docRef.id)
+    .then(async (photoURL) => {
+      await updateDoc(docRef, { photoURL });
+      console.log('[Report] Photo uploaded successfully:', photoURL);
+    })
+    .catch(async (uploadErr) => {
+      console.error('[Report] Photo upload failed (non-fatal):', uploadErr);
+      // Store the local URI as a fallback so the rest of the app can still display
+      await updateDoc(docRef, { photoURL: photoUri }).catch((e) =>
+        console.warn('[Report] Could not set fallback photoURL:', e),
+      );
+    });
 
   return { reportId: docRef.id, reportNumber };
 };

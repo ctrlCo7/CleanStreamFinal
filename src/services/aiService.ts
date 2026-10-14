@@ -18,6 +18,7 @@ import {
 } from '../types';
 import app from './firebase';
 import { analyzeOnDevice, warmUpOnDeviceModels } from './onDeviceAI';
+import { withTimeout } from '../utils/async';
 
 // ─── Cloud Function response shape ───────────────────────────────────────────
 
@@ -99,15 +100,6 @@ interface CloudAnalyzeResponse {
 // ever kicking in. Racing it against a timeout guarantees analyzeWastePhoto
 // always settles one way or another.
 const ON_DEVICE_TIMEOUT_MS = 25000;
-
-const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
-  new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-    promise.then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (err) => { clearTimeout(timer); reject(err); },
-    );
-  });
 
 // ─── Cloud Function caller ────────────────────────────────────────────────────
 
@@ -398,7 +390,7 @@ export const analyzeWastePhoto = async (
   if (reportId && userId) {
     const storagePath = `reports/${reportId}/photo.jpg`;
     try {
-      return await analyzeWithCloud(storagePath, reportId, userId);
+      return await withTimeout(analyzeWithCloud(storagePath, reportId, userId), 8000, 'Cloud analysis');
     } catch (err) {
       console.warn('[AI] Cloud analysis failed, using local simulation:', err);
     }

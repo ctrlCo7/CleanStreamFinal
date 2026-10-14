@@ -12,6 +12,7 @@
  */
 const CLOUD_NAME = 'qqnsh2cn';
 const UPLOAD_PRESET = 'tzacbvdk';
+const UPLOAD_TIMEOUT_MS = 40000;
 
 // React Native's FormData {uri, type, name} shorthand throws "Unsupported
 // FormDataPart implementation" under this app's New Architecture setup --
@@ -43,10 +44,20 @@ export const uploadToCloudinary = async (
   formData.append('upload_preset', UPLOAD_PRESET);
   formData.append('folder', folder);
 
-  const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
-    method: 'POST',
-    body: formData,
-  });
+  // fetch has no default timeout -- a stalled connection would otherwise hang
+  // the caller indefinitely.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   const data = await response.json();
   if (!response.ok) {
