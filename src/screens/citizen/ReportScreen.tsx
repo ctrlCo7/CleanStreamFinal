@@ -12,7 +12,7 @@ import { ThemeColors } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { upsertReport } from '../../store/reportsSlice';
-import { getCurrentLocation, CEBU_BARANGAYS, CebuBarangay } from '../../services/locationService';
+import { watchLocation, CEBU_BARANGAYS, CebuBarangay } from '../../services/locationService';
 import { analyzeWastePhoto, loadLocalModel } from '../../services/aiService';
 import { createReport, updateReportWithAI } from '../../services/reportsService';
 import { getNotificationRecipientsByRole, sendBulkNotification, sendReportNotification } from '../../services/notificationService';
@@ -44,20 +44,51 @@ export default function CitizenReportScreen() {
   const [processing, setProcessing] = useState(false);
   const [aiStep, setAiStep] = useState(0);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const loc = await getCurrentLocation();
+  const stopWatchRef = useRef<(() => void) | null>(null);
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gotFixRef = useRef(false);
+  const pickedManuallyRef = useRef(false);
+
+  const stopWatching = () => {
+    stopWatchRef.current?.();
+    stopWatchRef.current = null;
+    if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+  };
+
+  // Live GPS: updates the coordinates and street address on the first fix and
+  // again as the device moves. If no fix arrives within 30s (e.g. indoors), the
+  // registered-barangay fallback is applied -- the watch keeps running, so a
+  // real fix still replaces it later unless the user picked a barangay by hand.
+  const startWatching = async () => {
+    stopWatching();
+    gotFixRef.current = false;
+    pickedManuallyRef.current = false;
+    setGeoStatus('detecting');
+
+    fallbackTimerRef.current = setTimeout(() => {
+      if (!gotFixRef.current) applyGpsFailureFallback();
+    }, 30000);
+
+    try {
+      stopWatchRef.current = await watchLocation((loc) => {
+        gotFixRef.current = true;
+        if (pickedManuallyRef.current) return;
         setLocation(loc);
         setGeoStatus('found');
-      } catch {
-        applyGpsFailureFallback();
-      }
-    })();
+      });
+    } catch {
+      applyGpsFailureFallback();
+    }
+  };
+
+  useEffect(() => {
+    startWatching();
     // Start downloading/warming the on-device AI models as soon as this screen
     // opens, so they're likely already loaded by the time the user finishes
     // framing and capturing their photo.
     loadLocalModel();
+    return stopWatching;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCamera = async () => {
@@ -240,15 +271,9 @@ export default function CitizenReportScreen() {
     }
   };
 
-  const refreshLocation = async () => {
-    setGeoStatus('detecting');
-    try {
-      const loc = await getCurrentLocation();
-      setLocation(loc);
-      setGeoStatus('found');
-    } catch {
-      applyGpsFailureFallback();
-    }
+  const refreshLocation = () => {
+    setLocation(null);
+    startWatching();
   };
 
   // Phones with no SIM / no Google Play Services can't get network-assisted
@@ -387,7 +412,7 @@ export default function CitizenReportScreen() {
                   <TouchableOpacity
                     key={b.id}
                     style={[styles.chip, location?.barangayId === b.id && geoStatus === 'manual' && styles.chipActive]}
-                    onPress={() => applyBarangay(b)}
+                    onPress={() => { pickedManuallyRef.current = true; applyBarangay(b); }}
                   >
                     <Text style={[styles.chipText, location?.barangayId === b.id && geoStatus === 'manual' && styles.chipTextActive]}>
                       {b.name}

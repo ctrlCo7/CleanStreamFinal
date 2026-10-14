@@ -75,13 +75,87 @@ export const requestLocationPermission = async (): Promise<boolean> => {
   return status === 'granted';
 };
 
+// ─── Reverse geocoding ────────────────────────────────────────────────────────
+
+interface Place { name?: string; address?: string }
+
+// Android's built-in geocoder is backed by Google Play Services, so on phones
+// without Google services (e.g. newer Huawei) it returns nothing or throws.
+const reverseGeocodeNative = async (latitude: number, longitude: number): Promise<Place | null> => {
+  try {
+    const [geo] = await withTimeout(Location.reverseGeocodeAsync({ latitude, longitude }), 6000, 'Native geocode');
+    if (!geo) return null;
+    const area = geo.district || geo.subregion;
+    return {
+      name: area || geo.city || undefined,
+      address: [geo.streetNumber, geo.street, area, geo.city].filter(Boolean).join(', ') || undefined,
+    };
+  } catch {
+    return null;
+  }
+};
+
+// OpenStreetMap Nominatim: free, no API key, no Google dependency.
+const reverseGeocodeOsm = async (latitude: number, longitude: number): Promise<Place | null> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+      { headers: { 'Accept-Language': 'en', 'User-Agent': 'CleanStream/1.0 (waste reporting app)' }, signal: controller.signal },
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const a = data?.address ?? {};
+    // Philippine barangays usually come back as suburb/quarter/neighbourhood/village.
+    const area = a.suburb || a.quarter || a.neighbourhood || a.village || a.city_district;
+    const city = a.city || a.town || a.municipality;
+    const address =
+      [a.house_number, a.road, area, city].filter(Boolean).join(', ') || data?.display_name || undefined;
+    return { name: area || city || undefined, address };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const enrichPosition = async (
+  coords: { latitude: number; longitude: number; accuracy: number | null },
+  timestamp: number,
+  cachedPlace?: Place | null,
+): Promise<{ loc: GeoLocation; place: Place | null }> => {
+  const { latitude, longitude, accuracy } = coords;
+  const nearest = getNearestBarangayEntry(latitude, longitude);
+
+  const place =
+    cachedPlace ??
+    (await reverseGeocodeNative(latitude, longitude)) ??
+    (await reverseGeocodeOsm(latitude, longitude));
+
+  const name = place?.name ?? nearest.name;
+  return {
+    place,
+    loc: {
+      latitude,
+      longitude,
+      accuracy: accuracy || undefined,
+      timestamp,
+      barangay: name,
+      // Only trust a geocoded name for barangayId if it matches the canonical list;
+      // otherwise keep the GPS-nearest match so the report still links to a real barangay.
+      barangayId: findBarangayByName(name)?.id ?? nearest.id,
+      address: place?.address ?? `${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E`,
+    },
+  };
+};
+
+// ─── Position ─────────────────────────────────────────────────────────────────
+
 // expo-location's getCurrentPositionAsync has no built-in timeout -- without a
-// clear GPS fix (weak signal, indoors, or no Google Play Services to supply a
-// fast network-based fix) the native call can simply never resolve, leaving
-// the report screen's "Detecting..." state stuck forever since its own catch
-// block never gets a chance to run. Racing it against a timeout, then
-// retrying once at a cheaper accuracy, then falling back to any cached fix,
-// guarantees this always settles one way or another.
+// clear GPS fix the native call can simply never resolve. Racing it against a
+// timeout, then retrying at a cheaper accuracy, then falling back to any
+// cached fix, guarantees this always settles one way or another.
 const getPositionWithFallback = async (): Promise<Location.LocationObject> => {
   try {
     return await withTimeout(
@@ -89,8 +163,7 @@ const getPositionWithFallback = async (): Promise<Location.LocationObject> => {
       30000,
     );
   } catch {
-    // High accuracy (GPS-only) can stall with a weak signal -- Balanced mixes
-    // in network-based location and usually resolves much faster.
+    // High accuracy (GPS-only) can stall with a weak signal.
   }
 
   try {
@@ -112,72 +185,43 @@ export const getCurrentLocation = async (): Promise<GeoLocation> => {
   const hasPermission = await requestLocationPermission();
   if (!hasPermission) throw new Error('Location permission denied');
 
-  const loc = await getPositionWithFallback();
-
-  const { latitude, longitude, accuracy } = loc.coords;
-
-  // Default fallback using nearest hardcoded barangay
-  const nearest = getNearestBarangayEntry(latitude, longitude);
-  let barangay = nearest.name;
-  let barangayId: string | undefined = nearest.id;
-  let address = `${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E`;
-
-  try {
-    const [geo] = await Location.reverseGeocodeAsync({ latitude, longitude });
-    if (geo) {
-      // district is the most specific administrative unit (barangay-level on some devices)
-      const reverseGeocodedName = geo.district || geo.subregion || geo.city || barangay;
-      barangay = reverseGeocodedName;
-      // Only trust the reverse-geocoded name for barangayId if it matches our canonical
-      // list -- otherwise keep the GPS-nearest match's ID so the report/account still
-      // links to a real barangay record instead of an unmatched free-text name.
-      barangayId = findBarangayByName(reverseGeocodedName)?.id ?? nearest.id;
-      address = [geo.streetNumber, geo.street, geo.district || geo.subregion, geo.city]
-        .filter(Boolean)
-        .join(', ');
-    }
-  } catch {
-    // keep fallback values
-  }
-
-  return {
-    latitude,
-    longitude,
-    accuracy: accuracy || undefined,
-    timestamp: loc.timestamp,
-    barangay,
-    barangayId,
-    address,
-  };
+  const pos = await getPositionWithFallback();
+  return (await enrichPosition(pos.coords, pos.timestamp)).loc;
 };
 
-export const watchLocation = (
+/**
+ * Live location: calls back on the first fix and again whenever the device
+ * moves, with the street address resolved for each. Resolves to an
+ * unsubscribe function; rejects if permission is denied.
+ */
+export const watchLocation = async (
   callback: (loc: GeoLocation) => void,
-) => {
-  let subscription: Location.LocationSubscription | null = null;
+): Promise<() => void> => {
+  const hasPermission = await requestLocationPermission();
+  if (!hasPermission) throw new Error('Location permission denied');
 
-  Location.watchPositionAsync(
-    { accuracy: Location.Accuracy.High, distanceInterval: 10 },
-    async (loc) => {
-      const { latitude, longitude, accuracy } = loc.coords;
-      const nearest = getNearestBarangayEntry(latitude, longitude);
-      let barangay = nearest.name;
-      let barangayId: string | undefined = nearest.id;
-      let address = `${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E`;
-      try {
-        const [geo] = await Location.reverseGeocodeAsync({ latitude, longitude });
-        if (geo) {
-          const reverseGeocodedName = geo.district || geo.subregion || geo.city || barangay;
-          barangay = reverseGeocodedName;
-          barangayId = findBarangayByName(reverseGeocodedName)?.id ?? nearest.id;
-          address = [geo.streetNumber, geo.street, geo.district || geo.subregion, geo.city]
-            .filter(Boolean)
-            .join(', ');
-        }
-      } catch { /* keep fallback */ }
-      callback({ latitude, longitude, accuracy: accuracy || undefined, timestamp: loc.timestamp, barangay, barangayId, address });
+  // Asks Android to also enable the network provider (Wi-Fi/cell positioning)
+  // for a faster first fix. Harmless if unsupported.
+  await Location.enableNetworkProviderAsync().catch(() => undefined);
+
+  let lastGeocoded: { latitude: number; longitude: number; place: Place | null } | null = null;
+
+  const subscription = await Location.watchPositionAsync(
+    { accuracy: Location.Accuracy.High, timeInterval: 4000, distanceInterval: 5 },
+    async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      // Re-resolving the address on every tiny GPS jitter would hammer the
+      // geocoder (Nominatim allows ~1 req/s), so reuse it within ~25 m.
+      const reuse =
+        lastGeocoded && lastGeocoded.place &&
+        haversineDistance(latitude, longitude, lastGeocoded.latitude, lastGeocoded.longitude) < 0.025
+          ? lastGeocoded.place
+          : undefined;
+      const { loc, place } = await enrichPosition(pos.coords, pos.timestamp, reuse);
+      if (!reuse) lastGeocoded = { latitude, longitude, place };
+      callback(loc);
     },
-  ).then((sub) => { subscription = sub; });
+  );
 
-  return () => subscription?.remove();
+  return () => subscription.remove();
 };
