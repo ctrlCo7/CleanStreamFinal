@@ -86,7 +86,7 @@ const getPositionWithFallback = async (): Promise<Location.LocationObject> => {
   try {
     return await withTimeout(
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
-      12000,
+      30000,
     );
   } catch {
     // High accuracy (GPS-only) can stall with a weak signal -- Balanced mixes
@@ -96,7 +96,7 @@ const getPositionWithFallback = async (): Promise<Location.LocationObject> => {
   try {
     return await withTimeout(
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-      8000,
+      10000,
     );
   } catch {
     // Still nothing -- fall back to any cached fix rather than failing outright.

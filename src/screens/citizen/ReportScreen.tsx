@@ -12,7 +12,7 @@ import { ThemeColors } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { upsertReport } from '../../store/reportsSlice';
-import { getCurrentLocation } from '../../services/locationService';
+import { getCurrentLocation, CEBU_BARANGAYS, CebuBarangay } from '../../services/locationService';
 import { analyzeWastePhoto, loadLocalModel } from '../../services/aiService';
 import { createReport, updateReportWithAI } from '../../services/reportsService';
 import { getNotificationRecipientsByRole, sendBulkNotification, sendReportNotification } from '../../services/notificationService';
@@ -39,7 +39,7 @@ export default function CitizenReportScreen() {
   const { user } = useAppSelector((s) => s.auth);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [location, setLocation] = useState<GeoLocation | null>(null);
-  const [geoStatus, setGeoStatus] = useState<'detecting' | 'found' | 'error'>('detecting');
+  const [geoStatus, setGeoStatus] = useState<'detecting' | 'found' | 'manual' | 'error'>('detecting');
   const [notes, setNotes] = useState('');
   const [processing, setProcessing] = useState(false);
   const [aiStep, setAiStep] = useState(0);
@@ -51,7 +51,7 @@ export default function CitizenReportScreen() {
         setLocation(loc);
         setGeoStatus('found');
       } catch {
-        setGeoStatus('error');
+        applyGpsFailureFallback();
       }
     })();
     // Start downloading/warming the on-device AI models as soon as this screen
@@ -247,8 +247,29 @@ export default function CitizenReportScreen() {
       setLocation(loc);
       setGeoStatus('found');
     } catch {
-      setGeoStatus('error');
+      applyGpsFailureFallback();
     }
+  };
+
+  // Phones with no SIM / no Google Play Services can't get network-assisted
+  // location, and raw GPS rarely locks indoors -- without a fallback the report
+  // could never be submitted. Use the barangay's center point instead.
+  const applyBarangay = (b: CebuBarangay) => {
+    setLocation({
+      latitude: b.lat,
+      longitude: b.lng,
+      timestamp: Date.now(),
+      barangay: b.name,
+      barangayId: b.id,
+      address: `${b.name} (approximate - GPS unavailable)`,
+    });
+    setGeoStatus('manual');
+  };
+
+  const applyGpsFailureFallback = () => {
+    const registered = CEBU_BARANGAYS.find((b) => b.id === user?.barangayId);
+    if (registered) applyBarangay(registered);
+    else setGeoStatus('error');
   };
 
   return (
@@ -316,7 +337,7 @@ export default function CitizenReportScreen() {
             <Text style={styles.geoCardTitle}>📍 Live GPS location</Text>
             <View style={[styles.geoBadge, geoStatus === 'found' ? styles.geoBadgeOk : styles.geoBadgePending]}>
               <Text style={[styles.geoBadgeText, geoStatus === 'found' && styles.geoBadgeTextOk]}>
-                {geoStatus === 'found' ? '✓ Verified' : geoStatus === 'detecting' ? 'Locating...' : 'Error'}
+                {geoStatus === 'found' ? '✓ Verified' : geoStatus === 'detecting' ? 'Locating...' : geoStatus === 'manual' ? 'Approximate' : 'No GPS'}
               </Text>
             </View>
           </View>
@@ -329,7 +350,7 @@ export default function CitizenReportScreen() {
             <View>
               <Text style={styles.geoLabel}>GPS coordinates</Text>
               <Text style={styles.geoValue}>
-                {location ? `${location.latitude.toFixed(4)}°N, ${location.longitude.toFixed(4)}°E` : 'Detecting...'}
+                {location ? `${geoStatus === 'manual' ? '≈ ' : ''}${location.latitude.toFixed(4)}°N, ${location.longitude.toFixed(4)}°E` : geoStatus === 'error' ? 'Not available' : 'Detecting...'}
               </Text>
             </View>
           </View>
@@ -341,7 +362,7 @@ export default function CitizenReportScreen() {
             </Svg>
             <View>
               <Text style={styles.geoLabel}>Barangay · Cebu City</Text>
-              <Text style={styles.geoValue}>{location?.barangay || 'Detecting...'}</Text>
+              <Text style={styles.geoValue}>{location?.barangay || (geoStatus === 'error' ? 'Choose below' : 'Detecting...')}</Text>
             </View>
           </View>
 
@@ -355,6 +376,27 @@ export default function CitizenReportScreen() {
               <Text style={styles.geoValue}>{new Date().toLocaleString()}</Text>
             </View>
           </View>
+
+          {(geoStatus === 'error' || geoStatus === 'manual') && (
+            <View style={styles.fallbackBox}>
+              <Text style={styles.fallbackHint}>
+                GPS couldn't get a fix (common indoors or without mobile data). Choose your barangay, or move outdoors and refresh.
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                {CEBU_BARANGAYS.map((b) => (
+                  <TouchableOpacity
+                    key={b.id}
+                    style={[styles.chip, location?.barangayId === b.id && geoStatus === 'manual' && styles.chipActive]}
+                    onPress={() => applyBarangay(b)}
+                  >
+                    <Text style={[styles.chipText, location?.barangayId === b.id && geoStatus === 'manual' && styles.chipTextActive]}>
+                      {b.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
 
           <TouchableOpacity onPress={refreshLocation}>
             <Text style={styles.refreshBtn}>🔄 Refresh location</Text>
@@ -462,6 +504,16 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   geoLabel: { fontSize: 10, color: Colors.textMuted },
   geoValue: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
   refreshBtn: { fontSize: 10, color: Colors.teal, alignSelf: 'flex-end' },
+  fallbackBox: { gap: 8, marginTop: 4 },
+  fallbackHint: { fontSize: 10, color: Colors.textMuted, lineHeight: 15 },
+  chipRow: { gap: 6 },
+  chip: {
+    paddingHorizontal: 11, paddingVertical: 6, borderRadius: 20,
+    backgroundColor: Colors.grayBg,
+  },
+  chipActive: { backgroundColor: Colors.teal },
+  chipText: { fontSize: 11, color: Colors.textPrimary },
+  chipTextActive: { color: '#fff', fontWeight: '600' },
   submitBtn: {
     backgroundColor: Colors.teal, borderRadius: 12,
     paddingVertical: 11, alignItems: 'center',
