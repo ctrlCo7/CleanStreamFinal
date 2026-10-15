@@ -16,11 +16,15 @@ import {
   WasteCategory,
   WasteClassification,
 } from '../types';
+import { PictogramHit, TextHazard } from './hazardDetection';
 
 // Below this overall confidence the result screen asks the reporter to say what the waste is.
 export const LOW_CONFIDENCE_THRESHOLD = 60;
 
 export interface RawDetection { class: string; score: number; bbox: [number, number, number, number] }
+/** Optional extra hazard evidence gathered from the photo (warning symbols, label text). */
+export interface HazardEvidence { pictograms?: PictogramHit[]; text?: TextHazard | null }
+
 export interface RawClassification { className: string; probability: number }
 
 // ─── COCO class -> CleanStream waste type mapping ──────────────────────────────
@@ -108,6 +112,7 @@ export const WASTE_TYPE_LABELS: Record<AIWasteType, string> = {
   food_waste: 'Food Waste',
   styrofoam: 'Styrofoam',
   cigarette_butt: 'Cigarette Butt',
+  hazardous_waste: 'Hazardous Waste',
   e_waste: 'E-Waste',
   mixed_waste: 'Mixed Waste',
   trash_pile: 'Trash Pile',
@@ -123,6 +128,7 @@ const WASTE_TYPE_COLORS: Record<AIWasteType, string> = {
   food_waste: '#639922',
   styrofoam: '#16A085',
   cigarette_butt: '#7F8C8D',
+  hazardous_waste: '#6C3483',
   e_waste: '#E07B3A',
   mixed_waste: '#E74C3C',
   trash_pile: '#922B21',
@@ -150,6 +156,12 @@ function resolveWasteType(cocoClass: string, mobileNetLabels: string[]): AIWaste
 // right instead of only nudging the category score. ImageNet has no cigarette
 // butt or foam class, so those two waste types cannot be identified on-device.
 const IMAGENET_TO_WASTE: Array<[RegExp, AIWasteType, number]> = [
+  // Container shapes that are often hazardous (medicine, aerosol, lighter fuel, sharps,
+  // used oil). Shape alone can't prove it, so these are reported as *possible* hazards
+  // with capped confidence; a warning symbol or label text is what confirms one.
+  [/syringe|gasmask/, 'hazardous_waste', 0.2],
+  [/pill bottle|lighter|oil filter/, 'hazardous_waste', 0.3],
+  [/hair spray/, 'hazardous_waste', 0.4], // looks like many ordinary pump/spray bottles
   [/water bottle|pop bottle|water jug/, 'plastic_bottle', 0.15],
   [/beer bottle|wine bottle|whiskey jug/, 'glass_bottle', 0.15],
   [/milk can|tin can|beer can|pop can/, 'metal_can', 0.15],
@@ -185,10 +197,11 @@ function classificationsToDetections(
       containerTaken = true;
     }
     alreadyFound.add(wasteType);
+    const shapeOnlyHazard = wasteType === 'hazardous_waste';
     found.push({
-      label: c.className.split(',')[0],
+      label: shapeOnlyHazard ? `Possible hazardous item (${c.className.split(',')[0]})` : c.className.split(',')[0],
       wasteType,
-      confidence: Math.round(c.probability * 100),
+      confidence: shapeOnlyHazard ? Math.min(60, Math.round(c.probability * 100)) : Math.round(c.probability * 100),
       // Whole-image classification has no location; use the full frame.
       bbox: { x: 0, y: 0, width: imageWidth, height: imageHeight },
       color: WASTE_TYPE_COLORS[wasteType],
@@ -221,6 +234,7 @@ const WASTE_TYPE_CATEGORY: Record<AIWasteType, WasteCategory> = {
   food_waste: 'organic',
   styrofoam: 'non_recyclable',
   cigarette_butt: 'hazardous',
+  hazardous_waste: 'hazardous',
   e_waste: 'electronic',
   mixed_waste: 'non_recyclable',
   trash_pile: 'non_recyclable',
@@ -263,6 +277,7 @@ const RECOMMENDATIONS: Record<AIWasteType, Omit<AIDisposalRecommendation, 'waste
   cardboard: { category: 'recyclable', action: 'Flatten cardboard boxes. Keep dry. Drop off at your barangay recycling center.', facility: 'Cardboard / Paper MRF', urgency: 'routine', icon: '📦' },
   food_waste: { category: 'organic', action: 'Place in the green biodegradable bin for composting. Do not mix with recyclables.', facility: 'Barangay Composting Facility', urgency: 'immediate', icon: '🥦' },
   styrofoam: { category: 'non_recyclable', action: 'Styrofoam is NOT recyclable in standard MRFs. Place in the black residual bin. Avoid burning.', facility: 'Sanitary Landfill / Designated Polystyrene Drop-Off', urgency: 'scheduled', icon: '📦' },
+  hazardous_waste: { category: 'hazardous', action: 'Do not touch with bare hands or mix with regular trash. Keep the container sealed and upright, away from water and children, and report it to the barangay for DENR hazardous waste collection.', facility: 'DENR-Accredited Hazardous Waste Treater / Barangay Hazardous Waste Drop-Off', urgency: 'immediate', icon: '☣️' },
   cigarette_butt: { category: 'hazardous', action: 'Contains nicotine, arsenic, and heavy metals that leach into waterways. Collect in a sealed container.', facility: 'DENR Hazardous Waste Drop-Off / TerraCycle Collection Point', urgency: 'immediate', icon: '🚬' },
   e_waste: { category: 'electronic', action: 'Do NOT dispose in regular bins. Bring to an e-waste collection drive. Contains lead, mercury, cadmium.', facility: 'DENR-Accredited E-Waste Facility', urgency: 'scheduled', icon: '📱' },
   mixed_waste: { category: 'non_recyclable', action: 'Place in the black residual waste bin. Try to separate recyclable components first.', facility: 'Sanitary Landfill', urgency: 'scheduled', icon: '🗑️' },
@@ -300,6 +315,9 @@ function severityFromScore(score: number): SeverityLevel {
   return 'low';
 }
 
+// Waste types that make a photo count as containing hazardous material.
+const HAZARDOUS_TYPES = new Set<AIWasteType>(['e_waste', 'cigarette_butt', 'hazardous_waste']);
+
 function computeEnvironmentalScore(
   detections: DetectedObject[],
   coverageRatio: number,
@@ -309,7 +327,7 @@ function computeEnvironmentalScore(
   const objectCountScore = objectCount === 0 ? 0 : Math.min(Math.round((Math.log2(1 + objectCount) / Math.log2(16)) * 25), 25);
   const densityFactor = Math.min(Math.round((densityScore / 10) * 25), 25);
 
-  const hazardDetections = detections.filter((d) => d.wasteType === 'e_waste' || d.wasteType === 'cigarette_butt');
+  const hazardDetections = detections.filter((d) => HAZARDOUS_TYPES.has(d.wasteType));
   const hazardFactor = hazardDetections.length === 0 ? 0 : Math.min(
     Math.round((Math.max(...hazardDetections.map((d) => d.confidence)) / 100) * 15 + Math.min((hazardDetections.length - 1) * 2.5, 10)),
     25,
@@ -346,7 +364,9 @@ function buildWasteTypeDistribution(detections: DetectedObject[]): WasteClassifi
   detections.forEach((d) => { counts[d.wasteType] = (counts[d.wasteType] ?? 0) + 1; });
   const total = detections.length;
   return (Object.entries(counts) as [AIWasteType, number][])
-    .sort(([, a], [, b]) => b - a)
+    // Hazardous waste always leads: it changes how the item must be handled, however
+    // many ordinary items are also in the frame.
+    .sort(([ta, a], [tb, b]) => (tb === 'hazardous_waste' ? 1 : 0) - (ta === 'hazardous_waste' ? 1 : 0) || b - a)
     .map(([type, count]) => ({
       type,
       percentage: Math.round((count / total) * 100),
@@ -395,11 +415,34 @@ function estimateVolume(objectCount: number, densityClass: EnvironmentalRiskScor
 }
 
 
+function hazardEvidenceToDetections(hazard: HazardEvidence | undefined, imageWidth: number, imageHeight: number): DetectedObject[] {
+  if (!hazard) return [];
+  const pic = [...(hazard.pictograms ?? [])].sort((a, b) => b.score - a.score)[0];
+  const text = hazard.text;
+  if (!pic && !text) return [];
+
+  // A warning symbol and its label text are evidence about the same item, so they
+  // become ONE detection (agreement raises confidence) instead of inflating the
+  // item count -- and with it the severity score.
+  const picConf = pic ? Math.min(95, Math.round(70 + pic.score * 25)) : 0;
+  const textConf = text ? text.confidence : 0;
+  const confidence = pic && text ? Math.min(98, Math.max(picConf, textConf) + 5) : Math.max(picConf, textConf);
+  const parts = [pic ? 'warning symbol' : null, text ? `label text: ${text.kinds.join(', ')}` : null].filter(Boolean);
+  return [{
+    label: `Hazard (${parts.join(' + ')})`,
+    wasteType: 'hazardous_waste',
+    confidence,
+    bbox: pic ? { x: pic.x, y: pic.y, width: pic.width, height: pic.height } : { x: 0, y: 0, width: imageWidth, height: imageHeight },
+    color: WASTE_TYPE_COLORS.hazardous_waste,
+  }];
+}
+
 export function buildAnalysisResult(
   predictions: RawDetection[],
   classifications: RawClassification[],
   imageWidth: number,
   imageHeight: number,
+  hazard?: HazardEvidence,
 ): AIAnalysisResult {
   const imageArea = imageWidth * imageHeight;
   const mobileNetLabels = classifications.map((c) => c.className.toLowerCase());
@@ -416,13 +459,15 @@ export function buildAnalysisResult(
       color: WASTE_TYPE_COLORS[wasteType],
     };
   });
+  // Hazard evidence goes first so hazardous waste leads the classification.
+  const hazardObjects = hazardEvidenceToDetections(hazard, imageWidth, imageHeight);
   const classifierObjects = classificationsToDetections(
     classifications,
-    new Set(cocoObjects.map((d) => d.wasteType)),
+    new Set([...hazardObjects, ...cocoObjects].map((d) => d.wasteType)),
     imageWidth,
     imageHeight,
   );
-  const detectedObjects: DetectedObject[] = [...cocoObjects, ...classifierObjects];
+  const detectedObjects: DetectedObject[] = [...hazardObjects, ...cocoObjects, ...classifierObjects];
 
   for (const pred of classifications) {
     const cls = pred.className.toLowerCase();
@@ -478,7 +523,7 @@ export function buildAnalysisResult(
     .map(([category, confidence]) => ({ category, confidence, label: CNN_CATEGORY_LABELS[category] }));
 
   const primary = sortedScores[0] ?? { category: 'non_recyclable' as WasteCategory, confidence: 50, label: 'Non-Recyclable' };
-  const hazardousDetected = detectedObjects.some((d) => d.wasteType === 'e_waste' || d.wasteType === 'cigarette_butt') || environmental.hazardousPresent;
+  const hazardousDetected = detectedObjects.some((d) => HAZARDOUS_TYPES.has(d.wasteType)) || environmental.hazardousPresent;
 
   // primary.confidence is the category's share of the detections (always ~100% for a
   // single detection), not how sure the models are. Report the strongest detection's

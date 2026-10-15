@@ -45,6 +45,8 @@ import * as mobilenetLib from '@tensorflow-models/mobilenet';
 import { File } from 'expo-file-system';
 import { AIAnalysisResult } from '../types';
 import { buildAnalysisResult } from './wasteAnalysis';
+import { PictogramHit, detectHazardPictograms, detectHazardText } from './hazardDetection';
+import { recognizeText } from './textRecognition';
 
 // ─── tfjs-react-native init (runs once, on first use) ─────────────────────────
 
@@ -144,6 +146,10 @@ async function readPhotoAsTensor(photoUri: string): Promise<tf.Tensor3D> {
 export async function analyzeOnDevice(photoUri: string): Promise<AIAnalysisResult> {
   const startMs = Date.now();
 
+  // Label-text reading runs natively and independently of the models, so start it now
+  // and collect it at the end.
+  const textPromise = recognizeText(photoUri);
+
   const [cocoModel, mobileNetModel] = await Promise.all([loadCocoModel(), loadMobileNetModel()]);
 
   const tensor = await readPhotoAsTensor(photoUri);
@@ -151,6 +157,7 @@ export async function analyzeOnDevice(photoUri: string): Promise<AIAnalysisResul
 
   let predictions: cocoSsd.DetectedObject[] = [];
   let classifications: Array<{ className: string; probability: number }> = [];
+  let pictograms: PictogramHit[] = [];
 
   // coco-ssd/mobilenet are supposed to tidy their own intermediate tensors, but
   // tfjs-react-native's stale rn-webgl backend paired with a much newer tfjs core
@@ -164,12 +171,22 @@ export async function analyzeOnDevice(photoUri: string): Promise<AIAnalysisResul
       cocoModel.detect(tensor, 20, 0.25),
       mobileNetModel.classify(tensor, 5),
     ]);
+    // Hazard warning symbols: plain pixel analysis on the same downscaled image.
+    try {
+      pictograms = detectHazardPictograms(await tensor.data(), imageWidth, imageHeight);
+    } catch (e) {
+      console.warn('[onDeviceAI] Warning-symbol detection failed (non-fatal):', e);
+    }
   } finally {
     tf.engine().endScope();
     tensor.dispose();
   }
 
-  const result = buildAnalysisResult(predictions, classifications, imageWidth, imageHeight);
+  const labelText = await textPromise;
+  const result = buildAnalysisResult(predictions, classifications, imageWidth, imageHeight, {
+    pictograms,
+    text: detectHazardText(labelText),
+  });
 
   const mem = tf.memory() as tf.MemoryInfo & { numBytesInGPU?: number };
   console.log(

@@ -32,7 +32,7 @@ export type WasteType = 'plastic' | 'organic' | 'hazardous' | 'metal' | 'electro
 export type AIWasteType =
   | 'plastic_bottle' | 'plastic_bag' | 'glass_bottle' | 'metal_can'
   | 'paper_waste' | 'cardboard' | 'food_waste' | 'styrofoam'
-  | 'cigarette_butt' | 'e_waste' | 'mixed_waste' | 'trash_pile';
+  | 'cigarette_butt' | 'e_waste' | 'mixed_waste' | 'trash_pile' | 'hazardous_waste';
 
 export type WasteCategory =
   | 'recyclable' | 'non_recyclable' | 'organic' | 'hazardous' | 'electronic'
