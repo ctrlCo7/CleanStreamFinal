@@ -30,8 +30,8 @@ export function LocationSearchModal({ visible, onClose, onSelect }: Props) {
     try {
       setResults(await searchPlaces(query));
       setSearched(true);
-    } catch {
-      setError('Search failed. Check your internet connection and try again.');
+    } catch (e) {
+      setError(`Search failed (${e instanceof Error ? e.message : 'unknown error'}). Please try again.`);
     } finally {
       setLoading(false);
     }

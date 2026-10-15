@@ -105,21 +105,64 @@ const placeFromNominatim = (item: { address?: Record<string, string>; display_na
   return { name: area || city || undefined, address };
 };
 
-// OpenStreetMap Nominatim: free, no API key, no Google dependency.
-const reverseGeocodeOsm = async (latitude: number, longitude: number): Promise<Place | null> => {
+// Two free, key-less OpenStreetMap-based services, tried in order so one being down,
+// rate-limited or rejecting a request doesn't take lookups down with it.
+const NOMINATIM_HEADERS = { 'Accept-Language': 'en', 'User-Agent': 'CleanStream/1.0 (waste reporting app)' };
+const CEBU_LAT = 10.3157;
+const CEBU_LON = 123.8854;
+
+// fetch with a timeout whose failure message says WHY it failed (HTTP status, timeout or
+// no connection) instead of one generic error.
+async function getJson<T>(url: string, headers: Record<string, string> | undefined, ms: number, label: string): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
+  const timer = setTimeout(() => controller.abort(), ms);
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
-      { headers: { 'Accept-Language': 'en', 'User-Agent': 'CleanStream/1.0 (waste reporting app)' }, signal: controller.signal },
-    );
-    if (!res.ok) return null;
-    return placeFromNominatim(await res.json());
-  } catch {
-    return null;
+    const res = await fetch(url, { headers, signal: controller.signal });
+    if (!res.ok) throw new Error(`${label} returned ${res.status}`);
+    return (await res.json()) as T;
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') throw new Error(`${label} timed out`);
+    if (e instanceof TypeError) throw new Error(`${label} unreachable`);
+    throw e;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+interface PhotonProps {
+  name?: string; street?: string; housenumber?: string;
+  locality?: string; district?: string; suburb?: string; city?: string; county?: string;
+}
+
+const placeFromPhoton = (p: PhotonProps): Place => {
+  const area = p.locality || p.district || p.suburb;
+  const city = p.city || p.county;
+  const street = p.street ? [p.housenumber, p.street].filter(Boolean).join(' ') : undefined;
+  const parts = [p.name, street, area, city].filter((x): x is string => !!x);
+  const address = parts.filter((x, i) => x !== parts[i - 1]).join(', ');
+  return { name: area || city, address: address || undefined };
+};
+
+const reverseGeocodeOsm = async (latitude: number, longitude: number): Promise<Place | null> => {
+  try {
+    return placeFromNominatim(
+      await getJson(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+        NOMINATIM_HEADERS, 8000, 'Nominatim',
+      ),
+    );
+  } catch {
+    // fall through to Photon
+  }
+  try {
+    const data = await getJson<{ features?: Array<{ properties: PhotonProps }> }>(
+      `https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`,
+      undefined, 8000, 'Photon',
+    );
+    const f = data.features?.[0];
+    return f ? placeFromPhoton(f.properties) : null;
+  } catch {
+    return null;
   }
 };
 
@@ -245,15 +288,13 @@ export interface PlaceResult {
 export const searchPlaces = async (query: string): Promise<PlaceResult[]> => {
   const q = query.trim();
   if (q.length < 2) return [];
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
+
+  let nominatimError = '';
   try {
-    const res = await fetch(
+    const items = await getJson<Array<{ place_id: number; lat: string; lon: string; name?: string; display_name: string; address?: Record<string, string> }>>(
       `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&countrycodes=ph&viewbox=123.70,10.50,124.05,10.15&q=${encodeURIComponent(q)}`,
-      { headers: { 'Accept-Language': 'en', 'User-Agent': 'CleanStream/1.0 (waste reporting app)' }, signal: controller.signal },
+      NOMINATIM_HEADERS, 10000, 'Nominatim',
     );
-    if (!res.ok) throw new Error(`Search failed (${res.status})`);
-    const items: Array<{ place_id: number; lat: string; lon: string; name?: string; display_name: string; address?: Record<string, string> }> = await res.json();
     return items.map((it) => {
       const place = placeFromNominatim(it);
       return {
@@ -265,8 +306,29 @@ export const searchPlaces = async (query: string): Promise<PlaceResult[]> => {
         place,
       };
     });
-  } finally {
-    clearTimeout(timer);
+  } catch (e) {
+    nominatimError = e instanceof Error ? e.message : 'Nominatim failed';
+  }
+
+  try {
+    const data = await getJson<{ features?: Array<{ geometry: { coordinates: [number, number] }; properties: PhotonProps & { osm_id?: number } }> }>(
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lat=${CEBU_LAT}&lon=${CEBU_LON}&bbox=123.70,10.15,124.05,10.50&limit=8`,
+      undefined, 15000, 'Photon',
+    );
+    return (data.features ?? []).map((f, i) => {
+      const place = placeFromPhoton(f.properties);
+      return {
+        id: `${f.properties.osm_id ?? i}-${i}`,
+        title: f.properties.name || place.address?.split(',')[0] || q,
+        subtitle: place.address ?? q,
+        latitude: f.geometry.coordinates[1],
+        longitude: f.geometry.coordinates[0],
+        place,
+      };
+    });
+  } catch (e) {
+    const photonError = e instanceof Error ? e.message : 'Photon failed';
+    throw new Error(`${nominatimError}; ${photonError}`);
   }
 };
 
