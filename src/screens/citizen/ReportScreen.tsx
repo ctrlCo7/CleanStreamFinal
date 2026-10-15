@@ -197,7 +197,12 @@ Is this where you are?`,
       clearInterval(stepInterval);
       setProcessing(false);
       console.error('[Submit] CRITICAL — Firestore document creation failed:', criticalErr);
-      Alert.alert('Submission failed', 'Could not save your report. Please check your connection and try again.');
+      const detail = criticalErr instanceof Error ? criticalErr.message : String(criticalErr);
+      Alert.alert('Submission failed', `Could not save your report.
+
+${detail}
+
+Please check your connection and try again.`);
       return;
     }
 

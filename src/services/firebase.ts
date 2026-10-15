@@ -1,7 +1,7 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth, initializeAuth, inMemoryPersistence } from 'firebase/auth';
 import { getDatabase } from 'firebase/database';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore } from 'firebase/firestore';
 
 
 const firebaseConfig = {
@@ -29,6 +29,16 @@ try {
 }
 
 export { auth };
-export const db = getFirestore(app);
+// Firestore rejects any document containing an `undefined` value ("Unsupported field
+// value: undefined"), which made saving a report fail whenever an optional field such
+// as GPS accuracy was absent. Dropping undefined fields instead is the safe behavior
+// for this app's optional fields.
+export const db = (() => {
+  try {
+    return initializeFirestore(app, { ignoreUndefinedProperties: true });
+  } catch {
+    return getFirestore(app); // already initialized (e.g. fast refresh)
+  }
+})();
 export const rtdb = getDatabase(app);
 export default app;

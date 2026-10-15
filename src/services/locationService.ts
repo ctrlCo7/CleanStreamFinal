@@ -185,7 +185,7 @@ const enrichPosition = async (
     loc: {
       latitude,
       longitude,
-      accuracy: accuracy || undefined,
+      ...(accuracy ? { accuracy } : {}),
       timestamp,
       barangay: name,
       // Only trust a geocoded name for barangayId if it matches the canonical list;
