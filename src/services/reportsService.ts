@@ -414,3 +414,12 @@ export const subscribeToCriticalReports = (callback: (reports: WasteReport[]) =>
     callback(snap.docs.map((d) => (normalizeReport(d.id, d.data()))));
   });
 };
+
+// ─── Reporter's own waste-type answer ─────────────────────────────────────────
+
+export const setCitizenWasteType = async (reportId: string, wasteType: AIWasteType): Promise<void> => {
+  await updateDoc(doc(db, 'reports', reportId), {
+    citizenWasteType: wasteType,
+    updatedAt: serverTimestamp(),
+  });
+};

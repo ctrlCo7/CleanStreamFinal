@@ -17,6 +17,9 @@ import {
   WasteClassification,
 } from '../types';
 
+// Below this overall confidence the result screen asks the reporter to say what the waste is.
+export const LOW_CONFIDENCE_THRESHOLD = 60;
+
 export interface RawDetection { class: string; score: number; bbox: [number, number, number, number] }
 export interface RawClassification { className: string; probability: number }
 
@@ -95,7 +98,7 @@ function isWasteDetection(p: RawDetection): boolean {
   return (cls === 'bottle' || cls in COCO_TO_WASTE) && p.score >= cocoMinScore(cls);
 }
 
-const WASTE_TYPE_LABELS: Record<AIWasteType, string> = {
+export const WASTE_TYPE_LABELS: Record<AIWasteType, string> = {
   plastic_bottle: 'Plastic Bottle',
   plastic_bag: 'Plastic Bag',
   glass_bottle: 'Glass Bottle',

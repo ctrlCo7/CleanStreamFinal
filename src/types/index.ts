@@ -175,6 +175,8 @@ export interface WasteReport {
   // is itself a valid positive training example, not just corrections.
   groundTruthSeverity?: SeverityLevel;
   groundTruthWasteType?: AIWasteType;
+  // What the reporter says the waste is (confirmed or corrected on the AI result screen).
+  citizenWasteType?: AIWasteType;
   statusHistory: StatusHistoryEntry[];
   createdAt: string;
   updatedAt: string;

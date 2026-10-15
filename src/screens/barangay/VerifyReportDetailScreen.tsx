@@ -11,25 +11,11 @@ import { Badge } from '../../components/common/Badge';
 import { BackIcon } from '../../components/common/TabIcons';
 import { useAppSelector } from '../../store/hooks';
 import { getReportById, verifyReport, rejectReport } from '../../services/reportsService';
+import { WASTE_TYPE_LABELS } from '../../services/wasteAnalysis';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BarangayVerifyDetail'>;
 
 const SEVERITY_LEVELS: SeverityLevel[] = ['low', 'moderate', 'high', 'critical'];
-
-const WASTE_TYPE_LABELS: Record<AIWasteType, string> = {
-  plastic_bottle: 'Plastic Bottle',
-  plastic_bag: 'Plastic Bag',
-  glass_bottle: 'Glass Bottle',
-  metal_can: 'Metal / Can',
-  paper_waste: 'Paper Waste',
-  cardboard: 'Cardboard',
-  food_waste: 'Food Waste',
-  styrofoam: 'Styrofoam',
-  cigarette_butt: 'Cigarette Butt',
-  e_waste: 'E-Waste',
-  mixed_waste: 'Mixed Waste',
-  trash_pile: 'Trash Pile',
-};
 
 const WASTE_TYPE_OPTIONS = Object.keys(WASTE_TYPE_LABELS) as AIWasteType[];
 
@@ -52,7 +38,7 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
       setLoading(false);
       if (r) {
         setConfirmedSeverity(r.severity);
-        setConfirmedWasteType((r.aiAnalysis?.wasteTypes?.[0]?.type as AIWasteType) ?? 'mixed_waste');
+        setConfirmedWasteType(r.citizenWasteType ?? (r.aiAnalysis?.wasteTypes?.[0]?.type as AIWasteType) ?? 'mixed_waste');
       }
     });
   }, [reportId]);
@@ -192,6 +178,11 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
                 <Text style={styles.selectorArrow}>▾</Text>
               </TouchableOpacity>
             </View>
+            {!!report?.citizenWasteType && (
+              <Text style={styles.confirmLabel}>
+                Reporter says: {WASTE_TYPE_LABELS[report.citizenWasteType]}
+              </Text>
+            )}
           </View>
         )}
 

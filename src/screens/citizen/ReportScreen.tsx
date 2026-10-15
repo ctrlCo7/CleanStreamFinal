@@ -51,6 +51,7 @@ export default function CitizenReportScreen() {
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gotFixRef = useRef(false);
   const pickedManuallyRef = useRef(false);
+  const confirmPromptedRef = useRef(false);
 
   const stopWatching = () => {
     stopWatchRef.current?.();
@@ -67,6 +68,7 @@ export default function CitizenReportScreen() {
     stopWatching();
     gotFixRef.current = false;
     pickedManuallyRef.current = false;
+    confirmPromptedRef.current = false;
     setGeoStatus('detecting');
 
     // After 15s without a fix, offer to search for the location by name instead.
@@ -92,6 +94,24 @@ export default function CitizenReportScreen() {
         if (pickedManuallyRef.current) return;
         setLocation(loc);
         setGeoStatus('found');
+        // First real fix: ask the user to confirm it before anything else, and only
+        // offer the manual search if they say it's not where they are.
+        if (!confirmPromptedRef.current) {
+          confirmPromptedRef.current = true;
+          Alert.alert(
+            'Confirm your location',
+            `${loc.address ?? 'Your detected location'}
+
+Barangay: ${loc.barangay ?? 'Unknown'}
+
+Is this where you are?`,
+            [
+              { text: 'No, search instead', style: 'cancel', onPress: () => setShowSearch(true) },
+              { text: "Yes, that's right" },
+            ],
+            { cancelable: false },
+          );
+        }
       });
     } catch {
       applyGpsFailureFallback();

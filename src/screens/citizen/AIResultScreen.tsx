@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView,
 } from 'react-native';
@@ -6,11 +6,16 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
-import { RootStackParamList } from '../../types';
+import { AIWasteType, RootStackParamList } from '../../types';
+import { LOW_CONFIDENCE_THRESHOLD, WASTE_TYPE_LABELS } from '../../services/wasteAnalysis';
+import { setCitizenWasteType } from '../../services/reportsService';
+import { withTimeout } from '../../utils/async';
 import { Badge } from '../../components/common/Badge';
 import { BackIcon, CheckIcon } from '../../components/common/TabIcons';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CitizenAIResult'>;
+
+const WASTE_TYPE_OPTIONS = Object.keys(WASTE_TYPE_LABELS) as AIWasteType[];
 
 function buildSevColors(colors: ThemeColors) {
   return {
@@ -27,6 +32,29 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
   const SEV_COLORS = useMemo(() => buildSevColors(colors), [colors]);
   const { report } = route.params;
   const ai = report.aiAnalysis;
+
+  // Reporter's own answer to "what is this waste?" -- saved on the report so reviewers
+  // see it, and kept apart from the AI's output so the two can be compared for training.
+  const lowConf = !ai || ai.confidence < LOW_CONFIDENCE_THRESHOLD || !ai.detectedObjects?.length;
+  const aiTopType = (ai?.wasteTypes?.[0]?.type as AIWasteType | undefined) ?? 'mixed_waste';
+  const [choice, setChoice] = useState<AIWasteType | null>(report.citizenWasteType ?? null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+
+  const saveChoice = async (type: AIWasteType) => {
+    setSaving(true);
+    setSaveError(false);
+    try {
+      await withTimeout(setCitizenWasteType(report.id, type), 10000, 'Saving waste type');
+      setChoice(type);
+      setPickerOpen(false);
+    } catch {
+      setSaveError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (!ai) {
     return (
@@ -113,6 +141,57 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
               <Text style={styles.wastePct}>{wt.percentage}%</Text>
             </View>
           ))}
+        </View>
+
+        {/* Reporter confirms or corrects the waste type */}
+        <View style={[styles.correctCard, lowConf && !choice && styles.correctCardWarn]}>
+          {choice ? (
+            <>
+              <Text style={styles.correctTitle}>✓ You identified this as {WASTE_TYPE_LABELS[choice]}</Text>
+              <Text style={styles.correctSub}>Saved with your report. It helps reviewers and improves the AI.</Text>
+              {!pickerOpen && (
+                <TouchableOpacity onPress={() => setPickerOpen(true)}>
+                  <Text style={styles.correctLink}>Change</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <>
+              <Text style={styles.correctTitle}>
+                {lowConf ? "We're not sure about this result" : 'Is this waste type right?'}
+              </Text>
+              <Text style={styles.correctSub}>
+                {lowConf
+                  ? "The AI couldn't identify the waste confidently. Please tell us what it is."
+                  : 'Confirm or correct it. Your answer improves future results.'}
+              </Text>
+              {!lowConf && !pickerOpen && (
+                <View style={styles.correctBtnRow}>
+                  <TouchableOpacity style={styles.correctBtnPrimary} disabled={saving} onPress={() => saveChoice(aiTopType)}>
+                    <Text style={styles.correctBtnPrimaryText}>✓ Looks right</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.correctBtn} onPress={() => setPickerOpen(true)}>
+                    <Text style={styles.correctBtnText}>Change</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
+          )}
+          {(pickerOpen || (lowConf && !choice)) && (
+            <View style={styles.chipWrap}>
+              {WASTE_TYPE_OPTIONS.map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.chip, choice === t && styles.chipActive]}
+                  disabled={saving}
+                  onPress={() => saveChoice(t)}
+                >
+                  <Text style={[styles.chipText, choice === t && styles.chipTextActive]}>{WASTE_TYPE_LABELS[t]}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {saveError && <Text style={styles.correctError}>Couldn't save. Check your connection and try again.</Text>}
         </View>
 
         {/* Detected objects (YOLO) */}
@@ -351,4 +430,23 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   recUrgencyText: { fontSize: 9, fontWeight: '600', textTransform: 'capitalize' },
   recAction: { fontSize: 11, color: Colors.textMuted, lineHeight: 16 },
+  correctCard: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 16, gap: 8,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
+  correctCardWarn: { borderWidth: 1.5, borderColor: Colors.amber },
+  correctTitle: { fontSize: 13, fontWeight: '600', color: Colors.textPrimary },
+  correctSub: { fontSize: 11, color: Colors.textMuted, lineHeight: 16 },
+  correctLink: { fontSize: 11, fontWeight: '600', color: Colors.teal },
+  correctBtnRow: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  correctBtnPrimary: { flex: 1, backgroundColor: Colors.teal, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  correctBtnPrimaryText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  correctBtn: { flex: 1, backgroundColor: Colors.grayBg, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  correctBtnText: { color: Colors.textPrimary, fontSize: 12, fontWeight: '600' },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: Colors.grayBg },
+  chipActive: { backgroundColor: Colors.teal },
+  chipText: { fontSize: 11, color: Colors.textPrimary },
+  chipTextActive: { color: '#fff', fontWeight: '600' },
+  correctError: { fontSize: 11, color: Colors.red },
 });
