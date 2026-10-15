@@ -95,6 +95,16 @@ const reverseGeocodeNative = async (latitude: number, longitude: number): Promis
   }
 };
 
+// Philippine barangays usually come back from Nominatim as
+// suburb/quarter/neighbourhood/village.
+const placeFromNominatim = (item: { address?: Record<string, string>; display_name?: string }): Place => {
+  const a = item.address ?? {};
+  const area = a.suburb || a.quarter || a.neighbourhood || a.village || a.city_district;
+  const city = a.city || a.town || a.municipality;
+  const address = [a.house_number, a.road, area, city].filter(Boolean).join(', ') || item.display_name || undefined;
+  return { name: area || city || undefined, address };
+};
+
 // OpenStreetMap Nominatim: free, no API key, no Google dependency.
 const reverseGeocodeOsm = async (latitude: number, longitude: number): Promise<Place | null> => {
   const controller = new AbortController();
@@ -105,14 +115,7 @@ const reverseGeocodeOsm = async (latitude: number, longitude: number): Promise<P
       { headers: { 'Accept-Language': 'en', 'User-Agent': 'CleanStream/1.0 (waste reporting app)' }, signal: controller.signal },
     );
     if (!res.ok) return null;
-    const data = await res.json();
-    const a = data?.address ?? {};
-    // Philippine barangays usually come back as suburb/quarter/neighbourhood/village.
-    const area = a.suburb || a.quarter || a.neighbourhood || a.village || a.city_district;
-    const city = a.city || a.town || a.municipality;
-    const address =
-      [a.house_number, a.road, area, city].filter(Boolean).join(', ') || data?.display_name || undefined;
-    return { name: area || city || undefined, address };
+    return placeFromNominatim(await res.json());
   } catch {
     return null;
   } finally {
@@ -224,4 +227,55 @@ export const watchLocation = async (
   );
 
   return () => subscription.remove();
+};
+
+// ─── Manual place search (when GPS can't get a fix) ───────────────────────────
+
+export interface PlaceResult {
+  id: string;
+  title: string;
+  subtitle: string;
+  latitude: number;
+  longitude: number;
+  place: Place;
+}
+
+/** Forward-geocodes free text ("Colon Street", "Guadalupe") via OpenStreetMap,
+ * biased toward Cebu City. */
+export const searchPlaces = async (query: string): Promise<PlaceResult[]> => {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&countrycodes=ph&viewbox=123.70,10.50,124.05,10.15&q=${encodeURIComponent(q)}`,
+      { headers: { 'Accept-Language': 'en', 'User-Agent': 'CleanStream/1.0 (waste reporting app)' }, signal: controller.signal },
+    );
+    if (!res.ok) throw new Error(`Search failed (${res.status})`);
+    const items: Array<{ place_id: number; lat: string; lon: string; name?: string; display_name: string; address?: Record<string, string> }> = await res.json();
+    return items.map((it) => {
+      const place = placeFromNominatim(it);
+      return {
+        id: String(it.place_id),
+        title: it.name || place.address?.split(',')[0] || it.display_name.split(',')[0],
+        subtitle: it.display_name,
+        latitude: parseFloat(it.lat),
+        longitude: parseFloat(it.lon),
+        place,
+      };
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+/** Turns a chosen search result into a GeoLocation (no extra geocoding request). */
+export const locationFromPlaceResult = async (r: PlaceResult): Promise<GeoLocation> => {
+  const { loc } = await enrichPosition(
+    { latitude: r.latitude, longitude: r.longitude, accuracy: null },
+    Date.now(),
+    r.place,
+  );
+  return loc;
 };

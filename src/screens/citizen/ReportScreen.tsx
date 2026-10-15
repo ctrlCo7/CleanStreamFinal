@@ -18,6 +18,7 @@ import { createReport, updateReportWithAI } from '../../services/reportsService'
 import { getNotificationRecipientsByRole, sendBulkNotification, sendReportNotification } from '../../services/notificationService';
 import { GeoLocation } from '../../types';
 import { withTimeout } from '../../utils/async';
+import { LocationSearchModal } from '../../components/common/LocationSearchModal';
 import { BackIcon, CameraIcon, CheckIcon } from '../../components/common/TabIcons';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 
@@ -44,6 +45,8 @@ export default function CitizenReportScreen() {
   const [processing, setProcessing] = useState(false);
   const [aiStep, setAiStep] = useState(0);
 
+  const [showSearch, setShowSearch] = useState(false);
+  const promptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopWatchRef = useRef<(() => void) | null>(null);
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gotFixRef = useRef(false);
@@ -53,6 +56,7 @@ export default function CitizenReportScreen() {
     stopWatchRef.current?.();
     stopWatchRef.current = null;
     if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+    if (promptTimerRef.current) clearTimeout(promptTimerRef.current);
   };
 
   // Live GPS: updates the coordinates and street address on the first fix and
@@ -64,6 +68,19 @@ export default function CitizenReportScreen() {
     gotFixRef.current = false;
     pickedManuallyRef.current = false;
     setGeoStatus('detecting');
+
+    // After 15s without a fix, offer to search for the location by name instead.
+    promptTimerRef.current = setTimeout(() => {
+      if (gotFixRef.current || pickedManuallyRef.current) return;
+      Alert.alert(
+        'Still looking for GPS',
+        'This is taking longer than usual (GPS is weak indoors). Search for your current location instead?',
+        [
+          { text: 'Keep waiting', style: 'cancel' },
+          { text: 'Search location', onPress: () => setShowSearch(true) },
+        ],
+      );
+    }, 15000);
 
     fallbackTimerRef.current = setTimeout(() => {
       if (!gotFixRef.current) applyGpsFailureFallback();
@@ -362,7 +379,7 @@ export default function CitizenReportScreen() {
             <Text style={styles.geoCardTitle}>📍 Live GPS location</Text>
             <View style={[styles.geoBadge, geoStatus === 'found' ? styles.geoBadgeOk : styles.geoBadgePending]}>
               <Text style={[styles.geoBadgeText, geoStatus === 'found' && styles.geoBadgeTextOk]}>
-                {geoStatus === 'found' ? '✓ Verified' : geoStatus === 'detecting' ? 'Locating...' : geoStatus === 'manual' ? 'Approximate' : 'No GPS'}
+                {geoStatus === 'found' ? '✓ Verified' : geoStatus === 'detecting' ? 'Locating...' : geoStatus === 'manual' ? 'Manual' : 'No GPS'}
               </Text>
             </View>
           </View>
@@ -401,6 +418,12 @@ export default function CitizenReportScreen() {
               <Text style={styles.geoValue}>{new Date().toLocaleString()}</Text>
             </View>
           </View>
+
+          {geoStatus !== 'found' && (
+            <TouchableOpacity style={styles.searchLocationBtn} onPress={() => setShowSearch(true)}>
+              <Text style={styles.searchLocationText}>🔍 Search my location instead</Text>
+            </TouchableOpacity>
+          )}
 
           {(geoStatus === 'error' || geoStatus === 'manual') && (
             <View style={styles.fallbackBox}>
@@ -465,6 +488,15 @@ export default function CitizenReportScreen() {
           </View>
         </View>
       )}
+      <LocationSearchModal
+        visible={showSearch}
+        onClose={() => setShowSearch(false)}
+        onSelect={(loc) => {
+          pickedManuallyRef.current = true;
+          setLocation(loc);
+          setGeoStatus('manual');
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -529,6 +561,11 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   geoLabel: { fontSize: 10, color: Colors.textMuted },
   geoValue: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
   refreshBtn: { fontSize: 10, color: Colors.teal, alignSelf: 'flex-end' },
+  searchLocationBtn: {
+    marginTop: 4, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
+    backgroundColor: Colors.tealLight,
+  },
+  searchLocationText: { fontSize: 11, fontWeight: '600', color: Colors.tealDark },
   fallbackBox: { gap: 8, marginTop: 4 },
   fallbackHint: { fontSize: 10, color: Colors.textMuted, lineHeight: 15 },
   chipRow: { gap: 6 },
