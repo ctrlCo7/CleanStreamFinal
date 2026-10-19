@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore';
 import { AccountFormInput, NewAccountInput, fullName } from './accountRules';
 import { barangayById } from './barangays';
+import { normalizePhone } from './phone';
 import { auth, db, withSecondaryAuth } from './firebase';
 import { matchSummaryForRecord } from './faceVerdict';
 import { Account, Actor, AuditAction, AuditEntry, ClientChecks, ROLES, ROLE_LABELS, Role, Verification } from './types';
@@ -34,6 +35,7 @@ export const toAccount = (id: string, d: Record<string, unknown>): Account => ({
   barangayId: str(d.barangayId),
   employeeId: str(d.employeeId),
   agency: str(d.agency),
+  phone: str(d.phone),
   // Older documents may predate these flags: treat a missing isActive as active.
   idVerification: (['pending', 'approved', 'rejected'] as const).find((v) => v === d.idVerification),
   idRejectionReason: str(d.idRejectionReason),
@@ -131,7 +133,7 @@ const clean = (obj: Record<string, unknown>): Record<string, unknown> =>
   Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
 
 const profileFields = (input: AccountFormInput) => {
-  const b = input.role === 'citizen' || input.role === 'barangay' ? barangayById(input.barangayId) : undefined;
+  const b = input.role === 'citizen' || input.role === 'barangay' || input.role === 'cleanup_team' ? barangayById(input.barangayId) : undefined;
   return {
     firstName: input.firstName.trim(),
     lastName: input.lastName.trim(),
@@ -140,6 +142,7 @@ const profileFields = (input: AccountFormInput) => {
     barangayId: b?.id,
     employeeId: input.employeeId?.trim() || undefined,
     agency: input.agency?.trim() || undefined,
+    phone: (input.phone && normalizePhone(input.phone)) || undefined,
   };
 };
 
@@ -201,6 +204,7 @@ const diffSummary = (before: Account, after: ReturnType<typeof profileFields>): 
   cmp('barangay', before.barangay, after.barangay);
   cmp('employee ID', before.employeeId, after.employeeId);
   cmp('agency', before.agency, after.agency);
+  cmp('phone', before.phone, after.phone);
   return changes.join('; ');
 };
 
@@ -218,6 +222,7 @@ export const updateAccount = async (actor: Actor, target: Account, input: Accoun
     barangayId: fields.barangayId ?? deleteField(),
     employeeId: fields.employeeId ?? deleteField(),
     agency: fields.agency ?? deleteField(),
+    phone: fields.phone ?? deleteField(),
     updatedAt: serverTimestamp(),
   });
   await logAudit(actor, 'account.update', { ...target, firstName: fields.firstName, lastName: fields.lastName }, summary);

@@ -17,6 +17,7 @@ import { RootStackParamList, UserRole } from '../../types';
 import { CEBU_BARANGAYS } from '../../services/locationService';
 import { requiresIdentityCheck } from '../../services/authService';
 import { idTypeLabel } from '../../services/identityChecks';
+import { normalizePhone } from '../../utils/phone';
 import { clearIdentityDraft, getIdentityDraft } from '../../store/identityDraft';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
@@ -42,6 +43,7 @@ export default function SignupScreen({ navigation }: Props) {
   const [password, setPassword] = useState('');
   const [barangayId, setBarangayId] = useState('');
   const [employeeId, setEmployeeId] = useState('');
+  const [phone, setPhone] = useState('');
   const [agency, setAgency] = useState('');
 
   const selectedBarangay = CEBU_BARANGAYS.find((b) => b.id === barangayId);
@@ -75,6 +77,11 @@ export default function SignupScreen({ navigation }: Props) {
       Alert.alert('Employee ID required', 'Please enter your employee ID.');
       return;
     }
+    const normalizedPhone = normalizePhone(phone);
+    if (needsId && !normalizedPhone) {
+      Alert.alert('Contact number required', 'Enter a Philippine mobile or landline number, e.g. 0917 123 4567. Crews and the Admin use it to reach you.');
+      return;
+    }
     if (needsId && !evidence) {
       Alert.alert('Verify your identity', 'Admin and Barangay Official accounts need a photo of a valid ID and a few selfies so the Super Admin can confirm it is you.');
       return;
@@ -92,6 +99,7 @@ export default function SignupScreen({ navigation }: Props) {
         employeeId,
         agency,
         evidence: needsId ? evidence ?? undefined : undefined,
+        phone: needsId ? normalizedPhone ?? undefined : undefined,
       }),
     );
     if (register.fulfilled.match(result)) {
@@ -183,6 +191,13 @@ export default function SignupScreen({ navigation }: Props) {
               <TextInput style={styles.input} placeholder="CENRO, Cebu City" placeholderTextColor={colors.textHint} value={agency} onChangeText={setAgency} />
             </View>
           </>
+        )}
+
+        {needsId && (
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Contact number</Text>
+            <TextInput style={styles.input} placeholder="0917 123 4567" placeholderTextColor={colors.textHint} keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
+          </View>
         )}
 
         {needsId && (

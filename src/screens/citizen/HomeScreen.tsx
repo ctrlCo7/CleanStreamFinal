@@ -118,6 +118,19 @@ export default function CitizenHomeScreen() {
           <Text style={styles.reportCtaSub}>📸 Live camera · 📍 GPS auto-tag · 🕐 Timestamp — Anytime</Text>
         </TouchableOpacity>
 
+        {/* Volunteer cleanups */}
+        <TouchableOpacity
+          style={styles.eventsCard}
+          onPress={() => navigation.navigate('CitizenEvents')}
+          activeOpacity={0.85}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eventsTitle}>Cleanup events near you</Text>
+            <Text style={styles.eventsSub}>Join your neighbours in a community cleanup</Text>
+          </View>
+          <Text style={styles.viewLink}>View →</Text>
+        </TouchableOpacity>
+
         {/* Map preview */}
         <MapPreview
           pins={hotspots}
@@ -228,6 +241,13 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   reportCtaBadgeText: { fontSize: 9, fontWeight: '600', color: '#fff', letterSpacing: 0.4 },
   reportCtaSub: { fontSize: 10, color: 'rgba(255,255,255,0.78)', paddingLeft: 24 },
+  eventsCard: {
+    backgroundColor: Colors.white, borderRadius: 18, padding: 14, paddingHorizontal: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, shadowColor: Colors.shadow,
+    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
+  eventsTitle: { fontSize: 13, fontWeight: '500', color: Colors.textPrimary },
+  eventsSub: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
   legend: { flexDirection: 'row', gap: 11 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 9, height: 9, borderRadius: 4.5 },

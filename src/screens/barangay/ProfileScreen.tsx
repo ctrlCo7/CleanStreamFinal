@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert, Switch } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert, Switch, TextInput, ActivityIndicator } from 'react-native';
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
-import { logout } from '../../store/authSlice';
+import { logout, setUser } from '../../store/authSlice';
+import { updateUserProfile } from '../../services/authService';
+import { formatPhone, normalizePhone } from '../../utils/phone';
 
 interface FieldCheckpoint {
   id: string;
@@ -20,6 +22,10 @@ export default function BarangayProfileScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAppSelector((s) => s.auth);
   const [checkpoints, setCheckpoints] = useState<FieldCheckpoint[]>([]);
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [phoneText, setPhoneText] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [savingPhone, setSavingPhone] = useState(false);
 
   const displayName = user ? `${user.firstName} ${user.lastName}` : 'Barangay Official';
   const initials = displayName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
@@ -60,6 +66,31 @@ export default function BarangayProfileScreen() {
   const activeSince = user?.createdAt
     ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : '—';
+
+  const startEditPhone = () => {
+    setPhoneText(user?.phone ? formatPhone(user.phone) : '');
+    setPhoneError('');
+    setEditingPhone(true);
+  };
+
+  const savePhone = async () => {
+    if (!user || savingPhone) return;
+    const normalized = normalizePhone(phoneText);
+    if (!normalized) {
+      setPhoneError('Enter a Philippine mobile or landline number, e.g. 0917 123 4567');
+      return;
+    }
+    setSavingPhone(true);
+    try {
+      await updateUserProfile(user.uid, { phone: normalized });
+      dispatch(setUser({ ...user, phone: normalized }));
+      setEditingPhone(false);
+    } catch (err) {
+      Alert.alert('Could not save your number', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setSavingPhone(false);
+    }
+  };
 
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
@@ -132,6 +163,41 @@ export default function BarangayProfileScreen() {
               <Text style={styles.infoVal}>{row.v}</Text>
             </View>
           ))}
+        </View>
+
+        {/* Contact number */}
+        <View style={styles.infoCard}>
+          <Text style={styles.cardTitle}>Contact number</Text>
+          {editingPhone ? (
+            <View style={{ gap: 8 }}>
+              <TextInput
+                style={styles.phoneInput}
+                value={phoneText}
+                onChangeText={(t) => { setPhoneText(t); setPhoneError(''); }}
+                placeholder="0917 123 4567"
+                placeholderTextColor={colors.textHint}
+                keyboardType="phone-pad"
+                editable={!savingPhone}
+              />
+              {!!phoneError && <Text style={styles.phoneError}>{phoneError}</Text>}
+              <View style={styles.phoneActions}>
+                <TouchableOpacity style={styles.phoneCancel} onPress={() => setEditingPhone(false)} disabled={savingPhone}>
+                  <Text style={styles.phoneCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.phoneSave, savingPhone && { opacity: 0.6 }]} onPress={savePhone} disabled={savingPhone}>
+                  {savingPhone ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.phoneSaveText}>Save</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.phoneRow}>
+              <Text style={styles.phoneValue}>{user?.phone ? formatPhone(user.phone) : 'Not set'}</Text>
+              <TouchableOpacity style={styles.phoneEdit} onPress={startEditPhone} accessibilityLabel="Edit contact number">
+                <Text style={styles.phoneEditText}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          <Text style={styles.phoneHelp}>Crews and the Admin use this number to reach you.</Text>
         </View>
 
         {/* Settings */}
@@ -208,6 +274,18 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   infoKey: { fontSize: 11, color: Colors.textMuted },
   infoVal: { fontSize: 11, fontWeight: '500', color: Colors.textPrimary, maxWidth: '55%', textAlign: 'right' },
+  phoneRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  phoneValue: { fontSize: 14, fontWeight: '500', color: Colors.textPrimary },
+  phoneEdit: { minHeight: 44, minWidth: 64, paddingHorizontal: 16, borderRadius: 12, backgroundColor: Colors.brgyLight, alignItems: 'center', justifyContent: 'center' },
+  phoneEditText: { fontSize: 13, fontWeight: '600', color: Colors.brgy },
+  phoneInput: { backgroundColor: Colors.grayBg, borderRadius: 12, paddingHorizontal: 12, minHeight: 44, fontSize: 14, color: Colors.textPrimary },
+  phoneError: { fontSize: 12, color: Colors.redText },
+  phoneActions: { flexDirection: 'row', gap: 8 },
+  phoneCancel: { flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
+  phoneCancelText: { fontSize: 13, fontWeight: '600', color: Colors.textPrimary },
+  phoneSave: { flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: Colors.brgy, alignItems: 'center', justifyContent: 'center' },
+  phoneSaveText: { fontSize: 13, fontWeight: '600', color: '#fff' },
+  phoneHelp: { fontSize: 11, color: Colors.textMuted, marginTop: 8 },
   settingsCard: {
     backgroundColor: Colors.white, borderRadius: 17, overflow: 'hidden',
     shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,

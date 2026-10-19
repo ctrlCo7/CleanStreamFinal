@@ -17,6 +17,17 @@ const base = (uid, role, extra = {}) => ({
 await env.clearFirestore();
 await env.withSecurityRulesDisabled(async (ctx) => {
   const db = ctx.firestore();
+  const task = (barangayId, crew, extra = {}) => ({
+    reportId: 'r_b1', barangayId, barangay: barangayId, assignedTeamId: crew, assignedTeamName: crew, assignedByUserId: 'bg',
+    assignedByName: 'Official', title: 'Cleanup', status: 'assigned', beforePhotoURLs: [], afterPhotoURLs: [], ...extra,
+  });
+  await setDoc(doc(db, 'cleanupTasks', 't1'), task('b1', 'cl'));
+  await setDoc(doc(db, 'cleanupTasks', 't2'), task('b1', 'cl2'));
+  await setDoc(doc(db, 'cleanupTasks', 't_b2'), task('b2', 'cl2'));
+  const ev = (barangayId) => ({ title: 'Cleanup drive', barangayId, organizedBy: 'bg', participantIds: [], currentParticipants: 0, status: 'upcoming' });
+  await setDoc(doc(db, 'cleanupEvents', 'ev1'), ev('b1'));
+  await setDoc(doc(db, 'cleanupEvents', 'ev_b2'), ev('b2'));
+  await setDoc(doc(db, 'cleanupEvents', 'ev1', 'participants', 'ct'), { userId: 'ct', userName: 'Ct', attendanceStatus: 'registered' });
   await setDoc(doc(db, 'reports', 'r_b1'), { userId: 'ct', barangayId: 'b1', location: { latitude: 1, longitude: 2 }, status: 'pending', severity: 'low' });
   await setDoc(doc(db, 'verifications', 'bg_rej'), { uid: 'bg_rej', status: 'rejected', reason: 'blurry' });
   await setDoc(doc(db, 'verifications', 'bg_pend'), { uid: 'bg_pend', role: 'barangay', status: 'pending', idImage: 'data:x' });
@@ -24,6 +35,13 @@ await env.withSecurityRulesDisabled(async (ctx) => {
     ['sa', 'superadmin'], ['ad', 'admin'], ['bg', 'barangay', { barangayId: 'b1' }], ['ct', 'citizen'],
     ['cl', 'cleanup_team'], ['victim', 'citizen'], ['ct2', 'citizen', { isVerified: false }],
     ['sa_off', 'superadmin', { isActive: false }],
+    ['bg2', 'barangay', { barangayId: 'b2' }],
+    ['cl2', 'cleanup_team', { barangayId: 'b1' }],
+    ['cl_off', 'cleanup_team', { barangayId: 'b1', isActive: false }],
+    ['bg_off', 'barangay', { barangayId: 'b1', isActive: false }],
+    ['ct_off', 'citizen', { isActive: false }],
+    ['vol1', 'citizen', { barangayId: 'b1' }],
+    ['vol2', 'citizen', { barangayId: 'b1' }],
     ['ad_pend', 'admin', { idVerification: 'pending', isVerified: false }],
     ['bg_pend', 'barangay', { barangayId: 'b1', idVerification: 'pending', isVerified: false }],
     ['bg_rej', 'barangay', { barangayId: 'b1', idVerification: 'rejected', isVerified: false }],
@@ -150,6 +168,64 @@ await check('applicant cannot approve their own submission', assertFails(updateD
 await check('rejected applicant can resubmit new evidence', assertSucceeds(setDoc(doc(bgr, 'verifications', 'bg_rej'), evidence('bg_rej'))));
 await check('superadmin records a decision and clears the images', assertSucceeds(updateDoc(doc(sa, 'verifications', 'n_bg'), { status: 'approved', idImage: null })));
 await check('superadmin can delete a submission', assertSucceeds(deleteDoc(doc(sa, 'verifications', 'n_bg'))));
+
+console.log('\n== Cleanup crews: created only by the Super Admin, limited to their own tasks');
+const crew = as('cl'), crew2 = as('cl2');
+await check('nobody can self-register as a cleanup team account', assertFails(su('n_cl', { role: 'cleanup_team', isVerified: false, isActive: true })));
+await check('a crew leader cannot read everyone\'s profiles', assertFails(getDoc(doc(crew, 'users', 'ct'))));
+await check('a crew leader cannot list accounts', assertFails(getDocs(collection(crew, 'users'))));
+await check('a crew leader reads a task assigned to them', assertSucceeds(getDoc(doc(crew, 'cleanupTasks', 't1'))));
+await check("a crew leader cannot read another crew's task", assertFails(getDoc(doc(crew, 'cleanupTasks', 't2'))));
+await check('a crew leader accepts their task', assertSucceeds(updateDoc(doc(crew, 'cleanupTasks', 't1'), { status: 'accepted', updatedAt: serverTimestamp() })));
+await check('a crew leader starts it', assertSucceeds(updateDoc(doc(crew, 'cleanupTasks', 't1'), { status: 'in_progress', actualStartTime: serverTimestamp(), updatedAt: serverTimestamp() })));
+await check('a crew leader adds photos and finishes it', assertSucceeds(updateDoc(doc(crew, 'cleanupTasks', 't1'), { status: 'completed', afterPhotoURLs: ['https://x/a.jpg'], completionNotes: 'done', wasteCollectedKg: 12, completedAt: serverTimestamp(), updatedAt: serverTimestamp() })));
+await check('a crew leader can decline with a reason', assertSucceeds(updateDoc(doc(crew2, 'cleanupTasks', 't2'), { status: 'cancelled', declineReason: 'No truck available', updatedAt: serverTimestamp() })));
+await check("a crew leader can't hand the task to someone else", assertFails(updateDoc(doc(crew2, 'cleanupTasks', 't_b2'), { assignedTeamId: 'cl' })));
+await check("a crew leader can't reset a task to 'assigned'", assertFails(updateDoc(doc(crew2, 'cleanupTasks', 't_b2'), { status: 'assigned' })));
+await check("a crew leader can't edit the task's title or location", assertFails(updateDoc(doc(crew2, 'cleanupTasks', 't_b2'), { title: 'Changed' })));
+await check("a crew leader can't touch another crew's task", assertFails(updateDoc(doc(crew, 'cleanupTasks', 't2'), { status: 'accepted' })));
+await check('a crew leader cannot create tasks', assertFails(setDoc(doc(crew, 'cleanupTasks', 'tx'), { assignedByUserId: 'cl', barangayId: 'b1', assignedTeamId: 'cl' })));
+await check('a crew leader cannot delete tasks', assertFails(deleteDoc(doc(crew, 'cleanupTasks', 't1'))));
+await check('a crew leader cannot change a report any more', assertFails(updateDoc(doc(crew, 'reports', 'r_b1'), { status: 'completed' })));
+await check('a deactivated crew leader loses access at once', assertFails(getDoc(doc(as('cl_off'), 'cleanupTasks', 't1'))));
+
+console.log('\n== Barangay officials: only their own barangay, always as themselves');
+const bg1 = as('bg'), bg2 = as('bg2');
+const newTask = (barangayId, by) => ({ reportId: 'r_b1', barangayId, assignedTeamId: 'cl', assignedTeamName: 'Crew', assignedByUserId: by, title: 'Cleanup', status: 'assigned' });
+await check('an official reads their barangay\'s tasks', assertSucceeds(getDoc(doc(bg1, 'cleanupTasks', 't2'))));
+await check("an official can't read another barangay's task", assertFails(getDoc(doc(bg1, 'cleanupTasks', 't_b2'))));
+await check('an official assigns a crew in their own barangay', assertSucceeds(setDoc(doc(bg1, 'cleanupTasks', 'new1'), newTask('b1', 'bg'))));
+await check("an official can't assign for another barangay", assertFails(setDoc(doc(bg1, 'cleanupTasks', 'new2'), newTask('b2', 'bg'))));
+await check("an official can't create a task in someone else's name", assertFails(setDoc(doc(bg1, 'cleanupTasks', 'new3'), newTask('b1', 'ad'))));
+await check('an official records work on behalf of a crew (own barangay)', assertSucceeds(updateDoc(doc(bg1, 'cleanupTasks', 't2'), { status: 'completed', afterPhotoURLs: ['https://x/b.jpg'], recordedByUserId: 'bg' })));
+await check("an official can't edit another barangay's task", assertFails(updateDoc(doc(bg1, 'cleanupTasks', 't_b2'), { status: 'completed' })));
+await check('an official from another barangay cannot read it either', assertFails(getDoc(doc(bg2, 'cleanupTasks', 't1'))));
+await check('an official closes a report in their barangay (in progress -> completed)', assertSucceeds(updateDoc(doc(bg1, 'reports', 'r_b1'), { status: 'completed' })));
+await check('the Admin can assign a crew in any barangay', assertSucceeds(setDoc(doc(ad, 'cleanupTasks', 'adm1'), newTask('b2', 'ad'))));
+await check('a deactivated official loses their powers at once', assertFails(updateDoc(doc(as('bg_off'), 'reports', 'r_b1'), { status: 'verified' })));
+await check('a deactivated citizen cannot submit reports', assertFails(setDoc(doc(as('ct_off'), 'reports', 'r_off'), { userId: 'ct_off', location: { latitude: 1, longitude: 2 }, status: 'pending', severity: 'low' })));
+
+console.log('\n== Volunteers and cleanup events');
+const evNew = (barangayId, by) => ({ title: 'Drive', barangayId, organizedBy: by, participantIds: [], currentParticipants: 0, status: 'upcoming' });
+const v1 = as('vol1'), v2 = as('vol2');
+await check('an official creates an event for their own barangay', assertSucceeds(setDoc(doc(bg1, 'cleanupEvents', 'evNew'), evNew('b1', 'bg'))));
+await check("an official can't create an event for another barangay", assertFails(setDoc(doc(bg1, 'cleanupEvents', 'evBad'), evNew('b2', 'bg'))));
+await check("an official can't create an event in someone else's name", assertFails(setDoc(doc(bg1, 'cleanupEvents', 'evBad2'), evNew('b1', 'ad'))));
+await check('a citizen cannot create an event', assertFails(setDoc(doc(v1, 'cleanupEvents', 'evBad3'), evNew('b1', 'vol1'))));
+await check('any signed-in resident can read events', assertSucceeds(getDoc(doc(v1, 'cleanupEvents', 'ev1'))));
+await check('a resident joins an event (adds only themselves)', assertSucceeds(updateDoc(doc(v1, 'cleanupEvents', 'ev1'), { participantIds: ['vol1'], currentParticipants: 1, updatedAt: serverTimestamp() })));
+await check('...and gets a participant record, "registered"', assertSucceeds(setDoc(doc(v1, 'cleanupEvents', 'ev1', 'participants', 'vol1'), { userId: 'vol1', userName: 'V1', attendanceStatus: 'registered' })));
+await check('a second resident joins too', assertSucceeds(updateDoc(doc(v2, 'cleanupEvents', 'ev1'), { participantIds: ['vol1', 'vol2'], currentParticipants: 2, updatedAt: serverTimestamp() })));
+await check("a resident can't add somebody else to the list", assertFails(updateDoc(doc(v1, 'cleanupEvents', 'ev_b2'), { participantIds: ['vol2'], currentParticipants: 1 })));
+await check("a resident can't inflate the volunteer count", assertFails(updateDoc(doc(v1, 'cleanupEvents', 'ev_b2'), { participantIds: ['vol1'], currentParticipants: 50 })));
+await check("a resident can't change the event's other details", assertFails(updateDoc(doc(v1, 'cleanupEvents', 'ev_b2'), { participantIds: ['vol1'], currentParticipants: 1, title: 'Hacked' })));
+await check("a resident can't remove someone else", assertFails(updateDoc(doc(v1, 'cleanupEvents', 'ev1'), { participantIds: ['vol1'], currentParticipants: 1 })));
+await check('a resident leaves an event (removes only themselves)', assertSucceeds(updateDoc(doc(v2, 'cleanupEvents', 'ev1'), { participantIds: ['vol1'], currentParticipants: 1, updatedAt: serverTimestamp() })));
+await check("a resident can't register as already 'attended'", assertFails(setDoc(doc(v2, 'cleanupEvents', 'ev_b2', 'participants', 'vol2'), { userId: 'vol2', userName: 'V2', attendanceStatus: 'attended' })));
+await check("a resident can't join under another person's id", assertFails(setDoc(doc(v2, 'cleanupEvents', 'ev_b2', 'participants', 'vol1'), { userId: 'vol1', userName: 'V1', attendanceStatus: 'registered' })));
+await check("a resident can't mark their own attendance", assertFails(updateDoc(doc(v1, 'cleanupEvents', 'ev1', 'participants', 'vol1'), { attendanceStatus: 'attended' })));
+await check('the official of that barangay marks attendance', assertSucceeds(updateDoc(doc(bg1, 'cleanupEvents', 'ev1', 'participants', 'vol1'), { attendanceStatus: 'attended' })));
+await check("another barangay's official can't mark attendance", assertFails(updateDoc(doc(bg2, 'cleanupEvents', 'ev1', 'participants', 'vol1'), { attendanceStatus: 'no_show' })));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup();

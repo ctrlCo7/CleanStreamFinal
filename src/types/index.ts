@@ -17,6 +17,8 @@ export interface User {
   employeeId?: string;
   agency?: string;
   jurisdiction?: string;
+  // Contact number (normalised, e.g. +639171234567). Crews and officials are reached by phone.
+  phone?: string;
   // Set only for Admin / Barangay Official sign-ups, which must have their ID and face
   // checked by the Super Admin. 'pending' and 'rejected' accounts have no staff powers.
   idVerification?: IdVerificationStatus;
@@ -243,10 +245,16 @@ export interface CleanupTask {
   reportId: string;
   barangayId: string;
   barangay: string;
+  // assignedTeamId is the crew LEADER's user id (their account is what sees and works the task).
   assignedTeamId: string;
   assignedTeamName: string;
+  assignedTeamPhone?: string;
   assignedByUserId: string;
   assignedByName: string;
+  assignedByPhone?: string;
+  // Copied from the report so a crew (who can't read other users' data) can notify and describe it.
+  reporterUserId?: string;
+  reportNumber?: string;
   title: string;
   description: string;
   location: GeoLocation;
@@ -265,6 +273,13 @@ export interface CleanupTask {
   equipmentNeeded: string[];
   personnelCount: number;
   wasteCollectedKg?: number;
+  declineReason?: string;
+  // Set when an official records the work on behalf of a crew without the app.
+  recordedByUserId?: string;
+  recordedByName?: string;
+  // Set when an official/admin confirms the cleanup, which closes the report.
+  confirmedByUserId?: string;
+  confirmedAt?: string;
   isAiSuggested: boolean;
   createdAt: string;
   updatedAt: string;
@@ -595,6 +610,14 @@ export type RootStackParamList = {
   Signup: undefined;
   IdentityVerification: { mode: 'signup' | 'resubmit'; firstName: string; lastName: string };
   VerificationPending: undefined;
+  CleanupTabs: undefined;
+  CleanupTaskDetail: { taskId: string };
+  BarangayCrewTasks: undefined;
+  BarangayAssignCrew: { reportId: string };
+  BarangayCreateEvent: undefined;
+  BarangayEventDetail: { eventId: string };
+  CitizenEvents: undefined;
+  CitizenEventDetail: { eventId: string };
   CitizenTabs: undefined;
   AdminTabs: undefined;
   BarangayTabs: undefined;
@@ -629,6 +652,11 @@ export type AdminTabParamList = {
   AdminHistory: undefined;
   AdminMessages: undefined;
   AdminProfile: undefined;
+};
+
+export type CleanupTabParamList = {
+  CleanupTasks: undefined;
+  CleanupProfile: undefined;
 };
 
 export type BarangayTabParamList = {

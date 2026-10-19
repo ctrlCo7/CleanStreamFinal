@@ -17,8 +17,14 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(currentUid())).data;
     }
 
+    // An account the Super Admin has deactivated or removed loses every power immediately
+    // (not just the ability to sign in again).
+    function inGoodStanding() {
+      return getUserData().get('isActive', true) != false && !('deletedAt' in getUserData());
+    }
+
     function hasRole(role) {
-      return isAuthenticated() && getUserData().role == role;
+      return isAuthenticated() && getUserData().role == role && inGoodStanding();
     }
 
     // Admin and Barangay Official sign-ups must have their ID and face checked by the
@@ -56,11 +62,11 @@ service cloud.firestore {
     }
 
     function isAdminOrBarangay() {
-      return isAuthenticated() && getUserData().role in ['admin', 'barangay'] && idCleared();
+      return isAuthenticated() && getUserData().role in ['admin', 'barangay'] && idCleared() && inGoodStanding();
     }
 
     function isStaff() {
-      return isAuthenticated() && getUserData().role in ['admin', 'barangay', 'cleanup_team'] && idCleared();
+      return isAuthenticated() && getUserData().role in ['admin', 'barangay', 'cleanup_team'] && idCleared() && inGoodStanding();
     }
 
     function isOwner(userId) {
@@ -79,7 +85,7 @@ service cloud.firestore {
     // citizens read own profile; admin reads all; barangay reads members;
     // only the Super Admin can create arbitrary accounts or change/remove anyone's.
     match /users/{userId} {
-      allow read: if isOwner(userId) || isSuperAdmin() || isAdmin() || isBarangayOfficer() || isCleanupTeam();
+      allow read: if isOwner(userId) || isSuperAdmin() || isAdmin() || isBarangayOfficer();
       // Self sign-up can never grant itself approval or powers: it must start unverified and
       // active, and a Barangay Official or Admin must start with idVerification == 'pending'.
       allow create: if (isAuthenticated() && currentUid() == userId
@@ -87,7 +93,8 @@ service cloud.firestore {
                         && request.resource.data.get('isVerified', false) == false
                         && request.resource.data.get('isActive', true) == true
                         && !('deletedAt' in request.resource.data)
-                        && (request.resource.data.role in ['citizen', 'cleanup_team']
+                        // Cleanup-team accounts are created only by the Super Admin (web portal).
+                        && (request.resource.data.role == 'citizen'
                             || (request.resource.data.role in ['barangay', 'admin']
                                 && request.resource.data.get('idVerification', '') == 'pending')))
                     || isSuperAdmin();
@@ -155,15 +162,10 @@ service cloud.firestore {
                         && !request.resource.data.diff(resource.data).affectedKeys()
                             .hasAny(['status', 'severity', 'userId', 'aiAnalysis'])) ||
 
-                      // Barangay: verify, reject, assign reports in own barangay
+                      // Barangay: verify, reject, assign and close out reports in own barangay
                       (isBarangayOfficer()
                         && sameBarangay(resource.data.barangayId)
-                        && request.resource.data.status in ['verified', 'assigned', 'rejected']) ||
-
-                      // Cleanup team: update to in_progress / completed for assigned task
-                      (isCleanupTeam()
-                        && resource.data.assignedTeamId == getUserData().barangayId
-                        && request.resource.data.status in ['in_progress', 'completed']) ||
+                        && request.resource.data.status in ['verified', 'assigned', 'in_progress', 'completed', 'rejected']) ||
 
                       // Admin: unrestricted update
                       isAdmin() ||
@@ -209,23 +211,31 @@ service cloud.firestore {
 
     // ─── Cleanup Tasks ──────────────────────────────────────────────────────────
     match /cleanupTasks/{taskId} {
+      // Admin sees all; an official only their own barangay's; a crew leader only their own tasks.
       allow read: if isAuthenticated() && (
                     isAdmin() ||
-                    isBarangayOfficer() ||
-                    (isCleanupTeam() && resource.data.assignedTeamId == getUserData().uid)
+                    (isBarangayOfficer() && sameBarangay(resource.data.barangayId)) ||
+                    (isCleanupTeam() && resource.data.assignedTeamId == currentUid())
                   );
 
-      allow create: if isAdminOrBarangay();
+      // Created by the Admin, or by an official for their own barangay, always as themselves.
+      allow create: if isAuthenticated()
+                    && request.resource.data.assignedByUserId == currentUid()
+                    && (isAdmin()
+                        || (isBarangayOfficer() && request.resource.data.barangayId == getUserData().barangayId));
 
       allow update: if isAuthenticated() && (
                       isAdmin() ||
-                      // Barangay can manage tasks in their jurisdiction
+                      // An official can manage (and record work on behalf of a crew for) their barangay's tasks
                       (isBarangayOfficer() && sameBarangay(resource.data.barangayId)) ||
-                      // Cleanup team can update status and progress on their own task
+                      // A crew leader can accept/decline, start, document and finish only their own task,
+                      // and cannot hand it to someone else
                       (isCleanupTeam()
                         && resource.data.assignedTeamId == currentUid()
+                        && request.resource.data.assignedTeamId == resource.data.assignedTeamId
+                        && request.resource.data.status in ['accepted', 'in_progress', 'completed', 'cancelled']
                         && request.resource.data.diff(resource.data).affectedKeys()
-                            .hasOnly(['status', 'progressNotes', 'completionNotes',
+                            .hasOnly(['status', 'declineReason', 'progressNotes', 'completionNotes',
                                       'actualStartTime', 'actualEndTime', 'completedAt',
                                       'wasteCollectedKg', 'beforePhotoURLs', 'afterPhotoURLs', 'updatedAt']))
                     );
@@ -236,16 +246,39 @@ service cloud.firestore {
     // ─── Cleanup Events ────────────────────────────────────────────────────────
     match /cleanupEvents/{eventId} {
       allow read: if isAuthenticated();
-      allow create: if isAdminOrBarangay();
+      // Created by the Admin, or by an official for their own barangay, always as themselves.
+      allow create: if isAuthenticated()
+                    && request.resource.data.organizedBy == currentUid()
+                    && (isAdmin()
+                        || (isBarangayOfficer() && request.resource.data.barangayId == getUserData().barangayId));
       allow update: if isAdmin()
-                    || (isBarangayOfficer() && sameBarangay(resource.data.barangayId));
+                    || (isBarangayOfficer() && sameBarangay(resource.data.barangayId))
+                    // Anyone signed in can add or remove only THEMSELVES from the volunteer list, and the
+                    // count must equal the list, so it can't be inflated.
+                    || (isAuthenticated()
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['participantIds', 'currentParticipants', 'updatedAt'])
+                        && request.resource.data.currentParticipants == request.resource.data.participantIds.size()
+                        && (
+                          (request.resource.data.participantIds.toSet().difference(resource.data.participantIds.toSet()).hasOnly([currentUid()])
+                            && resource.data.participantIds.toSet().difference(request.resource.data.participantIds.toSet()).size() == 0)
+                          ||
+                          (resource.data.participantIds.toSet().difference(request.resource.data.participantIds.toSet()).hasOnly([currentUid()])
+                            && request.resource.data.participantIds.toSet().difference(resource.data.participantIds.toSet()).size() == 0)
+                        ));
       allow delete: if isAdmin();
 
-      // Participants subcollection — citizens can join/leave
+      // Participants subcollection: residents join/leave themselves; only officials mark attendance
       match /participants/{userId} {
         allow read: if isAuthenticated();
-        allow create: if isOwner(userId);
-        allow update: if isOwner(userId) || isAdminOrBarangay();
+        allow create: if isOwner(userId)
+                      && request.resource.data.userId == userId
+                      && request.resource.data.attendanceStatus == 'registered';
+        allow update: if (isOwner(userId)
+                          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['attendanceStatus']))
+                      || isAdmin()
+                      || (isBarangayOfficer()
+                          && get(/databases/$(database)/documents/cleanupEvents/$(eventId)).data.barangayId == getUserData().barangayId);
         allow delete: if isOwner(userId) || isAdmin();
       }
     }

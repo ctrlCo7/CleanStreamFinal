@@ -66,8 +66,10 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
         severity: confirmedSeverity,
         wasteType: confirmedWasteType,
       });
-      Alert.alert('Report verified', 'This report has been marked as verified.');
-      navigation.goBack();
+      Alert.alert('Report verified', 'This report has been marked as verified. Do you want to assign a cleanup crew now?', [
+        { text: 'Later', style: 'cancel', onPress: () => navigation.goBack() },
+        { text: 'Assign a crew', onPress: () => navigation.replace('BarangayAssignCrew', { reportId }) },
+      ]);
     } catch {
       Alert.alert('Error', 'Failed to verify this report. Please try again.');
     } finally {
@@ -192,6 +194,15 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
               This report was already {report.status === 'rejected' ? 'rejected' : `marked as ${report.status}`}.
               {report.rejectionReason ? ` Reason: ${report.rejectionReason}` : ''}
             </Text>
+            {(report.status === 'verified' || report.status === 'assigned') && (
+              <TouchableOpacity
+                style={styles.assignBtn}
+                onPress={() => navigation.navigate('BarangayAssignCrew', { reportId })}
+                accessibilityLabel="Assign a cleanup crew"
+              >
+                <Text style={styles.verifyBtnText}>Assign a cleanup crew</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : showRejectForm ? (
           <View style={styles.rejectForm}>
@@ -271,9 +282,10 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   confirmSelectorText: { fontSize: 12, color: Colors.textPrimary },
   selectorArrow: { fontSize: 14, color: Colors.grayHint },
   decidedBanner: {
-    backgroundColor: Colors.white, borderRadius: 16, padding: 15,
+    backgroundColor: Colors.white, borderRadius: 16, padding: 15, gap: 12,
     shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
+  assignBtn: { minHeight: 48, backgroundColor: Colors.brgy, borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
   decidedText: { fontSize: 12, color: Colors.textMuted, lineHeight: 18 },
   actions: { flexDirection: 'row', gap: 8 },
   verifyBtn: { flex: 1, backgroundColor: Colors.brgy, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },

@@ -13,6 +13,7 @@ import { subscribeToBarangayReports } from '../../services/reportsService';
 import { subscribeToUpcomingEvents } from '../../services/cleanupEventService';
 import { getOrCreateAdminConversation } from '../../services/messagingService';
 import { subscribeToAnnouncements } from '../../services/announcementService';
+import { subscribeToBarangayTasks } from '../../services/cleanupTaskService';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -30,6 +31,16 @@ export default function BarangayDashboardScreen() {
   const [events, setEvents] = useState<CleanupEvent[]>([]);
   const [messagingAdmin, setMessagingAdmin] = useState(false);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  // Tasks that wait on this official: declined by the crew, or finished but not yet confirmed.
+  const [needsYouCount, setNeedsYouCount] = useState(0);
+
+  useEffect(() => {
+    if (!myBarangayId) return;
+    const unsub = subscribeToBarangayTasks(myBarangayId, (tasks) => {
+      setNeedsYouCount(tasks.filter((t) => t.status === 'cancelled' || (t.status === 'completed' && !t.confirmedAt)).length);
+    });
+    return unsub;
+  }, [myBarangayId]);
 
   // Real-time barangay reports subscription
   useEffect(() => {
@@ -225,6 +236,16 @@ export default function BarangayDashboardScreen() {
             <Text style={[styles.actionBtnText, { color: colors.tealDark }]}>{messagingAdmin ? 'Opening…' : 'Message admin'}</Text>
           </TouchableOpacity>
         </View>
+        <View style={[styles.actionsRow, { marginTop: 6 }]}>
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.tealLight, borderColor: colors.tealMid }]} onPress={() => navigation.navigate('BarangayCrewTasks')}>
+            <Text style={[styles.actionBtnText, { color: colors.tealDark }]}>
+              {needsYouCount > 0 ? `Crews & cleanup tasks (${needsYouCount} need you)` : 'Crews & cleanup tasks'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.brgyLight, borderColor: colors.brgyMid }]} onPress={() => navigation.navigate('BarangayCreateEvent')}>
+            <Text style={[styles.actionBtnText, { color: colors.brgyDark }]}>Plan a volunteer cleanup</Text>
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: colors.brgyLight, borderColor: colors.brgyMid, marginTop: 6 }]}
           onPress={() => navigation.navigate('BarangayAlarms')}
@@ -297,6 +318,6 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   taskDate: { fontSize: 10, color: Colors.textMuted, marginTop: 2 },
   taskTeam: { fontSize: 10, color: Colors.textHint, marginTop: 1 },
   actionsRow: { flexDirection: 'row', gap: 6 },
-  actionBtn: { flex: 1, borderRadius: 12, paddingVertical: 11, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5 },
+  actionBtn: { flex: 1, minHeight: 44, borderRadius: 12, paddingVertical: 11, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5 },
   actionBtnText: { fontSize: 10.5, fontWeight: '500', textAlign: 'center' },
 });

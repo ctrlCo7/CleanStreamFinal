@@ -25,6 +25,7 @@ export const registerUser = async (
   agency?: string,
   barangayId?: string,
   evidence?: IdentityEvidence,
+  phone?: string,
 ): Promise<User> => {
   // Checked before the sign-in is created so a missing ID photo can't leave a half-made account.
   if (requiresIdentityCheck(role) && !evidence) {
@@ -43,6 +44,7 @@ export const registerUser = async (
     barangayId,
     employeeId,
     agency,
+    phone,
     ...(requiresIdentityCheck(role) ? { idVerification: 'pending' as const } : {}),
     isActive: true,
     isVerified: false,

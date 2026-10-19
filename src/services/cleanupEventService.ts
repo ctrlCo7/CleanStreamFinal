@@ -134,14 +134,12 @@ export const getEventParticipants = async (eventId: string): Promise<EventPartic
 export const uploadEventCoverPhoto = async (uri: string, eventId: string): Promise<string> =>
   uploadToCloudinary(uri, `cleanupEvents/${eventId}`, 'cover.jpg');
 
-export const subscribeToUpcomingEvents = (callback: (events: CleanupEvent[]) => void) => {
-  const q = query(
-    collection(db, COL),
-    where('status', 'in', ['upcoming', 'ongoing']),
-    orderBy('eventDate', 'asc'),
-    limit(20),
-  );
+export const subscribeToUpcomingEvents = (callback: (events: CleanupEvent[]) => void, onError?: (error: Error) => void) => {
+  // Sorted here: orderBy next to the status filter would need a composite index the project doesn't have.
+  const q = query(collection(db, COL), where('status', 'in', ['upcoming', 'ongoing']));
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CleanupEvent)));
-  });
+    const events = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CleanupEvent));
+    events.sort((a, b) => String(a.eventDate).localeCompare(String(b.eventDate)));
+    callback(events.slice(0, 50));
+  }, onError);
 };

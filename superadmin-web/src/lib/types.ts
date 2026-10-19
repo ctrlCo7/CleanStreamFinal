@@ -34,6 +34,7 @@ export interface Account {
   barangayId?: string;
   employeeId?: string;
   agency?: string;
+  phone?: string;
   idVerification?: IdVerificationStatus;
   idRejectionReason?: string;
   isActive: boolean;

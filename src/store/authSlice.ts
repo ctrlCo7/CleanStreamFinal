@@ -47,6 +47,7 @@ export const register = createAsyncThunk(
       agency?: string;
       barangayId?: string;
       evidence?: IdentityEvidence;
+      phone?: string;
     },
     { rejectWithValue },
   ) => {
@@ -62,6 +63,7 @@ export const register = createAsyncThunk(
         params.agency,
         params.barangayId,
         params.evidence,
+        params.phone,
       );
     } catch (e: unknown) {
       return rejectWithValue((e as Error).message);

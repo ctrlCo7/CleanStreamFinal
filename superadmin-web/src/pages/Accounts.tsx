@@ -11,6 +11,7 @@ import { useActor } from '../lib/auth';
 import { useData } from '../lib/data';
 import { useToast } from '../lib/feedback';
 import { formatDate, initials } from '../lib/format';
+import { formatPhone } from '../lib/phone';
 import { Account, AccountStatus, ROLES, ROLE_LABELS, SELF_REGISTERING_STAFF } from '../lib/types';
 import { useAccountActions } from '../lib/useAccountActions';
 
@@ -146,7 +147,7 @@ export function Accounts() {
                       </div>
                     </td>
                     <td><RolePill role={a.role} /></td>
-                    <td>{a.barangay ?? <span className="muted">—</span>}{a.employeeId && <div className="muted small">{a.employeeId}</div>}</td>
+                    <td>{a.barangay ?? <span className="muted">—</span>}{a.employeeId && <div className="muted small">{a.employeeId}</div>}{a.phone && <div className="muted small">{formatPhone(a.phone)}</div>}</td>
                     <td><StatusPill account={a} /></td>
                     <td className="nowrap">{formatDate(a.createdAt)}</td>
                     <td className="actions"><RowMenu label={`Actions for ${fullName(a)}`} items={menuFor(a)} /></td>

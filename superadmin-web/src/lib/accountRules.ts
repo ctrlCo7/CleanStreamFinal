@@ -1,3 +1,4 @@
+import { normalizePhone } from './phone';
 import { Account, AccountStatus, Actor, ROLES, ROLE_LABELS, Role, SELF_REGISTERING_STAFF } from './types';
 
 // ─── Status ──────────────────────────────────────────────────────────────────
@@ -55,13 +56,20 @@ export interface AccountFormInput {
   barangayId?: string;
   employeeId?: string;
   agency?: string;
+  phone?: string;
 }
 export interface NewAccountInput extends AccountFormInput { password: string }
 
 export const MIN_PASSWORD_LENGTH = 8;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export const needsBarangay = (role: Role): boolean => role === 'citizen' || role === 'barangay';
+export const needsBarangay = (role: Role): boolean => role === 'citizen' || role === 'barangay' || role === 'cleanup_team';
+
+/** Roles that are contacted by phone (crews and officials). Citizens' numbers aren't collected. */
+export const usesPhone = (role: Role): boolean => role !== 'citizen';
+
+/** A crew can only be reached by phone, so it is required for them and optional for everyone else. */
+export const requiresPhone = (role: Role): boolean => role === 'cleanup_team';
 
 export const validateAccountForm = (input: AccountFormInput): Record<string, string> => {
   const errors: Record<string, string> = {};
@@ -72,6 +80,11 @@ export const validateAccountForm = (input: AccountFormInput): Record<string, str
   if (needsBarangay(input.role) && !input.barangayId) errors.barangayId = 'Choose a barangay for this role.';
   if (input.role === 'barangay' && !input.employeeId?.trim()) {
     errors.employeeId = 'Employee ID is required for barangay officials.';
+  }
+  const phone = input.phone?.trim() ?? '';
+  if (usesPhone(input.role)) {
+    if (phone && !normalizePhone(phone)) errors.phone = 'Enter a Philippine mobile or landline number, e.g. 0917 123 4567.';
+    else if (!phone && requiresPhone(input.role)) errors.phone = 'A contact number is required for cleanup crews.';
   }
   return errors;
 };
@@ -105,7 +118,7 @@ export const filterAccounts = (accounts: Account[], f: AccountFilter): Account[]
       return false;
     }
     if (words.length === 0) return true;
-    const haystack = [a.firstName, a.lastName, a.email, a.barangay, a.employeeId, a.agency, ROLE_LABELS[a.role]]
+    const haystack = [a.firstName, a.lastName, a.email, a.barangay, a.employeeId, a.agency, a.phone, ROLE_LABELS[a.role]]
       .map((v) => v ?? '').join(' ').toLowerCase();
     return words.every((w) => haystack.includes(w));
   });
@@ -180,9 +193,9 @@ const csvCell = (value: unknown): string => {
 };
 
 export const accountsToCsv = (accounts: Account[]): string => {
-  const header = ['First name', 'Last name', 'Email', 'Role', 'Status', 'Barangay', 'Employee ID', 'Agency', 'Created'];
+  const header = ['First name', 'Last name', 'Email', 'Role', 'Status', 'Barangay', 'Employee ID', 'Agency', 'Phone', 'Created'];
   const rows = accounts.map((a) => [
-    a.firstName, a.lastName, a.email, ROLE_LABELS[a.role], statusOf(a), a.barangay, a.employeeId, a.agency,
+    a.firstName, a.lastName, a.email, ROLE_LABELS[a.role], statusOf(a), a.barangay, a.employeeId, a.agency, a.phone,
     a.createdAt ? a.createdAt.toISOString() : '',
   ]);
   return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');

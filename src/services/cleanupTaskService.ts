@@ -131,31 +131,33 @@ export const updateTaskProgress = async (
 export const subscribeToTeamTasks = (
   teamId: string,
   callback: (tasks: CleanupTask[]) => void,
+  onError?: (error: Error) => void,
 ) => {
   const q = query(
     collection(db, COL),
     where('assignedTeamId', '==', teamId),
     where('status', 'in', ['assigned', 'accepted', 'in_progress']),
-    orderBy('scheduledDate', 'asc'),
   );
+  // Sorted here, not with orderBy: that would need a composite index the project doesn't have.
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CleanupTask)));
-  });
+    const tasks = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CleanupTask));
+    tasks.sort((a, b) => String(a.scheduledDate).localeCompare(String(b.scheduledDate)));
+    callback(tasks);
+  }, onError);
 };
 
 export const subscribeToBarangayTasks = (
   barangayId: string,
   callback: (tasks: CleanupTask[]) => void,
+  onError?: (error: Error) => void,
 ) => {
-  const q = query(
-    collection(db, COL),
-    where('barangayId', '==', barangayId),
-    orderBy('scheduledDate', 'desc'),
-    limit(50),
-  );
+  // Newest first, sorted here: orderBy with a barangayId filter would need a composite index.
+  const q = query(collection(db, COL), where('barangayId', '==', barangayId));
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CleanupTask)));
-  });
+    const tasks = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CleanupTask));
+    tasks.sort((a, b) => String(b.scheduledDate).localeCompare(String(a.scheduledDate)));
+    callback(tasks.slice(0, 100));
+  }, onError);
 };
 
 export const getTasksByPriority = async (priority: SeverityLevel): Promise<CleanupTask[]> => {

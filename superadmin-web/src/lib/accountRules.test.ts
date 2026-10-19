@@ -57,6 +57,30 @@ describe('validateNewAccount', () => {
   });
 });
 
+describe('cleanup crew accounts', () => {
+  const crew = { email: 'crew@x.co', firstName: 'Crew', lastName: 'Leader', role: 'cleanup_team' as const, password: 'longenough1' };
+  it('need a barangay and a contact number', () => {
+    const e = validateNewAccount(crew);
+    expect(e.barangayId).toBeTruthy();
+    expect(e.phone).toBeTruthy();
+  });
+  it('are valid with both', () => {
+    expect(validateNewAccount({ ...crew, barangayId: 'tinago', phone: '0917 123 4567' })).toEqual({});
+  });
+  it('reject a phone number that is not Philippine', () => {
+    expect(validateNewAccount({ ...crew, barangayId: 'tinago', phone: '555-1234' }).phone).toBeTruthy();
+  });
+  it('treat the number as optional for officials but still check it when given', () => {
+    const official = { email: 'o@x.co', firstName: 'O', lastName: 'P', role: 'barangay' as const, barangayId: 'tinago', employeeId: 'BSP-1', password: 'longenough1' };
+    expect(validateNewAccount(official)).toEqual({});
+    expect(validateNewAccount({ ...official, phone: 'nope' }).phone).toBeTruthy();
+  });
+  it('are found by searching their phone number', () => {
+    const list = [acct({ uid: 'c1', role: 'cleanup_team', phone: '+639171234567' }), acct({ uid: 'c2', role: 'citizen' })];
+    expect(filterAccounts(list, { query: '+639171234567', role: 'all', status: 'live' }).map((a) => a.uid)).toEqual(['c1']);
+  });
+});
+
 describe('filterAccounts', () => {
   const list = [
     acct({ uid: '1', firstName: 'Ana', role: 'citizen', barangay: 'Guadalupe' }),

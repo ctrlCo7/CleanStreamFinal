@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
@@ -11,12 +11,25 @@ import { BackIcon } from '../../components/common/TabIcons';
 import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
 import { updateReportStatus } from '../../services/reportsService';
+import { assignCrewToReport, CrewMember, getAllCrews } from '../../services/crewService';
+import { formatDateKey, formatHHmm, toDateKey } from '../../utils/dates';
+import { formatPhone } from '../../utils/phone';
 import { CEBU_BARANGAYS } from '../../services/locationService';
 import { getNotificationRecipientsByRole, sendBulkNotification, sendReportNotification } from '../../services/notificationService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AdminSchedule'>;
 
 const TEAMS = ['Team A — General cleanup', 'Team B — Hazmat specialists', 'Team C — Standard cleanup', 'Team D — Heavy machinery'];
+
+// Used when the Admin picks a real crew: this screen has no date or time fields of its own.
+const CREW_START = '08:00';
+const CREW_END = '10:00';
+
+function tomorrowKey(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return toDateKey(d);
+}
 
 function suggestScheduleDate(severity: string): string {
   const now = new Date();
@@ -49,6 +62,22 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
   const [selectedUnit, setSelectedUnit] = useState(CEBU_BARANGAYS[defaultUnitIdx]);
   const [approved, setApproved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [crews, setCrews] = useState<CrewMember[]>([]);
+  const [crewsLoading, setCrewsLoading] = useState(true);
+  const [crewId, setCrewId] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    getAllCrews()
+      .then((list) => { if (!cancelled) setCrews(list); })
+      .catch((e) => console.warn('[Schedule] Could not load crews (the team label still works):', e))
+      .finally(() => { if (!cancelled) setCrewsLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const unitCrews = crews.filter((c) => c.barangayId === selectedUnit.id);
+  const selectedCrew = unitCrews.find((c) => c.uid === crewId);
+  const scheduledDate = tomorrowKey();
 
   const aiSchedule = {
     date: suggestScheduleDate(severity),
@@ -60,7 +89,23 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
   const handleApprove = async () => {
     setSaving(true);
     try {
-      if (report && user) {
+      if (report && user && selectedCrew) {
+        // A real crew: this creates the task, marks the report assigned and notifies the crew and the reporter.
+        await assignCrewToReport({
+          report, crew: selectedCrew, assigner: user, scheduledDate, startTime: CREW_START, endTime: CREW_END,
+        });
+        getNotificationRecipientsByRole(['barangay'], selectedUnit.id)
+          .then((barangayUserIds) => {
+            if (barangayUserIds.length === 0) return;
+            return sendBulkNotification(
+              barangayUserIds,
+              'Cleanup scheduled in your barangay',
+              `${selectedCrew.name} will clean up on ${formatDateKey(scheduledDate)} — ${severity} severity report in ${selectedUnit.name}.`,
+              'system',
+            );
+          })
+          .catch((e) => console.warn('[Schedule] Barangay notification failed (non-fatal):', e));
+      } else if (report && user) {
         const userName = `${user.firstName} ${user.lastName}`;
         await updateReportStatus(report.id, 'assigned', user.uid, userName, {
           assignedTeamName: selectedTeam,
@@ -88,10 +133,15 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
       setApproved(true);
       setTimeout(() => {
         navigation.goBack();
-        Alert.alert('Schedule approved', `Team notified for ${aiSchedule.date} at ${aiSchedule.time.split('–')[0].trim()}`);
+        Alert.alert(
+          'Schedule approved',
+          selectedCrew
+            ? `${selectedCrew.name} has been notified for ${formatDateKey(scheduledDate)}, ${formatHHmm(CREW_START)} to ${formatHHmm(CREW_END)}.`
+            : `Team notified for ${aiSchedule.date} at ${aiSchedule.time.split('–')[0].trim()}`,
+        );
       }, 1200);
-    } catch {
-      Alert.alert('Error', 'Failed to save schedule. Please try again.');
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error && err.message ? err.message : 'Failed to save schedule. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -107,6 +157,7 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
     const next = (unitIdx + 1) % CEBU_BARANGAYS.length;
     setUnitIdx(next);
     setSelectedUnit(CEBU_BARANGAYS[next]);
+    setCrewId('');
   };
 
   return (
@@ -157,6 +208,41 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         </View>
 
+        {/* Real crew (optional) */}
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>Assign a cleanup crew (optional)</Text>
+          {crewsLoading ? (
+            <ActivityIndicator size="small" color={colors.blue} />
+          ) : unitCrews.length === 0 ? (
+            <Text style={styles.crewHint}>No crew accounts in {selectedUnit.name} yet. The team above will be used.</Text>
+          ) : (
+            unitCrews.map((c) => {
+              const on = c.uid === crewId;
+              return (
+                <TouchableOpacity
+                  key={c.uid}
+                  style={[styles.crewCard, on && styles.crewCardOn]}
+                  onPress={() => setCrewId(on ? '' : c.uid)}
+                  disabled={saving || approved}
+                  activeOpacity={0.85}
+                  accessibilityState={{ selected: on }}
+                >
+                  <View style={[styles.crewRadio, on && styles.crewRadioOn]}>{on && <View style={styles.crewRadioDot} />}</View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.crewName}>{c.name}</Text>
+                    <Text style={styles.crewHint}>{c.phone ? formatPhone(c.phone) : 'No number'}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
+          <Text style={styles.crewHint}>
+            {selectedCrew
+              ? `${selectedCrew.name} will get a task for ${formatDateKey(scheduledDate)}, ${formatHHmm(CREW_START)} to ${formatHHmm(CREW_END)}. The team label above is not used.`
+              : 'No crew chosen: only the team label above is saved and the barangay is told.'}
+          </Text>
+        </View>
+
         {/* Action buttons */}
         <View style={styles.actionRow}>
           <TouchableOpacity
@@ -180,7 +266,11 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
               <Text style={{ fontSize: 20 }}>✓</Text>
             </View>
             <Text style={styles.successTitle}>Schedule approved!</Text>
-            <Text style={styles.successSub}>{selectedTeam} notified. {aiSchedule.date}, {aiSchedule.time.split('–')[0].trim()}.</Text>
+            <Text style={styles.successSub}>
+              {selectedCrew
+                ? `${selectedCrew.name} notified. ${formatDateKey(scheduledDate)}, ${formatHHmm(CREW_START)}.`
+                : `${selectedTeam} notified. ${aiSchedule.date}, ${aiSchedule.time.split('–')[0].trim()}.`}
+            </Text>
           </View>
         )}
       </ScrollView>
@@ -226,6 +316,17 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   selectorText: { fontSize: 12, color: Colors.textPrimary },
   selectorArrow: { fontSize: 14, color: Colors.grayHint },
+  crewCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, padding: 12, borderRadius: 16,
+    backgroundColor: Colors.white, borderWidth: 1.5, borderColor: 'transparent',
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
+  crewCardOn: { borderColor: Colors.blue, backgroundColor: Colors.blueBg },
+  crewName: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
+  crewHint: { fontSize: 11, color: Colors.textMuted, lineHeight: 16 },
+  crewRadio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: Colors.grayMid, alignItems: 'center', justifyContent: 'center' },
+  crewRadioOn: { borderColor: Colors.blue },
+  crewRadioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.blue },
   actionRow: { flexDirection: 'row', gap: 8 },
   approveBtn: { flex: 1, backgroundColor: Colors.teal, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
   approveBtnDisabled: { opacity: 0.6 },

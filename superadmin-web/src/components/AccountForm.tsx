@@ -1,6 +1,6 @@
 import { FormEvent, useId, useState } from 'react';
 import {
-  AccountFormInput, MIN_PASSWORD_LENGTH, NewAccountInput, generatePassword, needsBarangay,
+  AccountFormInput, MIN_PASSWORD_LENGTH, NewAccountInput, generatePassword, needsBarangay, requiresPhone, usesPhone,
   validateAccountForm, validateNewAccount,
 } from '../lib/accountRules';
 import { BARANGAYS } from '../lib/barangays';
@@ -30,6 +30,7 @@ export function AccountForm(props: CreateProps | EditProps) {
   const [barangayId, setBarangayId] = useState(editing?.barangayId ?? '');
   const [employeeId, setEmployeeId] = useState(editing?.employeeId ?? '');
   const [agency, setAgency] = useState(editing?.agency ?? '');
+  const [phone, setPhone] = useState(editing?.phone ?? '');
   const [password, setPassword] = useState(() => (props.mode === 'create' ? generatePassword() : ''));
   const [showPassword, setShowPassword] = useState(false);
   const [sendReset, setSendReset] = useState(true);
@@ -44,6 +45,7 @@ export function AccountForm(props: CreateProps | EditProps) {
       barangayId: needsBarangay(role) ? barangayId : undefined,
       employeeId: employeeId || undefined,
       agency: agency || undefined,
+      phone: usesPhone(role) ? phone || undefined : undefined,
     };
     if (props.mode === 'create') {
       const input: NewAccountInput = { ...base, password };
@@ -100,6 +102,14 @@ export function AccountForm(props: CreateProps | EditProps) {
                   <option value="">Select a barangay…</option>
                   {BARANGAYS.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>)}
+            </div>
+          )}
+
+          {usesPhone(role) && (
+            <div className="span-2">
+              {field('phone', requiresPhone(role) ? 'Contact number' : 'Contact number (optional)',
+                <input {...aria('phone')} type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0917 123 4567" autoComplete="off" />,
+                role === 'cleanup_team' ? 'Officials and the Admin call this number to reach the crew.' : 'Lets crews and the Admin reach this person.')}
             </div>
           )}
 

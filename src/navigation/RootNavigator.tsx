@@ -18,6 +18,7 @@ import MapScreen from '../screens/MapScreen';
 import CitizenNavigator from './CitizenNavigator';
 import AdminNavigator from './AdminNavigator';
 import BarangayNavigator from './BarangayNavigator';
+import CleanupNavigator from './CleanupNavigator';
 
 import CitizenReportScreen from '../screens/citizen/ReportScreen';
 import CitizenAIResultScreen from '../screens/citizen/AIResultScreen';
@@ -32,6 +33,13 @@ import BarangayChatScreen from '../screens/barangay/ChatScreen';
 import BarangayVerifyReportsScreen from '../screens/barangay/VerifyReportsScreen';
 import BarangayVerifyReportDetailScreen from '../screens/barangay/VerifyReportDetailScreen';
 import BarangayAlarmsScreen from '../screens/barangay/AlarmsScreen';
+import CleanupTaskDetailScreen from '../screens/cleanup/CleanupTaskDetailScreen';
+import BarangayCrewTasksScreen from '../screens/barangay/CrewTasksScreen';
+import BarangayAssignCrewScreen from '../screens/barangay/AssignCrewScreen';
+import BarangayCreateEventScreen from '../screens/barangay/CreateEventScreen';
+import BarangayEventDetailScreen from '../screens/barangay/EventDetailScreen';
+import CitizenEventsScreen from '../screens/citizen/EventsScreen';
+import CitizenEventDetailScreen from '../screens/citizen/EventDetailScreen';
 import AdminCheckpointAlarmsScreen from '../screens/admin/CheckpointAlarmsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -92,6 +100,8 @@ export default function RootNavigator() {
               <Stack.Screen name="AdminTabs" component={AdminNavigator} />
             ) : user.role === 'barangay' ? (
               <Stack.Screen name="BarangayTabs" component={BarangayNavigator} />
+            ) : user.role === 'cleanup_team' ? (
+              <Stack.Screen name="CleanupTabs" component={CleanupNavigator} />
             ) : (
               <Stack.Screen name="CitizenTabs" component={CitizenNavigator} />
             )}
@@ -110,6 +120,13 @@ export default function RootNavigator() {
             <Stack.Screen name="BarangayVerifyDetail" component={BarangayVerifyReportDetailScreen} />
             <Stack.Screen name="BarangayChat" component={BarangayChatScreen} />
             <Stack.Screen name="BarangayAlarms" component={BarangayAlarmsScreen} />
+            <Stack.Screen name="CleanupTaskDetail" component={CleanupTaskDetailScreen} />
+            <Stack.Screen name="BarangayCrewTasks" component={BarangayCrewTasksScreen} />
+            <Stack.Screen name="BarangayAssignCrew" component={BarangayAssignCrewScreen} />
+            <Stack.Screen name="BarangayCreateEvent" component={BarangayCreateEventScreen} />
+            <Stack.Screen name="BarangayEventDetail" component={BarangayEventDetailScreen} />
+            <Stack.Screen name="CitizenEvents" component={CitizenEventsScreen} />
+            <Stack.Screen name="CitizenEventDetail" component={CitizenEventDetailScreen} />
             <Stack.Screen name="AdminCheckpointAlarms" component={AdminCheckpointAlarmsScreen} />
           </>
         ) : (
