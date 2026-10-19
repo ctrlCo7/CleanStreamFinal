@@ -1,5 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { RolePill } from '../components/Pill';
+import { ReviewDialog } from '../components/ReviewDialog';
+import { Account } from '../lib/types';
 import { fullName, statusOf } from '../lib/accountRules';
 import { useData } from '../lib/data';
 import { formatDateTime } from '../lib/format';
@@ -8,6 +10,7 @@ import { useAccountActions } from '../lib/useAccountActions';
 export function Approvals() {
   const { accounts, loading } = useData();
   const actions = useAccountActions();
+  const [reviewing, setReviewing] = useState<Account | null>(null);
   const pending = useMemo(
     () => accounts.filter((a) => statusOf(a) === 'pending').sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)),
     [accounts],
@@ -18,7 +21,7 @@ export function Approvals() {
       <header className="page-head">
         <div>
           <h1>Approvals</h1>
-          <p className="muted">Barangay officials and cleanup-team members who registered in the app and are waiting for you.</p>
+          <p className="muted">People who registered in the app and are waiting for you. Admin and Barangay Official applicants submit an ID and selfies for you to check.</p>
         </div>
       </header>
 
@@ -44,13 +47,21 @@ export function Approvals() {
                 </dl>
               </div>
               <div className="approval-actions">
-                <button className="btn btn-primary" disabled={actions.busyKey === `approve:${a.uid}`} onClick={() => actions.approve(a)}>Approve</button>
-                <button className="btn btn-danger-outline" onClick={() => actions.remove(a, 'reject')}>Reject</button>
+                {a.idVerification === 'pending' ? (
+                  <button className="btn btn-primary" onClick={() => setReviewing(a)}>Review ID</button>
+                ) : (
+                  <>
+                    <button className="btn btn-primary" disabled={actions.busyKey === `approve:${a.uid}`} onClick={() => actions.approve(a)}>Approve</button>
+                    <button className="btn btn-danger-outline" onClick={() => actions.remove(a, 'reject')}>Reject</button>
+                  </>
+                )}
               </div>
             </li>
           ))}
         </ul>
       )}
+
+      {reviewing && <ReviewDialog account={reviewing} onClose={() => setReviewing(null)} />}
     </>
   );
 }

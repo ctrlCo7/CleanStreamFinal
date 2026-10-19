@@ -17,10 +17,17 @@ const base = (uid, role, extra = {}) => ({
 await env.clearFirestore();
 await env.withSecurityRulesDisabled(async (ctx) => {
   const db = ctx.firestore();
+  await setDoc(doc(db, 'reports', 'r_b1'), { userId: 'ct', barangayId: 'b1', location: { latitude: 1, longitude: 2 }, status: 'pending', severity: 'low' });
+  await setDoc(doc(db, 'verifications', 'bg_rej'), { uid: 'bg_rej', status: 'rejected', reason: 'blurry' });
+  await setDoc(doc(db, 'verifications', 'bg_pend'), { uid: 'bg_pend', role: 'barangay', status: 'pending', idImage: 'data:x' });
   for (const [uid, role, extra] of [
     ['sa', 'superadmin'], ['ad', 'admin'], ['bg', 'barangay', { barangayId: 'b1' }], ['ct', 'citizen'],
     ['cl', 'cleanup_team'], ['victim', 'citizen'], ['ct2', 'citizen', { isVerified: false }],
     ['sa_off', 'superadmin', { isActive: false }],
+    ['ad_pend', 'admin', { idVerification: 'pending', isVerified: false }],
+    ['bg_pend', 'barangay', { barangayId: 'b1', idVerification: 'pending', isVerified: false }],
+    ['bg_rej', 'barangay', { barangayId: 'b1', idVerification: 'rejected', isVerified: false }],
+    ['bg_ok', 'barangay', { barangayId: 'b1', idVerification: 'approved' }],
     ['sa_gone', 'superadmin', { deletedAt: new Date() }],
   ]) await setDoc(doc(db, 'users', uid), base(uid, role, extra));
   await setDoc(doc(db, 'auditLogs', 'seed'), { action: 'account.create', actorUid: 'sa' });
@@ -69,7 +76,7 @@ await check("citizen can't edit others", assertFails(updateDoc(doc(ct, 'users', 
 const fresh = env.authenticatedContext('brand_new').firestore();
 await check('self-signup as citizen works', assertSucceeds(setDoc(doc(fresh, 'users', 'brand_new'), { uid: 'brand_new', email: 'n@x.co', firstName: 'N', lastName: 'W', role: 'citizen' })));
 const fresh2 = env.authenticatedContext('brand_new2').firestore();
-await check('self-signup as barangay works (pending approval)', assertSucceeds(setDoc(doc(fresh2, 'users', 'brand_new2'), { uid: 'brand_new2', email: 'n2@x.co', firstName: 'N', lastName: 'W', role: 'barangay' })));
+await check('self-signup as barangay without the ID check is refused', assertFails(setDoc(doc(fresh2, 'users', 'brand_new2'), { uid: 'brand_new2', email: 'n2@x.co', firstName: 'N', lastName: 'W', role: 'barangay' })));
 const fresh3 = env.authenticatedContext('brand_new3').firestore();
 await check("self-signup as admin is refused", assertFails(setDoc(doc(fresh3, 'users', 'brand_new3'), { uid: 'brand_new3', email: 'n3@x.co', firstName: 'N', lastName: 'W', role: 'admin' })));
 await check("self-signup as superadmin is refused", assertFails(setDoc(doc(fresh3, 'users', 'brand_new3'), { uid: 'brand_new3', email: 'n3@x.co', firstName: 'N', lastName: 'W', role: 'superadmin' })));
@@ -97,6 +104,52 @@ await check('admin can still set checkpoint alarms', assertSucceeds(setDoc(doc(a
 await check('any signed-in user can read alarms', assertSucceeds(getDoc(doc(ct, 'checkpointAlarms', 'b1'))));
 await check('citizen can still submit a report', assertSucceeds(setDoc(doc(ct, 'reports', 'r1'), { userId: 'ct', location: { latitude: 1, longitude: 2 }, status: 'pending', severity: 'low' })));
 await check('any signed-in user can read reports (public map)', assertSucceeds(getDoc(doc(as('bg'), 'reports', 'r1'))));
+
+console.log('\n== Identity verification: applicants get no powers until approved');
+const adp = as('ad_pend'), bgp = as('bg_pend'), bgr = as('bg_rej'), bgo = as('bg_ok');
+await check('pending admin cannot read other accounts', assertFails(getDoc(doc(adp, 'users', 'ct'))));
+await check('pending admin cannot set checkpoint alarms', assertFails(setDoc(doc(adp, 'checkpointAlarms', 'b2'), { barangayId: 'b2', hour: 8, minute: 0 })));
+await check('pending barangay official cannot read accounts', assertFails(getDoc(doc(bgp, 'users', 'ct'))));
+await check('pending barangay official cannot verify a report', assertFails(updateDoc(doc(bgp, 'reports', 'r_b1'), { status: 'verified' })));
+await check('rejected barangay official cannot verify a report', assertFails(updateDoc(doc(bgr, 'reports', 'r_b1'), { status: 'verified' })));
+await check('approved barangay official can verify a report', assertSucceeds(updateDoc(doc(bgo, 'reports', 'r_b1'), { status: 'verified' })));
+await check('existing barangay official (no field) still works', assertSucceeds(getDoc(doc(as('bg'), 'users', 'ct'))));
+
+console.log('\n== Identity verification: self sign-up cannot skip the check');
+const su = (uid, data) => setDoc(doc(env.authenticatedContext(uid).firestore(), 'users', uid), { uid, email: uid + '@x.co', firstName: 'N', lastName: 'W', ...data });
+await check('admin sign-up with idVerification pending is accepted', assertSucceeds(su('n_ad', { role: 'admin', idVerification: 'pending', isVerified: false, isActive: true })));
+await check('barangay sign-up with idVerification pending is accepted', assertSucceeds(su('n_bg', { role: 'barangay', idVerification: 'pending', isVerified: false, isActive: true })));
+await check('admin sign-up WITHOUT idVerification is refused', assertFails(su('n_ad2', { role: 'admin', isVerified: false })));
+await check('barangay sign-up WITHOUT idVerification is refused', assertFails(su('n_bg2', { role: 'barangay', isVerified: false })));
+await check('sign-up claiming idVerification approved is refused', assertFails(su('n_bg3', { role: 'barangay', idVerification: 'approved' })));
+await check('sign-up claiming isVerified true is refused', assertFails(su('n_ct2', { role: 'citizen', isVerified: true })));
+await check('sign-up with isActive false is refused', assertFails(su('n_ct3', { role: 'citizen', isActive: false })));
+await check('citizen sign-up (no ID step) still works', assertSucceeds(su('n_ct4', { role: 'citizen', isVerified: false, isActive: true })));
+await check('pending applicant cannot approve themselves', assertFails(updateDoc(doc(bgp, 'users', 'bg_pend'), { idVerification: 'approved' })));
+await check('pending applicant cannot set isVerified', assertFails(updateDoc(doc(bgp, 'users', 'bg_pend'), { isVerified: true })));
+await check('rejected applicant cannot jump to approved', assertFails(updateDoc(doc(bgr, 'users', 'bg_rej'), { idVerification: 'approved' })));
+await check('rejected applicant can resubmit (rejected -> pending)', assertSucceeds(updateDoc(doc(bgr, 'users', 'bg_rej'), { idVerification: 'pending' })));
+await check('rejected applicant cannot erase the rejection reason', assertFails(updateDoc(doc(bgr, 'users', 'bg_rej'), { idRejectionReason: 'x' })));
+await check('superadmin approves an applicant', assertSucceeds(updateDoc(doc(sa, 'users', 'bg_pend'), { idVerification: 'approved', isVerified: true })));
+
+console.log('\n== Identity verification: the ID images are private');
+const evidence = (uid, extra = {}) => ({ uid, role: 'barangay', idType: 'umid', idImage: 'data:a', selfieNeutral: 'data:b', selfieSmile: 'data:c', selfieTurn: 'data:d', clientChecks: { mode: 'mlkit' }, status: 'pending', submittedAt: serverTimestamp(), ...extra });
+await check('applicant submits their own evidence', assertSucceeds(setDoc(doc(as('n_bg'), 'verifications', 'n_bg'), evidence('n_bg'))));
+await check('applicant reads their own submission', assertSucceeds(getDoc(doc(as('n_bg'), 'verifications', 'n_bg'))));
+await check('nobody else can read it (another citizen)', assertFails(getDoc(doc(ct, 'verifications', 'n_bg'))));
+await check('nobody else can read it (an admin)', assertFails(getDoc(doc(ad, 'verifications', 'n_bg'))));
+await check('nobody else can read it (a barangay official)', assertFails(getDoc(doc(as('bg'), 'verifications', 'n_bg'))));
+await check('logged-out visitor cannot read it', assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), 'verifications', 'n_bg'))));
+await check('superadmin reads it', assertSucceeds(getDoc(doc(sa, 'verifications', 'n_bg'))));
+await check("applicant can't submit under someone else's id", assertFails(setDoc(doc(as('n_ad'), 'verifications', 'n_bg2'), evidence('n_bg2'))));
+await check('submission with extra/unknown fields is refused', assertFails(setDoc(doc(as('n_ad'), 'verifications', 'n_ad'), evidence('n_ad', { approvedByMe: true }))));
+await check('submission cannot pre-mark itself approved', assertFails(setDoc(doc(as('n_ad'), 'verifications', 'n_ad'), evidence('n_ad', { status: 'approved' }))));
+await check('a citizen (not pending) cannot submit evidence', assertFails(setDoc(doc(ct, 'verifications', 'ct'), evidence('ct', { role: 'citizen' }))));
+await check('applicant cannot edit a pending submission', assertFails(updateDoc(doc(as('n_bg'), 'verifications', 'n_bg'), { idImage: 'data:swapped' })));
+await check('applicant cannot approve their own submission', assertFails(updateDoc(doc(as('n_bg'), 'verifications', 'n_bg'), { status: 'approved' })));
+await check('rejected applicant can resubmit new evidence', assertSucceeds(setDoc(doc(bgr, 'verifications', 'bg_rej'), evidence('bg_rej'))));
+await check('superadmin records a decision and clears the images', assertSucceeds(updateDoc(doc(sa, 'verifications', 'n_bg'), { status: 'approved', idImage: null })));
+await check('superadmin can delete a submission', assertSucceeds(deleteDoc(doc(sa, 'verifications', 'n_bg'))));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup();

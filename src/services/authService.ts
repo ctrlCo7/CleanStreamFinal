@@ -7,8 +7,12 @@ import {
   signOut,
 } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { User, UserRole } from '../types';
+import { IdentityEvidence, User, UserRole } from '../types';
 import { auth, db } from './firebase';
+import { submitIdentityEvidence } from './identityVerificationService';
+
+/** Admin and Barangay Official sign-ups must have their ID and face verified by the Super Admin. */
+export const requiresIdentityCheck = (role: UserRole): boolean => role === 'admin' || role === 'barangay';
 
 export const registerUser = async (
   email: string,
@@ -20,7 +24,12 @@ export const registerUser = async (
   employeeId?: string,
   agency?: string,
   barangayId?: string,
+  evidence?: IdentityEvidence,
 ): Promise<User> => {
+  // Checked before the sign-in is created so a missing ID photo can't leave a half-made account.
+  if (requiresIdentityCheck(role) && !evidence) {
+    throw new Error('Please complete the ID and face verification first.');
+  }
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   const { uid } = credential.user;
 
@@ -34,6 +43,7 @@ export const registerUser = async (
     barangayId,
     employeeId,
     agency,
+    ...(requiresIdentityCheck(role) ? { idVerification: 'pending' as const } : {}),
     isActive: true,
     isVerified: false,
     createdAt: new Date().toISOString(),
@@ -48,6 +58,15 @@ export const registerUser = async (
   }
 
   await setDoc(doc(db, 'users', uid), firestorePayload);
+
+  if (evidence) {
+    try {
+      await submitIdentityEvidence(uid, role, evidence);
+    } catch {
+      // The account exists and waits in 'pending'; the waiting screen lets them send the photos again.
+      throw new Error('Your account was created, but we could not upload your ID photos. Sign in and submit them again.');
+    }
+  }
 
   return userData;
 };

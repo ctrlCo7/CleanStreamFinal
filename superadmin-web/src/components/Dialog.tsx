@@ -4,7 +4,7 @@ interface DialogProps {
   title: string;
   onClose: () => void;
   children: ReactNode;
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
 }
 
 /** Modal built on the native <dialog>: focus trapping, Esc handling and the backdrop come from the browser. */

@@ -5,7 +5,11 @@ import { Account, AccountStatus, Actor, ROLES, ROLE_LABELS, Role, SELF_REGISTERI
 export const statusOf = (a: Account): AccountStatus => {
   if (a.deletedAt) return 'removed';
   if (!a.isActive) return 'inactive';
-  if (SELF_REGISTERING_STAFF.includes(a.role) && !a.isVerified) return 'pending';
+  // Accounts that went through the ID + face check carry an explicit state...
+  if (a.idVerification === 'pending') return 'pending';
+  if (a.idVerification === 'rejected') return 'rejected';
+  // ...older self-registered staff accounts (no ID check) are simply unapproved.
+  if (a.idVerification === undefined && SELF_REGISTERING_STAFF.includes(a.role) && !a.isVerified) return 'pending';
   return 'active';
 };
 

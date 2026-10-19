@@ -1,12 +1,13 @@
 import { useCallback, useState } from 'react';
 import { AccountFormInput, NewAccountInput, fullName, guardDisable, guardRoleChange } from './accountRules';
 import {
-  createAccount, removeAccount, restoreAccount, sendResetEmail, setAccountActive, setAccountVerified,
+  approveIdentity, createAccount, rejectIdentity, removeAccount, restoreAccount, sendResetEmail, setAccountActive, setAccountVerified,
   updateAccount,
 } from './accounts';
 import { useActor } from './auth';
 import { useData } from './data';
 import { useConfirm, useToast } from './feedback';
+import { matchSummaryForRecord } from './faceVerdict';
 import { Account } from './types';
 
 const explain = (e: unknown): string => {
@@ -112,5 +113,15 @@ export function useAccountActions() {
     if (yes) await run(`reset:${a.uid}`, () => sendResetEmail(actor, a), `Reset email sent to ${a.email}`);
   }, [actor, confirm, run]);
 
-  return { busyKey, create, edit, approve, revoke, deactivate, reactivate, remove, restore, resetPassword };
+  const decideIdentity = useCallback(
+    (a: Account, match: ReturnType<typeof matchSummaryForRecord>, hasRecord: boolean, rejectionReason?: string) =>
+      run(
+        `identity:${a.uid}`,
+        () => (rejectionReason ? rejectIdentity(actor, a, rejectionReason, match, hasRecord) : approveIdentity(actor, a, match, hasRecord)),
+        rejectionReason ? `${fullName(a)}'s ID was rejected` : `${fullName(a)} approved`,
+      ),
+    [actor, run],
+  );
+
+  return { busyKey, decideIdentity, create, edit, approve, revoke, deactivate, reactivate, remove, restore, resetPassword };
 }

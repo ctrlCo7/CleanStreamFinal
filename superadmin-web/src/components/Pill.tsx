@@ -4,7 +4,7 @@ import { Account, AccountStatus, ROLE_LABELS, Role } from '../lib/types';
 import { MoreIcon } from './Icons';
 
 const STATUS_LABELS: Record<AccountStatus, string> = {
-  active: 'Active', pending: 'Pending approval', inactive: 'Deactivated', removed: 'Removed',
+  active: 'Active', pending: 'Pending approval', rejected: 'ID rejected', inactive: 'Deactivated', removed: 'Removed',
 };
 
 export const StatusPill = ({ account }: { account: Account }) => {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AccountForm } from '../components/AccountForm';
 import { Dialog } from '../components/Dialog';
+import { ReviewDialog } from '../components/ReviewDialog';
 import { DownloadIcon, PlusIcon, SearchIcon } from '../components/Icons';
 import { MenuItem, RolePill, RowMenu, StatusPill } from '../components/Pill';
 import {
@@ -19,6 +20,7 @@ const STATUS_OPTIONS: Array<{ value: AccountFilter['status']; label: string }> =
   { value: 'live', label: 'All (hide removed)' },
   { value: 'active', label: 'Active' },
   { value: 'pending', label: 'Pending approval' },
+  { value: 'rejected', label: 'ID rejected' },
   { value: 'inactive', label: 'Deactivated' },
   { value: 'removed', label: 'Removed' },
   { value: 'all', label: 'Everything' },
@@ -36,6 +38,7 @@ export function Accounts() {
   const [page, setPage] = useState(0);
   const [form, setForm] = useState<FormState>(null);
   const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
+  const [reviewing, setReviewing] = useState<Account | null>(null);
 
   const filtered = useMemo(() => filterAccounts(accounts, filter), [accounts, filter]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -61,7 +64,9 @@ export function Accounts() {
     const disableGuard = guardDisable(actor, a, accounts, 'remove');
     const items: MenuItem[] = [{ label: 'Edit details', onSelect: () => setForm({ mode: 'edit', account: a }) }];
     if (status !== 'removed') {
-      if (SELF_REGISTERING_STAFF.includes(a.role)) {
+      if (a.idVerification === 'pending') {
+        items.push({ label: 'Review ID…', onSelect: () => setReviewing(a) });
+      } else if (a.idVerification === undefined && SELF_REGISTERING_STAFF.includes(a.role)) {
         items.push(a.isVerified
           ? { label: 'Revoke approval', onSelect: () => actions.revoke(a) }
           : { label: 'Approve', onSelect: () => actions.approve(a) });
@@ -183,6 +188,8 @@ export function Accounts() {
           onSubmit={async (input) => { if (await actions.edit(form.account, input)) setForm(null); }}
         />
       )}
+
+      {reviewing && <ReviewDialog account={reviewing} onClose={() => setReviewing(null)} />}
 
       {created && (
         <Dialog title="Account created" onClose={() => setCreated(null)}>

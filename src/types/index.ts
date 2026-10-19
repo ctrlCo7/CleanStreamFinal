@@ -17,11 +17,42 @@ export interface User {
   employeeId?: string;
   agency?: string;
   jurisdiction?: string;
+  // Set only for Admin / Barangay Official sign-ups, which must have their ID and face
+  // checked by the Super Admin. 'pending' and 'rejected' accounts have no staff powers.
+  idVerification?: IdVerificationStatus;
+  idRejectionReason?: string;
   isActive: boolean;
   isVerified: boolean;
   createdAt: string;
   updatedAt?: string;
   lastLoginAt?: string;
+}
+
+// ─── Identity verification (Admin / Barangay Official sign-up) ───────────────
+
+export type IdVerificationStatus = 'pending' | 'approved' | 'rejected';
+
+export type IdType =
+  | 'philsys' | 'umid' | 'passport' | 'drivers_license' | 'prc' | 'postal'
+  | 'voters' | 'sss' | 'gsis' | 'govt_employee' | 'other_govt';
+
+export type SelfieStep = 'neutral' | 'smile' | 'turn';
+
+/** What the phone itself could establish. Advisory only: the Super Admin decides. */
+export interface IdentityClientChecks {
+  mode: 'mlkit' | 'unavailable';
+  faceOnId: boolean;
+  textReadable: boolean;
+  lastNameOnId: boolean | null;
+  firstNameOnId: boolean | null;
+  liveness: Record<SelfieStep, boolean>;
+}
+
+export interface IdentityEvidence {
+  idType: IdType;
+  idImage: string;                          // JPEG data URI
+  selfies: Record<SelfieStep, string>;      // JPEG data URIs
+  clientChecks: IdentityClientChecks;
 }
 
 // ─── Shared Primitives ───────────────────────────────────────────────────────
@@ -562,6 +593,8 @@ export type RootStackParamList = {
   Splash: undefined;
   Login: undefined;
   Signup: undefined;
+  IdentityVerification: { mode: 'signup' | 'resubmit'; firstName: string; lastName: string };
+  VerificationPending: undefined;
   CitizenTabs: undefined;
   AdminTabs: undefined;
   BarangayTabs: undefined;

@@ -62,7 +62,11 @@ export function Overview({ go }: { go: (route: 'accounts' | 'approvals' | 'audit
                     <strong>{fullName(a)}</strong>
                     <span className="muted"> · {ROLE_LABELS[a.role]}{a.barangay ? ` · ${a.barangay}` : ''}</span>
                   </div>
-                  <button className="btn btn-sm btn-primary" disabled={actions.busyKey === `approve:${a.uid}`} onClick={() => actions.approve(a)}>Approve</button>
+                  {a.idVerification === 'pending' ? (
+                    <button className="btn btn-sm btn-primary" onClick={() => go('approvals')}>Review ID</button>
+                  ) : (
+                    <button className="btn btn-sm btn-primary" disabled={actions.busyKey === `approve:${a.uid}`} onClick={() => actions.approve(a)}>Approve</button>
+                  )}
                 </li>
               ))}
             </ul>

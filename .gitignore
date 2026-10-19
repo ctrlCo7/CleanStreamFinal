@@ -26,6 +26,7 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 firebase-debug.log
+.firebase/
 firestore-debug.log
 ui-debug.log
 firebase-export-*/

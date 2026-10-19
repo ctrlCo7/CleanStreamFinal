@@ -11,6 +11,8 @@ import SplashScreen from '../screens/SplashScreen';
 import LoadingScreen from '../screens/LoadingScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
 import SignupScreen from '../screens/auth/SignupScreen';
+import IdentityVerificationScreen from '../screens/auth/IdentityVerificationScreen';
+import VerificationPendingScreen from '../screens/auth/VerificationPendingScreen';
 import MapScreen from '../screens/MapScreen';
 
 import CitizenNavigator from './CitizenNavigator';
@@ -54,6 +56,10 @@ export default function RootNavigator() {
 
   if (initializing) return <LoadingScreen />;
 
+  // Admin / Barangay Official applicants stay on the waiting screen until the Super Admin
+  // approves their ID (the security rules give them no powers until then either).
+  const awaitingIdReview = user?.idVerification === 'pending' || user?.idVerification === 'rejected';
+
   const navTheme = {
     ...(isDark ? DarkTheme : DefaultTheme),
     colors: {
@@ -69,7 +75,12 @@ export default function RootNavigator() {
   return (
     <NavigationContainer theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
-        {isAuthenticated && user ? (
+        {isAuthenticated && user && awaitingIdReview ? (
+          <>
+            <Stack.Screen name="VerificationPending" component={VerificationPendingScreen} />
+            <Stack.Screen name="IdentityVerification" component={IdentityVerificationScreen} />
+          </>
+        ) : isAuthenticated && user ? (
           <>
             {/* The signed-in role's Tabs screen must be declared FIRST: React Navigation
                 only re-derives the initial route from the 0th declared screen when the
@@ -105,6 +116,7 @@ export default function RootNavigator() {
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Signup" component={SignupScreen} />
+            <Stack.Screen name="IdentityVerification" component={IdentityVerificationScreen} />
             <Stack.Screen name="Splash" component={SplashScreen} />
           </>
         )}

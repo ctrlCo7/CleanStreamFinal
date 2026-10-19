@@ -163,6 +163,7 @@ td.actions { text-align: right; width: 52px; }
 .pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .pill-active { background: var(--brand-soft); color: var(--brand-dark); }
 .pill-pending { background: var(--warn-soft); color: var(--warn); }
+.pill-rejected { background: var(--danger-soft); color: var(--danger); }
 .pill-inactive { background: var(--surface-2); color: var(--muted); }
 .pill-removed { background: var(--danger-soft); color: var(--danger); }
 .pill-role { background: var(--info-soft); color: var(--info); }
@@ -209,6 +210,7 @@ td.actions { text-align: right; width: 52px; }
 
 .dialog { border: 0; padding: 0; border-radius: 14px; background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 32px); overflow: auto; }
 .dialog-sm { width: min(420px, calc(100vw - 24px)); }
+.dialog-lg { width: min(980px, calc(100vw - 24px)); }
 .dialog::backdrop { background: rgba(10, 16, 14, 0.55); }
 .dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
 .dialog-body { padding: 16px 18px; }
@@ -221,6 +223,26 @@ td.actions { text-align: right; width: 52px; }
 .toasts { position: fixed; right: 16px; bottom: 16px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; max-width: min(380px, calc(100vw - 32px)); }
 .toast { cursor: pointer; padding: 11px 14px; border-radius: 10px; box-shadow: var(--shadow); font-weight: 600; background: var(--text); color: var(--bg); }
 .toast-error { background: var(--danger); color: #fff; }
+
+/* ── ID review ───────────────────────────────────────── */
+.review { display: grid; gap: 14px; }
+.review-photos { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.review figure { margin: 0; }
+.review figure img { display: block; width: 100%; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); }
+.review figcaption { margin-top: 4px; font-size: 12.5px; font-weight: 600; }
+.review-id img { max-height: 420px; object-fit: contain; }
+.review-selfies { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.review-selfies img { aspect-ratio: 3 / 4; object-fit: cover; }
+.review-confirm { align-items: flex-start; padding: 10px 12px; background: var(--surface-2); border-radius: 10px; margin: 0; }
+.review-confirm input { margin-top: 3px; }
+.review textarea { padding: 8px 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; resize: vertical; margin-top: 6px; }
+.verdict { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); }
+.verdict strong { font-size: 15px; }
+.verdict-strong, .verdict-likely { background: var(--brand-soft); border-color: var(--brand); }
+.verdict-uncertain, .verdict-no-face { background: var(--warn-soft); border-color: var(--warn); }
+.verdict-mismatch { background: var(--danger-soft); border-color: var(--danger); }
+.verdict-warn { color: var(--danger); font-weight: 600; }
+@media (max-width: 760px) { .review-photos { grid-template-columns: 1fr; } }
 
 /* ── Login / splash ──────────────────────────────────── */
 .login { min-height: 100%; display: grid; place-items: center; padding: 20px; }

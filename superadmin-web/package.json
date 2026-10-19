@@ -13,6 +13,7 @@
     "test:rules": "npx firebase-tools@latest emulators:exec --config ../firebase.json --only firestore --project cleanstream-b7942 \"node tests/rules.test.mjs\""
   },
   "dependencies": {
+    "@vladmandic/face-api": "^1.7.15",
     "firebase": "^12.19.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

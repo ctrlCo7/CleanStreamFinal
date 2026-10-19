@@ -20,6 +20,45 @@ management that used to live in the mobile Admin screens.
 Safety rails: you can't deactivate, remove or change the role of your own account, or of the last active Super Admin.
 A deactivated or removed Super Admin loses all powers immediately (enforced in the security rules, not just the page).
 
+## ID and face verification (Admin and Barangay Official sign-ups)
+
+Anyone can tap "Admin" or "Barangay" when signing up, so these two roles are verified before they get any power:
+
+1. **In the app**: the applicant picks an ID type, photographs the ID, then takes three live selfies (look
+   straight, smile, turn the head). The phone checks that a face is on the ID, the text is readable and the
+   name matches what they typed, and that each selfie really shows the requested pose. They tick a consent box.
+2. **The account starts as `pending`** (`idVerification: 'pending'`). The security rules give a pending or
+   rejected Admin/Barangay account **no staff powers at all** (it can't read accounts, verify reports, etc.),
+   and the app only shows a "Your account is under review" screen. Self sign-up can't skip this: the rules
+   refuse an Admin/Barangay profile that doesn't start as pending, and applicants can't approve themselves.
+3. **In this portal** ("Approvals → Review ID") the Super Admin sees the ID and selfies side by side. The
+   browser runs a face comparison (open face-api models, served from `public/models`, nothing sent to a third
+   party) and shows **Strong match / Likely match / Uncertain / Does not match / Could not compare**, plus the
+   distance for each selfie and a warning if the three selfies look like different people.
+4. The Super Admin ticks "I have compared the photos myself" and approves, or rejects with a reason the
+   applicant sees (they can then send new photos).
+5. **The photos are deleted the moment a decision is made.** Only the outcome, reason, reviewer and the
+   face-check result are kept. The images are stored in `verifications/{uid}`, readable only by the applicant
+   and the Super Admin.
+
+**How reliable is the face check?** Measured on real portraits and simulated ID photos (small, soft, compressed):
+at the "likely match" threshold the right person passed about 85% of the time per photo (97% when the best of
+three selfies counts) and a different person about 0.1% of the time per photo. Real IDs (glare, holograms, worn
+print, older photos) are harder, so **the score only guides the reviewer; a person always decides**.
+
+**Limits to be aware of**
+
+- Three selfies with a smile and a head turn stop someone holding up a printed photo, but not a determined
+  attacker with a video of the person. This is a reasonable check, not bank-grade liveness detection.
+- The phone's own checks (face found, pose, name match) are shown to the reviewer as *reported by the phone*,
+  because a modified app could fake them. The reviewer's own look at the photos is the real control.
+- Accounts created before this feature, and accounts the Super Admin creates in the portal, have no
+  `idVerification` field and are unaffected.
+- The face models are MIT-licensed (`@vladmandic/face-api`) and total about 12 MB in `public/models`. They load only
+  when a review is opened.
+- Storing government IDs, even briefly, is regulated personal data (Philippine Data Privacy Act). The consent
+  text, deletion on decision and restricted access are built in; check your organisation's own policy too.
+
 ### What "remove" means
 
 Removing an account blocks it from signing in and hides it from the default list; **their reports and history
@@ -68,14 +107,14 @@ Admins can no longer manage accounts, so older app builds' Admin "Manage user ac
 
 ## Security rules tests
 
-`npm run test:rules` starts the Firestore emulator and runs 48 checks against `../firestore.rules`
+`npm run test:rules` starts the Firestore emulator and runs 85 checks against `../firestore.rules`
 (who can read/create/update/delete accounts, the audit log's append-only guarantee, a deactivated
 Super Admin losing access, and that existing app behaviour is unchanged). Needs Java.
 
 ## Notes and limits
 
-- Approval is recorded (`isVerified`) and shown, but the mobile app does not yet block unapproved barangay
-  or cleanup-team members from working. Enforcing it would lock out every existing test account until
-  approved, so it is left as a deliberate follow-up.
+- Cleanup-team sign-ups (no ID check) are approved with one click; that approval is recorded (`isVerified`) but the
+  app does not yet block unapproved cleanup-team members. Barangay Officials and Admins, who sign up with the ID
+  check, are blocked until approved.
 - New accounts get a generated temporary password shown once, plus (optionally) a password-setup email.
 - `src/lib/barangays.ts` must stay in sync with the barangay list in the mobile app.

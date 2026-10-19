@@ -21,8 +21,16 @@ service cloud.firestore {
       return isAuthenticated() && getUserData().role == role;
     }
 
+    // Admin and Barangay Official sign-ups must have their ID and face checked by the
+    // Super Admin. Until then the profile is marked idVerification == 'pending' (or
+    // 'rejected') and carries NO staff powers. Accounts without the field (everyone who
+    // existed before this check, and accounts the Super Admin created) are unaffected.
+    function idCleared() {
+      return getUserData().get('idVerification', 'approved') == 'approved';
+    }
+
     function isAdmin() {
-      return hasRole('admin');
+      return hasRole('admin') && idCleared();
     }
 
     // The Super Admin (web portal only) is the sole manager of accounts: creating,
@@ -36,7 +44,7 @@ service cloud.firestore {
     }
 
     function isBarangayOfficer() {
-      return hasRole('barangay');
+      return hasRole('barangay') && idCleared();
     }
 
     function isCleanupTeam() {
@@ -48,11 +56,11 @@ service cloud.firestore {
     }
 
     function isAdminOrBarangay() {
-      return isAuthenticated() && getUserData().role in ['admin', 'barangay'];
+      return isAuthenticated() && getUserData().role in ['admin', 'barangay'] && idCleared();
     }
 
     function isStaff() {
-      return isAuthenticated() && getUserData().role in ['admin', 'barangay', 'cleanup_team'];
+      return isAuthenticated() && getUserData().role in ['admin', 'barangay', 'cleanup_team'] && idCleared();
     }
 
     function isOwner(userId) {
@@ -72,13 +80,49 @@ service cloud.firestore {
     // only the Super Admin can create arbitrary accounts or change/remove anyone's.
     match /users/{userId} {
       allow read: if isOwner(userId) || isSuperAdmin() || isAdmin() || isBarangayOfficer() || isCleanupTeam();
+      // Self sign-up can never grant itself approval or powers: it must start unverified and
+      // active, and a Barangay Official or Admin must start with idVerification == 'pending'.
       allow create: if (isAuthenticated() && currentUid() == userId
-                        && request.resource.data.role in ['citizen', 'barangay', 'cleanup_team']
-                        && request.resource.data.keys().hasAll(['uid', 'email', 'firstName', 'lastName', 'role']))
+                        && request.resource.data.keys().hasAll(['uid', 'email', 'firstName', 'lastName', 'role'])
+                        && request.resource.data.get('isVerified', false) == false
+                        && request.resource.data.get('isActive', true) == true
+                        && !('deletedAt' in request.resource.data)
+                        && (request.resource.data.role in ['citizen', 'cleanup_team']
+                            || (request.resource.data.role in ['barangay', 'admin']
+                                && request.resource.data.get('idVerification', '') == 'pending')))
                     || isSuperAdmin();
-      allow update: if (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys()
-                          .hasAny(['role', 'isVerified', 'isActive', 'deletedAt', 'deletedBy', 'createdBy']))
+      // Owners can't touch privileged fields, except resubmitting after a rejection
+      // (idVerification 'rejected' -> 'pending').
+      allow update: if (isOwner(userId)
+                        && !request.resource.data.diff(resource.data).affectedKeys()
+                            .hasAny(['role', 'isVerified', 'isActive', 'deletedAt', 'deletedBy', 'createdBy', 'idRejectionReason'])
+                        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['idVerification'])
+                            || (resource.data.get('idVerification', '') == 'rejected'
+                                && request.resource.data.idVerification == 'pending')))
                     || isSuperAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    // ─── Identity verification (ID photo + selfies) ───────────────────────────
+    // Very sensitive: readable only by the applicant and the Super Admin. The Super Admin
+    // portal deletes the images as soon as a decision is made.
+    match /verifications/{uid} {
+      allow read: if isOwner(uid) || isSuperAdmin();
+      allow create: if isOwner(uid)
+                    && request.resource.data.uid == uid
+                    && request.resource.data.status == 'pending'
+                    && getUserData().get('idVerification', '') == 'pending'
+                    && request.resource.data.keys().hasOnly(['uid', 'role', 'idType', 'idImage', 'selfieNeutral',
+                         'selfieSmile', 'selfieTurn', 'clientChecks', 'status', 'submittedAt']);
+      // Only a rejected applicant can send a new submission; everything else is the reviewer's.
+      allow update: if isSuperAdmin()
+                    || (isOwner(uid)
+                        && resource.data.status == 'rejected'
+                        && request.resource.data.uid == uid
+                        && request.resource.data.status == 'pending'
+                        && getUserData().get('idVerification', '') == 'pending'
+                        && request.resource.data.keys().hasOnly(['uid', 'role', 'idType', 'idImage', 'selfieNeutral',
+                             'selfieSmile', 'selfieTurn', 'clientChecks', 'status', 'submittedAt']));
       allow delete: if isSuperAdmin();
     }
 

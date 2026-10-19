@@ -5,7 +5,7 @@ import {
   logoutUser,
   registerUser,
 } from '../services/authService';
-import { User, UserRole } from '../types';
+import { IdentityEvidence, User, UserRole } from '../types';
 
 interface AuthState {
   user: User | null;
@@ -46,6 +46,7 @@ export const register = createAsyncThunk(
       employeeId?: string;
       agency?: string;
       barangayId?: string;
+      evidence?: IdentityEvidence;
     },
     { rejectWithValue },
   ) => {
@@ -60,6 +61,7 @@ export const register = createAsyncThunk(
         params.employeeId,
         params.agency,
         params.barangayId,
+        params.evidence,
       );
     } catch (e: unknown) {
       return rejectWithValue((e as Error).message);

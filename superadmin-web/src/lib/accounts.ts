@@ -1,12 +1,13 @@
 import { createUserWithEmailAndPassword, deleteUser, sendPasswordResetEmail } from 'firebase/auth';
 import {
-  Timestamp, addDoc, collection, deleteField, doc, limit, onSnapshot, orderBy, query, serverTimestamp,
-  setDoc, updateDoc,
+  Timestamp, addDoc, collection, deleteField, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp,
+  setDoc, updateDoc, writeBatch,
 } from 'firebase/firestore';
 import { AccountFormInput, NewAccountInput, fullName } from './accountRules';
 import { barangayById } from './barangays';
 import { auth, db, withSecondaryAuth } from './firebase';
-import { Account, Actor, AuditAction, AuditEntry, ROLES, ROLE_LABELS, Role } from './types';
+import { matchSummaryForRecord } from './faceVerdict';
+import { Account, Actor, AuditAction, AuditEntry, ClientChecks, ROLES, ROLE_LABELS, Role, Verification } from './types';
 
 // ─── Reading ─────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,8 @@ export const toAccount = (id: string, d: Record<string, unknown>): Account => ({
   employeeId: str(d.employeeId),
   agency: str(d.agency),
   // Older documents may predate these flags: treat a missing isActive as active.
+  idVerification: (['pending', 'approved', 'rejected'] as const).find((v) => v === d.idVerification),
+  idRejectionReason: str(d.idRejectionReason),
   isActive: d.isActive !== false,
   isVerified: d.isVerified === true,
   createdAt: toDate(d.createdAt),
@@ -77,6 +80,8 @@ export const ACTION_LABELS: Record<AuditAction, string> = {
   'account.remove': 'Removed account',
   'account.restore': 'Restored account',
   'account.reset_password': 'Sent password reset',
+  'identity.approve': 'Approved ID verification',
+  'identity.reject': 'Rejected ID verification',
 };
 
 const logAudit = async (actor: Actor, action: AuditAction, target: Pick<Account, 'uid' | 'email' | 'firstName' | 'lastName'>, details: string) => {
@@ -253,4 +258,65 @@ export const restoreAccount = async (actor: Actor, target: Account) => {
 export const sendResetEmail = async (actor: Actor, target: Account) => {
   await sendPasswordResetEmail(auth, target.email);
   await logAudit(actor, 'account.reset_password', target, `Password reset email sent to ${target.email}`);
+};
+
+// ─── Identity verification (ID photo + selfies) ──────────────────────────────
+
+/** The applicant's submission, or null if they never uploaded one. */
+export const getVerification = async (uid: string): Promise<Verification | null> => {
+  const snap = await getDoc(doc(db, 'verifications', uid));
+  if (!snap.exists()) return null;
+  const d = snap.data();
+  return {
+    uid,
+    role: ROLES.includes(d.role as Role) ? (d.role as Role) : 'barangay',
+    idType: str(d.idType) ?? '',
+    idImage: str(d.idImage) ?? '',
+    selfieNeutral: str(d.selfieNeutral) ?? '',
+    selfieSmile: str(d.selfieSmile) ?? '',
+    selfieTurn: str(d.selfieTurn) ?? '',
+    clientChecks: (d.clientChecks ?? {}) as ClientChecks,
+    status: d.status === 'approved' || d.status === 'rejected' ? d.status : 'pending',
+    submittedAt: toDate(d.submittedAt),
+  };
+};
+
+// The photos are deleted the moment a decision is made: only the outcome is kept.
+const PURGE_IMAGES = {
+  idImage: deleteField(), selfieNeutral: deleteField(), selfieSmile: deleteField(), selfieTurn: deleteField(),
+};
+
+type MatchRecord = ReturnType<typeof matchSummaryForRecord>;
+
+const describeMatch = (m: MatchRecord): string =>
+  m.verdict === 'not-run' ? 'automatic face check not run' : `face check: ${m.verdict}${m.bestDistance !== null ? ` (distance ${m.bestDistance})` : ''}`;
+
+/** Approves the ID check: the account gets its powers and the photos are deleted, in one step. */
+export const approveIdentity = async (actor: Actor, target: Account, match: MatchRecord, hasRecord: boolean) => {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'users', target.uid), {
+    idVerification: 'approved', isVerified: true, idRejectionReason: deleteField(), updatedAt: serverTimestamp(),
+  });
+  if (hasRecord) {
+    batch.update(doc(db, 'verifications', target.uid), {
+      status: 'approved', reviewedBy: actor.uid, reviewedByEmail: actor.email, reviewedAt: serverTimestamp(), faceMatch: match, ...PURGE_IMAGES,
+    });
+  }
+  await batch.commit();
+  await logAudit(actor, 'identity.approve', target, `ID verified; ${describeMatch(match)}; photos deleted`);
+};
+
+/** Rejects the ID check with a reason the applicant will see; they can resubmit new photos. */
+export const rejectIdentity = async (actor: Actor, target: Account, reason: string, match: MatchRecord, hasRecord: boolean) => {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'users', target.uid), {
+    idVerification: 'rejected', idRejectionReason: reason, updatedAt: serverTimestamp(),
+  });
+  if (hasRecord) {
+    batch.update(doc(db, 'verifications', target.uid), {
+      status: 'rejected', reason, reviewedBy: actor.uid, reviewedByEmail: actor.email, reviewedAt: serverTimestamp(), faceMatch: match, ...PURGE_IMAGES,
+    });
+  }
+  await batch.commit();
+  await logAudit(actor, 'identity.reject', target, `Reason: ${reason}; ${describeMatch(match)}; photos deleted`);
 };

@@ -1,5 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,12 +15,16 @@ import { clearError, register, setUser } from '../../store/authSlice';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { RootStackParamList, UserRole } from '../../types';
 import { CEBU_BARANGAYS } from '../../services/locationService';
+import { requiresIdentityCheck } from '../../services/authService';
+import { idTypeLabel } from '../../services/identityChecks';
+import { clearIdentityDraft, getIdentityDraft } from '../../store/identityDraft';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 
 function buildRoles(colors: ThemeColors) {
   return [
     { id: 'citizen' as UserRole, label: 'Citizen', bg: colors.tealLight, textColor: colors.tealDark },
+    { id: 'admin' as UserRole, label: 'Admin', bg: colors.blueBg, textColor: colors.blueText },
     { id: 'barangay' as UserRole, label: 'Barangay', bg: colors.purpleBg, textColor: colors.purpleText },
   ];
 }
@@ -42,6 +46,14 @@ export default function SignupScreen({ navigation }: Props) {
 
   const selectedBarangay = CEBU_BARANGAYS.find((b) => b.id === barangayId);
 
+  // The ID photo and selfies are captured on their own screen and handed back through memory.
+  const [evidence, setEvidence] = useState(getIdentityDraft());
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => setEvidence(getIdentityDraft()));
+    return unsubscribe;
+  }, [navigation]);
+  const needsId = requiresIdentityCheck(role);
+
   const handleRegister = async () => {
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim()) {
       Alert.alert('Missing fields', 'Please fill in all required fields.');
@@ -59,6 +71,14 @@ export default function SignupScreen({ navigation }: Props) {
       Alert.alert('Employee ID required', 'Please enter your BSP employee ID.');
       return;
     }
+    if (role === 'admin' && !employeeId.trim()) {
+      Alert.alert('Employee ID required', 'Please enter your employee ID.');
+      return;
+    }
+    if (needsId && !evidence) {
+      Alert.alert('Verify your identity', 'Admin and Barangay Official accounts need a photo of a valid ID and a few selfies so the Super Admin can confirm it is you.');
+      return;
+    }
     dispatch(clearError());
     const result = await dispatch(
       register({
@@ -71,10 +91,15 @@ export default function SignupScreen({ navigation }: Props) {
         barangayId: selectedBarangay?.id,
         employeeId,
         agency,
+        evidence: needsId ? evidence ?? undefined : undefined,
       }),
     );
     if (register.fulfilled.match(result)) {
+      clearIdentityDraft();
       dispatch(setUser(null));
+      if (needsId) {
+        Alert.alert('Account created', 'Your ID is now with the Super Admin for review. Sign in to see the status. You will get access once it is approved.');
+      }
       navigation.navigate('Login');
     } else {
       Alert.alert('Sign up failed', result.payload as string || 'Please try again.');
@@ -147,6 +172,40 @@ export default function SignupScreen({ navigation }: Props) {
           </View>
         )}
 
+        {role === 'admin' && (
+          <>
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Employee ID</Text>
+              <TextInput style={styles.input} placeholder="CENRO-2024-XXXX" placeholderTextColor={colors.textHint} value={employeeId} onChangeText={setEmployeeId} />
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Agency (optional)</Text>
+              <TextInput style={styles.input} placeholder="CENRO, Cebu City" placeholderTextColor={colors.textHint} value={agency} onChangeText={setAgency} />
+            </View>
+          </>
+        )}
+
+        {needsId && (
+          <View style={styles.idBox}>
+            <Text style={styles.idTitle}>Identity verification</Text>
+            <Text style={styles.idText}>
+              To protect the system, {role === 'admin' ? 'Admin' : 'Barangay Official'} accounts must be verified. You’ll photograph a valid government ID and take three quick selfies. The Super Admin checks that the face on the ID is yours before your account is approved.
+            </Text>
+            {evidence ? (
+              <Text style={styles.idDone}>✓ {idTypeLabel(evidence.idType)} and selfies captured</Text>
+            ) : (
+              <Text style={styles.idPending}>Not done yet</Text>
+            )}
+            <TouchableOpacity
+              style={styles.idBtn}
+              onPress={() => navigation.navigate('IdentityVerification', { mode: 'signup', firstName: firstName.trim(), lastName: lastName.trim() })}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.idBtnText}>{evidence ? 'Retake ID and selfies' : 'Verify my identity'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={styles.field}>
           <Text style={styles.fieldLabel}>Password</Text>
           <TextInput style={styles.input} placeholder="Create password (min 6 chars)" placeholderTextColor={colors.textHint} secureTextEntry value={password} onChangeText={setPassword} />
@@ -198,6 +257,13 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   barangayChipActive: { backgroundColor: Colors.tealLight, borderColor: Colors.teal },
   barangayChipText: { fontSize: 11, color: Colors.textMuted, fontWeight: '500' },
   barangayChipTextActive: { color: Colors.tealDark },
+  idBox: { backgroundColor: Colors.grayBg, borderRadius: 14, padding: 14, gap: 8, marginBottom: 14 },
+  idTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
+  idText: { fontSize: 12, color: Colors.textMuted, lineHeight: 17 },
+  idDone: { fontSize: 13, fontWeight: '600', color: Colors.tealDark },
+  idPending: { fontSize: 13, color: Colors.amberText },
+  idBtn: { backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.teal, borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
+  idBtnText: { fontSize: 13, fontWeight: '600', color: Colors.tealDark },
   primaryBtn: {
     backgroundColor: Colors.teal, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 4,
     shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 8, elevation: 3,
