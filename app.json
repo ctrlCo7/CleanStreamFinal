@@ -65,6 +65,13 @@
           "locationWhenInUsePermission": "CleanStream uses your location to show nearby waste reports on the map and to tag new reports accurately."
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "CleanStream uses the camera to capture live photos of waste for your reports.",
+          "photosPermission": false
+        }
+      ],
       "expo-sharing",
       [
         "expo-notifications",
