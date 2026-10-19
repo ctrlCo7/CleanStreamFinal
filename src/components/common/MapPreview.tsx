@@ -4,11 +4,9 @@ import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useTheme } from '../../hooks/useTheme';
 import { MapErrorBoundary } from './MapErrorBoundary';
 import { OsmMapView, OsmMarker } from './OsmMapView';
+import { MAP_READY_TIMEOUT_MS } from '../../utils/mapProvider';
 
-// Same reasoning as MapScreen: Google Maps crashes on init on devices
-// without Google Play Services (e.g. Huawei without GMS); fall back to the
-// OSM/Leaflet widget if it throws or never reports ready in time.
-const MAP_READY_TIMEOUT_MS = 4000;
+
 
 interface HotspotPin {
   id: string;

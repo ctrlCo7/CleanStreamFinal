@@ -83,11 +83,13 @@ const buildHtml = (region: OsmMapRegion, markers: OsmMarker[], interactive: bool
     touchZoom: ${interactiveJs},
     boxZoom: ${interactiveJs},
     keyboard: ${interactiveJs},
-    attributionControl: false,
+    attributionControl: true,
   }).setView([${region.latitude}, ${region.longitude}], ${zoom});
 
+  map.attributionControl.setPrefix(false);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
+    attribution: '© OpenStreetMap contributors',
   }).addTo(map);
 
   window.csNavigate = function (id) {

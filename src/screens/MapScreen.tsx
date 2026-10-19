@@ -18,6 +18,7 @@ import { RootStackParamList, WasteReport, SeverityLevel } from '../types';
 import { BackIcon } from '../components/common/TabIcons';
 import { useMapReports } from '../hooks/useMapReports';
 import { MapErrorBoundary } from '../components/common/MapErrorBoundary';
+import { MAP_READY_TIMEOUT_MS } from '../utils/mapProvider';
 import { OsmMapView, OsmMarker, escapeHtml } from '../components/common/OsmMapView';
 import {
   getMarkerColor,
@@ -29,10 +30,6 @@ import {
   SeverityCount,
 } from '../utils/mapUtils';
 
-// Google Maps' native view throws during init on devices without Google Play
-// Services (e.g. Huawei phones without GMS) -- if it hasn't reported ready
-// within this window, assume it silently failed and fall back to OSM.
-const MAP_READY_TIMEOUT_MS = 4000;
 
 // Builds the same callout content (photo, severity badge, barangay, waste
 // type, confidence, report number) as the native <Callout>, as HTML for the
