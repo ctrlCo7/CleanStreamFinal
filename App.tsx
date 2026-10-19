@@ -6,6 +6,9 @@ import { useAppDispatch } from './src/store/hooks';
 import { loadThemeMode } from './src/store/themeSlice';
 import { useTheme } from './src/hooks/useTheme';
 import RootNavigator from './src/navigation/RootNavigator';
+import { AppErrorBoundary, installGlobalErrorHandler } from './src/components/common/AppErrorBoundary';
+
+installGlobalErrorHandler();
 
 function AppShell() {
   const dispatch = useAppDispatch();
@@ -18,7 +21,9 @@ function AppShell() {
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <RootNavigator />
+      <AppErrorBoundary>
+        <RootNavigator />
+      </AppErrorBoundary>
     </>
   );
 }
