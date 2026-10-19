@@ -1,0 +1,29 @@
+{
+  "name": "cleanstream-superadmin-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "CleanStream Super Admin portal - the single place where accounts are created, approved, changed and removed.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:rules": "npx firebase-tools@latest emulators:exec --config ../firebase.json --only firestore --project cleanstream-b7942 \"node tests/rules.test.mjs\""
+  },
+  "dependencies": {
+    "firebase": "^12.19.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "typescript": "~5.9",
+    "vite": "^7.3.7",
+    "vitest": "^3.2.7"
+  }
+}

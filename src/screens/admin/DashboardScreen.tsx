@@ -144,12 +144,6 @@ export default function AdminDashboardScreen() {
         >
           <Text style={[styles.actionBtnText, { color: colors.blueText }]}>⏰ Set barangay checkpoint alarms</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: colors.purpleBg, borderColor: colors.purple, marginTop: 6 }]}
-          onPress={() => navigation.navigate('AdminUserManagement')}
-        >
-          <Text style={[styles.actionBtnText, { color: colors.purpleText }]}>👤 Manage user accounts</Text>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );

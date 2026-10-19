@@ -1,6 +1,7 @@
 // ─── User & Auth ────────────────────────────────────────────────────────────
 
-export type UserRole = 'citizen' | 'barangay' | 'cleanup_team' | 'admin';
+// 'superadmin' accounts exist only for the web portal (superadmin-web/) and never use this app.
+export type UserRole = 'citizen' | 'barangay' | 'cleanup_team' | 'admin' | 'superadmin';
 
 export interface User {
   uid: string;
@@ -579,7 +580,6 @@ export type RootStackParamList = {
   BarangayChat: { conversationId: string; participantName: string; reportTag?: string };
   BarangayAlarms: undefined;
   AdminCheckpointAlarms: undefined;
-  AdminUserManagement: undefined;
 };
 
 export type CitizenTabParamList = {

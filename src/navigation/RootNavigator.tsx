@@ -31,7 +31,6 @@ import BarangayVerifyReportsScreen from '../screens/barangay/VerifyReportsScreen
 import BarangayVerifyReportDetailScreen from '../screens/barangay/VerifyReportDetailScreen';
 import BarangayAlarmsScreen from '../screens/barangay/AlarmsScreen';
 import AdminCheckpointAlarmsScreen from '../screens/admin/CheckpointAlarmsScreen';
-import AdminUserManagementScreen from '../screens/admin/UserManagementScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -101,7 +100,6 @@ export default function RootNavigator() {
             <Stack.Screen name="BarangayChat" component={BarangayChatScreen} />
             <Stack.Screen name="BarangayAlarms" component={BarangayAlarmsScreen} />
             <Stack.Screen name="AdminCheckpointAlarms" component={AdminCheckpointAlarmsScreen} />
-            <Stack.Screen name="AdminUserManagement" component={AdminUserManagementScreen} />
           </>
         ) : (
           <>

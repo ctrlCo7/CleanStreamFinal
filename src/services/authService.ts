@@ -52,6 +52,17 @@ export const registerUser = async (
   return userData;
 };
 
+// Accounts the Super Admin has deactivated or removed, and Super Admin accounts themselves
+// (which only use the web portal), must never get into the mobile app.
+const assertCanUseApp = (profile: User): void => {
+  if (profile.role === 'superadmin') {
+    throw new Error('Super Admin accounts sign in on the web portal, not in this app.');
+  }
+  if (profile.isActive === false) {
+    throw new Error('This account has been deactivated. Please contact the Super Admin.');
+  }
+};
+
 export const loginUser = async (
   email: string,
   password: string,
@@ -60,13 +71,19 @@ export const loginUser = async (
   const userDoc = await getDoc(doc(db, 'users', credential.user.uid));
 
   if (!userDoc.exists()) {
+    await signOut(auth);
     throw new Error('User profile not found. Contact support.');
   }
 
-  return {
-    firebaseUser: credential.user,
-    userData: userDoc.data() as User,
-  };
+  const userData = userDoc.data() as User;
+  try {
+    assertCanUseApp(userData);
+  } catch (e) {
+    await signOut(auth);
+    throw e;
+  }
+
+  return { firebaseUser: credential.user, userData };
 };
 
 export const logoutUser = async (): Promise<void> => {
@@ -81,6 +98,19 @@ export const getUserProfile = async (uid: string): Promise<User | null> => {
   const userDoc = await getDoc(doc(db, 'users', uid));
   if (!userDoc.exists()) return null;
   return userDoc.data() as User;
+};
+
+/** Profile for a restored session, or an error (and sign-out) if the account may no longer use the app. */
+export const getUsableProfile = async (uid: string): Promise<User> => {
+  const profile = await getUserProfile(uid);
+  if (!profile) throw new Error('Profile not found');
+  try {
+    assertCanUseApp(profile);
+  } catch (e) {
+    await signOut(auth);
+    throw e;
+  }
+  return profile;
 };
 
 export const updateUserProfile = async (

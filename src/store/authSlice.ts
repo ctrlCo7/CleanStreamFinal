@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import {
-  getUserProfile,
+  getUsableProfile,
   loginUser,
   logoutUser,
   registerUser,
@@ -75,9 +75,7 @@ export const restoreSession = createAsyncThunk(
   'auth/restoreSession',
   async (uid: string, { rejectWithValue }) => {
     try {
-      const userData = await getUserProfile(uid);
-      if (!userData) throw new Error('Profile not found');
-      return userData;
+      return await getUsableProfile(uid);
     } catch (e: unknown) {
       return rejectWithValue((e as Error).message);
     }

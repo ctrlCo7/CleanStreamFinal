@@ -21,7 +21,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 function buildRoles(colors: ThemeColors) {
   return [
     { id: 'citizen' as UserRole, label: 'Citizen', bg: colors.tealLight, textColor: colors.tealDark },
-    { id: 'admin' as UserRole, label: 'Admin', bg: colors.blueBg, textColor: colors.blueText },
     { id: 'barangay' as UserRole, label: 'Barangay', bg: colors.purpleBg, textColor: colors.purpleText },
   ];
 }
@@ -146,19 +145,6 @@ export default function SignupScreen({ navigation }: Props) {
             <Text style={styles.fieldLabel}>Employee ID (BSP)</Text>
             <TextInput style={styles.input} placeholder="BSP-2024-XXXX" placeholderTextColor={colors.textHint} value={employeeId} onChangeText={setEmployeeId} />
           </View>
-        )}
-
-        {role === 'admin' && (
-          <>
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Employee ID</Text>
-              <TextInput style={styles.input} placeholder="CENRO-2024-XXXX" placeholderTextColor={colors.textHint} value={employeeId} onChangeText={setEmployeeId} />
-            </View>
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Agency</Text>
-              <TextInput style={styles.input} placeholder="CENRO, Cebu City" placeholderTextColor={colors.textHint} value={agency} onChangeText={setAgency} />
-            </View>
-          </>
         )}
 
         <View style={styles.field}>
