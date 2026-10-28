@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assignmentProblem, reportBarangayId } from '../assignmentRules';
+import { assignmentProblem, canViewReport, reportBarangayId } from '../assignmentRules';
 
 const report = (barangayId?: string, locId?: string) =>
   ({ barangayId, barangay: 'Guadalupe', location: { latitude: 0, longitude: 0, timestamp: 0, barangayId: locId } });
@@ -28,5 +28,24 @@ describe('assignmentProblem', () => {
   it("uses the report's location barangay when the top-level one is missing", () => {
     expect(reportBarangayId(report(undefined, 'guadalupe'))).toBe('guadalupe');
     expect(reportBarangayId(report('tinago', 'guadalupe'))).toBe('tinago');
+  });
+});
+
+describe('canViewReport', () => {
+  const r = (barangayId?: string, userId = 'citizen1') => ({ ...report(barangayId), userId });
+  it('keeps officials and crews to their own barangay', () => {
+    expect(canViewReport(r('guadalupe'), { role: 'barangay', barangayId: 'guadalupe', uid: 'o1' })).toBe(true);
+    expect(canViewReport(r('tinago'), { role: 'barangay', barangayId: 'guadalupe', uid: 'o1' })).toBe(false);
+    expect(canViewReport(r('tinago'), { role: 'cleanup_team', barangayId: 'guadalupe', uid: 'c1' })).toBe(false);
+    expect(canViewReport(r(undefined), { role: 'barangay', barangayId: 'guadalupe', uid: 'o1' })).toBe(false);
+    expect(canViewReport(r('guadalupe'), { role: 'barangay', barangayId: undefined, uid: 'o1' })).toBe(false);
+  });
+  it('still shows an official a report they filed themselves', () => {
+    expect(canViewReport(r('tinago', 'o1'), { role: 'barangay', barangayId: 'guadalupe', uid: 'o1' })).toBe(true);
+  });
+  it('lets citizens and the Admin see every report', () => {
+    expect(canViewReport(r('tinago'), { role: 'citizen', barangayId: 'guadalupe', uid: 'x' })).toBe(true);
+    expect(canViewReport(r('tinago'), { role: 'admin', uid: 'a' })).toBe(true);
+    expect(canViewReport(r('tinago'), null)).toBe(false);
   });
 });

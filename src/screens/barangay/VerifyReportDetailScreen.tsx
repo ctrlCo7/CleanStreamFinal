@@ -13,6 +13,9 @@ import { useAppSelector } from '../../store/hooks';
 import { getReportById, verifyReport, rejectReport } from '../../services/reportsService';
 import { HOTSPOT_MIN_REPORTS } from '../../services/reportProximity';
 import { WASTE_TYPE_LABELS } from '../../services/wasteAnalysis';
+import { canViewReport } from '../../services/assignmentRules';
+
+const OTHER_BARANGAY = 'This report belongs to another barangay. Only its own barangay can view it and take action.';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BarangayVerifyDetail'>;
 
@@ -33,16 +36,27 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
   const [confirmedSeverity, setConfirmedSeverity] = useState<SeverityLevel>('moderate');
   const [confirmedWasteType, setConfirmedWasteType] = useState<AIWasteType>('mixed_waste');
 
+  const [blocked, setBlocked] = useState('');
+
   useEffect(() => {
     getReportById(reportId).then((r) => {
-      setReport(r);
+      if (r && !canViewReport(r, user)) {
+        setBlocked(OTHER_BARANGAY);
+      } else {
+        setReport(r);
+        if (!r) setBlocked('This report may have been removed.');
+      }
       setLoading(false);
       if (r) {
         setConfirmedSeverity(r.severity);
         setConfirmedWasteType(r.citizenWasteType ?? (r.aiAnalysis?.wasteTypes?.[0]?.type as AIWasteType) ?? 'mixed_waste');
       }
+    }).catch((err: { code?: string; message?: string }) => {
+      // The rules hide other barangays' reports from officials.
+      setBlocked(err?.code === 'permission-denied' ? OTHER_BARANGAY : err?.message || 'Could not load this report.');
+      setLoading(false);
     });
-  }, [reportId]);
+  }, [reportId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const officerName = user ? `${user.firstName} ${user.lastName}` : 'Barangay Official';
 
@@ -125,8 +139,10 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
           <Text style={styles.headerTitle}>Review report</Text>
           <View style={{ width: 38 }} />
         </View>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="small" color={colors.brgy} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          {loading || !blocked
+            ? <ActivityIndicator size="small" color={colors.brgy} />
+            : <Text style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 20 }}>{blocked}</Text>}
         </View>
       </SafeAreaView>
     );

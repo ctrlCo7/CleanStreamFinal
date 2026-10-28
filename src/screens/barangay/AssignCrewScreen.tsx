@@ -71,7 +71,13 @@ export default function AssignCrewScreen({ navigation, route }: Props) {
     setLoadError('');
     getReportById(reportId)
       .then((r) => { if (!cancelled) setReport(r); })
-      .catch((err: Error) => { if (!cancelled) setLoadError(err.message || 'Could not load this report.'); })
+      .catch((err: Error & { code?: string }) => {
+        if (cancelled) return;
+        // The rules hide other barangays' reports from officials.
+        setLoadError(err.code === 'permission-denied'
+          ? 'This report belongs to another barangay. Only its own barangay can view it and take action.'
+          : err.message || 'Could not load this report.');
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [reportId, reloadKey]);

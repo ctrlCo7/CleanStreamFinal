@@ -146,10 +146,14 @@ service cloud.firestore {
 
     // ─── Reports ───────────────────────────────────────────────────────────────
     match /reports/{reportId} {
-      // Public within the app: the live waste Map screen queries the whole
-      // collection with no owner filter, so any authenticated user (any role)
-      // must be able to read any report for the map + report-detail views.
-      allow read: if isAuthenticated();
+      // Citizens, the Admin and the Super Admin see every report (the public map).
+      // Barangay officials and cleanup crews only see their own barangay's reports,
+      // plus any report they filed themselves: queries must filter on barangayId.
+      allow read: if isAuthenticated()
+                  && (isOwner(resource.data.userId)
+                      || !(getUserData().role in ['barangay', 'cleanup_team'])
+                      || (getUserData().get('barangayId', null) != null
+                          && resource.data.barangayId == getUserData().barangayId));
 
       // Citizens and barangay officers can create reports
       allow create: if isAuthenticated()

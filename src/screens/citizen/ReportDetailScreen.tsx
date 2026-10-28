@@ -39,8 +39,13 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
     return subscribeTrackingForReport(reportId, user.uid, setTracking);
   }, [reportId, user?.uid]);
 
+  const [loadIssue, setLoadIssue] = useState('');
   useEffect(() => {
-    getReportById(reportId).then(setReport);
+    getReportById(reportId)
+      .then((r) => { setReport(r); if (!r) setLoadIssue('This report may have been removed.'); })
+      .catch((err: { code?: string }) => setLoadIssue(err?.code === 'permission-denied'
+        ? 'This report belongs to another barangay. Only its own barangay can view it.'
+        : 'Could not load this report. Please try again.'));
   }, [reportId]);
 
   const handleChatAdmin = async () => {
@@ -69,7 +74,7 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
           <View style={{ width: 38 }} />
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: colors.textMuted }}>Loading...</Text>
+          <Text style={{ color: colors.textMuted, textAlign: 'center', paddingHorizontal: 24 }}>{loadIssue || 'Loading...'}</Text>
         </View>
       </SafeAreaView>
     );

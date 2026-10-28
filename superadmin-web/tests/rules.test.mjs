@@ -124,7 +124,20 @@ console.log('\n== Existing features still work (regression)');
 await check('admin can still set checkpoint alarms', assertSucceeds(setDoc(doc(ad, 'checkpointAlarms', 'b1'), { barangayId: 'b1', hour: 8, minute: 0 })));
 await check('any signed-in user can read alarms', assertSucceeds(getDoc(doc(ct, 'checkpointAlarms', 'b1'))));
 await check('citizen can still submit a report', assertSucceeds(setDoc(doc(ct, 'reports', 'r1'), { userId: 'ct', location: { latitude: 1, longitude: 2 }, status: 'pending', severity: 'low' })));
-await check('any signed-in user can read reports (public map)', assertSucceeds(getDoc(doc(as('bg'), 'reports', 'r1'))));
+await check('citizens can read any report (public map)', assertSucceeds(getDoc(doc(as('ct2'), 'reports', 'r_b2'))));
+await check('the Admin can read any report', assertSucceeds(getDoc(doc(as('ad'), 'reports', 'r_b2'))));
+
+console.log('\n== Reports stay inside their barangay');
+await check("an official reads their barangay's report", assertSucceeds(getDoc(doc(as('bg'), 'reports', 'r_b1'))));
+await check("an official can't read another barangay's report", assertFails(getDoc(doc(as('bg'), 'reports', 'r_b2'))));
+await check("an official can't read a report with no barangay", assertFails(getDoc(doc(as('bg'), 'reports', 'r1'))));
+await check("an official lists their barangay's reports", assertSucceeds(getDocs(query(collection(as('bg'), 'reports'), where('barangayId', '==', 'b1')))));
+await check("an official can't list another barangay's reports", assertFails(getDocs(query(collection(as('bg'), 'reports'), where('barangayId', '==', 'b2')))));
+await check("an official can't list every report", assertFails(getDocs(collection(as('bg'), 'reports'))));
+await check('an official still reads a report they filed elsewhere', assertSucceeds(getDocs(query(collection(as('bg2'), 'reports'), where('userId', '==', 'bg2')))));
+await check("a crew can't read another barangay's report", assertFails(getDoc(doc(as('cl'), 'reports', 'r_b2'))));
+await check("a crew reads their own barangay's report", assertSucceeds(getDoc(doc(as('cl'), 'reports', 'r_b1'))));
+await check("another barangay's official can't verify it", assertFails(updateDoc(doc(as('bg2'), 'reports', 'r_b1'), { status: 'verified' })));
 
 console.log('\n== Identity verification: applicants get no powers until approved');
 const adp = as('ad_pend'), bgp = as('bg_pend'), bgr = as('bg_rej'), bgo = as('bg_ok');

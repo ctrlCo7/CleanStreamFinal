@@ -33,3 +33,20 @@ export function assignmentProblem(
   return null;
 }
 
+
+/** Roles that only ever see their own barangay's reports (firestore.rules enforces the same). */
+export const isBarangayBound = (role?: string): boolean => role === 'barangay' || role === 'cleanup_team';
+
+/**
+ * Whether this viewer may open the report. Barangay officials and cleanup crews only see
+ * their own barangay's reports (and any they filed themselves); everyone else sees all.
+ */
+export function canViewReport(
+  report: Pick<WasteReport, 'barangayId' | 'location' | 'userId'>,
+  viewer: Pick<User, 'role' | 'barangayId' | 'uid'> | null | undefined,
+): boolean {
+  if (!viewer) return false;
+  if (!isBarangayBound(viewer.role) || report.userId === viewer.uid) return true;
+  const barangayId = reportBarangayId(report);
+  return !!barangayId && !!viewer.barangayId && barangayId === viewer.barangayId;
+}
