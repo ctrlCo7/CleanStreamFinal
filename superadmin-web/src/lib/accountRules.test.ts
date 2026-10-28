@@ -45,14 +45,18 @@ describe('guards', () => {
 
 describe('validateNewAccount', () => {
   const base = { email: 'new@x.co', firstName: 'N', lastName: 'M', role: 'admin' as const, password: 'longenough1' };
-  it('accepts a valid admin', () => expect(validateNewAccount(base)).toEqual({}));
+  it('accepts a valid admin', () => expect(validateNewAccount({ ...base, barangayName: 'Guadalupe' })).toEqual({}));
+  it('requires a barangay for admins and super admins', () => {
+    expect(validateNewAccount(base).barangayId).toBeTruthy();
+    expect(validateNewAccount({ ...base, role: 'superadmin' }).barangayId).toBeTruthy();
+  });
   it('requires barangay + employee id for barangay officials', () => {
     const e = validateNewAccount({ ...base, role: 'barangay' });
     expect(e.barangayId).toBeTruthy();
     expect(e.employeeId).toBeTruthy();
   });
   it('rejects bad email, short password, missing names', () => {
-    const e = validateNewAccount({ ...base, email: 'nope', password: 'short', firstName: ' ', lastName: '' });
+    const e = validateNewAccount({ ...base, barangayName: 'Guadalupe', email: 'nope', password: 'short', firstName: ' ', lastName: '' });
     expect(Object.keys(e).sort()).toEqual(['email', 'firstName', 'lastName', 'password']);
   });
 });

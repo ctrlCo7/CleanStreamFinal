@@ -132,9 +132,11 @@ export const computeAndSaveDailySnapshot = async (): Promise<void> => {
 
 // ─── Dashboard aggregation (for screens) ─────────────────────────────────────
 
-export const buildDashboardAnalytics = async (): Promise<AnalyticsData> => {
-  const reportsSnap = await getDocs(collection(db, 'reports'));
-  const reports = reportsSnap.docs.map((d) => d.data());
+/** Figures for one barangay's reports (the only ones the Admin can read). */
+export const buildDashboardAnalytics = async (barangayId: string | undefined): Promise<AnalyticsData> => {
+  const reports = barangayId
+    ? (await getDocs(query(collection(db, 'reports'), where('barangayId', '==', barangayId)))).docs.map((d) => d.data())
+    : [];
 
   const totalReports = reports.length;
   const criticalCount = reports.filter((r) => r.severity === 'critical').length;

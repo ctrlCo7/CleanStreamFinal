@@ -77,6 +77,12 @@ service cloud.firestore {
       return isAuthenticated() && getUserData().barangayId == barangayId;
     }
 
+    // Strict version for reports: an account with no barangay matches nothing.
+    function inMyBarangay(barangayId) {
+      return isAuthenticated() && getUserData().get('barangayId', null) != null
+          && getUserData().barangayId == barangayId;
+    }
+
     function isNotDeleted() {
       return !('deleted' in resource.data) || resource.data.deleted == false;
     }
@@ -146,14 +152,14 @@ service cloud.firestore {
 
     // ─── Reports ───────────────────────────────────────────────────────────────
     match /reports/{reportId} {
-      // Citizens, the Admin and the Super Admin see every report (the public map).
-      // Barangay officials and cleanup crews only see their own barangay's reports,
-      // plus any report they filed themselves: queries must filter on barangayId.
+      // Citizens see every report (the public map). Everyone else (officials, crews, the
+      // Admin and the Super Admin) only sees their own barangay's reports, plus any report
+      // they filed themselves: queries must filter on barangayId. An account without a
+      // barangay sees none.
       allow read: if isAuthenticated()
                   && (isOwner(resource.data.userId)
-                      || !(getUserData().role in ['barangay', 'cleanup_team'])
-                      || (getUserData().get('barangayId', null) != null
-                          && resource.data.barangayId == getUserData().barangayId));
+                      || getUserData().role == 'citizen'
+                      || inMyBarangay(resource.data.barangayId));
 
       // Citizens and barangay officers can create reports
       allow create: if isAuthenticated()
@@ -177,11 +183,11 @@ service cloud.firestore {
 
                       // Barangay: verify, reject, assign and close out reports in own barangay
                       (isBarangayOfficer()
-                        && sameBarangay(resource.data.barangayId)
+                        && inMyBarangay(resource.data.barangayId)
                         && request.resource.data.status in ['verified', 'assigned', 'in_progress', 'completed', 'rejected']) ||
 
-                      // Admin: any other change (still within the report's barangay, see above)
-                      isAdmin() ||
+                      // Admin: any other change, only for their own barangay's reports
+                      (isAdmin() && inMyBarangay(resource.data.barangayId)) ||
 
                       // AI service (server-side): update aiAnalysis field
                       (isOwner(resource.data.userId)
@@ -189,7 +195,7 @@ service cloud.firestore {
                             .hasOnly(['aiAnalysis', 'severity', 'wasteTypes', 'updatedAt']))
                     );
 
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() && inMyBarangay(resource.data.barangayId);
     }
 
     // ─── Barangays ─────────────────────────────────────────────────────────────
@@ -239,9 +245,9 @@ service cloud.firestore {
 
     // ─── Cleanup Tasks ──────────────────────────────────────────────────────────
     match /cleanupTasks/{taskId} {
-      // Admin sees all; an official only their own barangay's; a crew leader only their own tasks.
+      // The Admin and officials only their own barangay's; a crew leader only their own tasks.
       allow read: if isAuthenticated() && (
-                    isAdmin() ||
+                    (isAdmin() && inMyBarangay(resource.data.barangayId)) ||
                     (isBarangayOfficer() && sameBarangay(resource.data.barangayId)) ||
                     (isCleanupTeam() && resource.data.assignedTeamId == currentUid())
                   );
@@ -257,18 +263,18 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/reports/$(reportId)).data.get('barangayId', '');
       }
 
-      // Created by the Admin, or by an official for their own barangay, always as themselves.
+      // Created by the Admin or an official, for their own barangay, always as themselves.
       allow create: if isAuthenticated()
                     && request.resource.data.assignedByUserId == currentUid()
-                    && (isAdmin()
-                        || (isBarangayOfficer() && request.resource.data.barangayId == getUserData().barangayId))
+                    && (isAdmin() || isBarangayOfficer())
+                    && inMyBarangay(request.resource.data.barangayId)
                     && request.resource.data.barangayId == reportBarangay(request.resource.data.reportId)
                     && crewOfBarangay(request.resource.data.assignedTeamId, request.resource.data.barangayId);
 
       allow update: if isAuthenticated() && (
                       // Admin / official: the task can't move to another barangay or report, and a
                       // replacement crew must be from the same barangay.
-                      ((isAdmin() || (isBarangayOfficer() && sameBarangay(resource.data.barangayId)))
+                      ((isAdmin() || isBarangayOfficer()) && inMyBarangay(resource.data.barangayId)
                         && request.resource.data.barangayId == resource.data.barangayId
                         && request.resource.data.reportId == resource.data.reportId
                         && (request.resource.data.assignedTeamId == resource.data.assignedTeamId
@@ -286,21 +292,20 @@ service cloud.firestore {
                                       'beforeAnalysis', 'afterAnalysis', 'updatedAt']))
                     );
 
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() && inMyBarangay(resource.data.barangayId);
     }
 
     // ─── Live crew tracking (one document per task, while the crew drives there) ─
     // Written only by the crew leader the task is assigned to, and only with the task's own
     // barangay/report/reporter (so it can't be shown to the wrong people). Readable by that
-    // crew, the barangay's officials, the Admin/Super Admin and the resident who reported it.
+    // crew, the barangay's officials, the barangay's Admin/Super Admin and the resident who reported it.
     match /crewTracking/{taskId} {
       function trackedTask() {
         return get(/databases/$(database)/documents/cleanupTasks/$(taskId)).data;
       }
       allow read: if isAuthenticated() && (
                     resource.data.crewId == currentUid()
-                    || isAdmin() || isSuperAdmin()
-                    || (isBarangayOfficer() && sameBarangay(resource.data.barangayId))
+                    || ((isAdmin() || isSuperAdmin() || isBarangayOfficer()) && inMyBarangay(resource.data.barangayId))
                     || resource.data.reporterUserId == currentUid()
                   );
       allow create, update: if isCleanupTeam()

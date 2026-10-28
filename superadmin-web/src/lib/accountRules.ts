@@ -66,7 +66,11 @@ export interface NewAccountInput extends AccountFormInput { password: string }
 export const MIN_PASSWORD_LENGTH = 8;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export const needsBarangay = (role: Role): boolean => role === 'citizen' || role === 'barangay' || role === 'cleanup_team';
+/**
+ * Every role belongs to a barangay except none: the Admin and Super Admin only see their
+ * own barangay's reports too (firestore.rules), so they need one as well.
+ */
+export const needsBarangay = (role: Role): boolean => ROLES.includes(role);
 
 /** Roles that are contacted by phone (crews and officials). Citizens' numbers aren't collected. */
 export const usesPhone = (role: Role): boolean => role !== 'citizen';

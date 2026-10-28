@@ -395,17 +395,14 @@ export function subscribeTrackingForReport(reportId: string, reporterUserId: str
 export const secondsSinceUpdate = (t: CrewTracking, now = Date.now()) => Math.max(0, Math.round((now - t.updatedAtMs) / 1000));
 
 /**
- * Trucks currently driving to a site, for the officials' and Admin's map. Officials only see
+ * Trucks currently driving to a site, for the officials' and Admin's map. Both only see
  * their own barangay (the rules require the query to say so).
  */
 export function subscribeActiveTrips(viewer: { role: string; barangayId?: string }, fn: (trips: CrewTracking[]) => void): () => void {
-  if (viewer.role !== 'admin' && !(viewer.role === 'barangay' && viewer.barangayId)) {
+  if ((viewer.role !== 'admin' && viewer.role !== 'barangay') || !viewer.barangayId) {
     fn([]);
     return () => undefined;
   }
-  const base = collection(db, COL);
-  const q = viewer.role === 'admin'
-    ? query(base, where('status', '==', 'en_route'))
-    : query(base, where('barangayId', '==', viewer.barangayId), where('status', '==', 'en_route'));
+  const q = query(collection(db, COL), where('barangayId', '==', viewer.barangayId), where('status', '==', 'en_route'));
   return onSnapshot(q, (snap) => fn(snap.docs.map((d) => toTracking(d.data()))), () => fn([]));
 }

@@ -33,7 +33,7 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'verifications', 'bg_rej'), { uid: 'bg_rej', status: 'rejected', reason: 'blurry' });
   await setDoc(doc(db, 'verifications', 'bg_pend'), { uid: 'bg_pend', role: 'barangay', status: 'pending', idImage: 'data:x' });
   for (const [uid, role, extra] of [
-    ['sa', 'superadmin'], ['ad', 'admin'], ['bg', 'barangay', { barangayId: 'b1' }], ['ct', 'citizen'],
+    ['sa', 'superadmin', { barangayId: 'b1' }], ['ad', 'admin', { barangayId: 'b1' }], ['ad_none', 'admin'], ['sa_none', 'superadmin'], ['bg', 'barangay', { barangayId: 'b1' }], ['ct', 'citizen'],
     ['cl', 'cleanup_team', { barangayId: 'b1' }], ['victim', 'citizen'], ['ct2', 'citizen', { isVerified: false }],
     ['sa_off', 'superadmin', { isActive: false }],
     ['bg2', 'barangay', { barangayId: 'b2' }],
@@ -125,7 +125,21 @@ await check('admin can still set checkpoint alarms', assertSucceeds(setDoc(doc(a
 await check('any signed-in user can read alarms', assertSucceeds(getDoc(doc(ct, 'checkpointAlarms', 'b1'))));
 await check('citizen can still submit a report', assertSucceeds(setDoc(doc(ct, 'reports', 'r1'), { userId: 'ct', location: { latitude: 1, longitude: 2 }, status: 'pending', severity: 'low' })));
 await check('citizens can read any report (public map)', assertSucceeds(getDoc(doc(as('ct2'), 'reports', 'r_b2'))));
-await check('the Admin can read any report', assertSucceeds(getDoc(doc(as('ad'), 'reports', 'r_b2'))));
+await check("the Admin reads their barangay's report", assertSucceeds(getDoc(doc(as('ad'), 'reports', 'r_b1'))));
+await check("the Admin can't read another barangay's report", assertFails(getDoc(doc(as('ad'), 'reports', 'r_b2'))));
+await check("the Admin can't list every report", assertFails(getDocs(collection(as('ad'), 'reports'))));
+await check("the Admin lists their barangay's reports", assertSucceeds(getDocs(query(collection(as('ad'), 'reports'), where('barangayId', '==', 'b1')))));
+await check("the Super Admin reads their barangay's report", assertSucceeds(getDoc(doc(as('sa'), 'reports', 'r_b1'))));
+await check("the Super Admin can't read another barangay's report", assertFails(getDoc(doc(as('sa'), 'reports', 'r_b2'))));
+await check("the Super Admin can't list another barangay's reports", assertFails(getDocs(query(collection(as('sa'), 'reports'), where('barangayId', '==', 'b2')))));
+await check('an Admin with no barangay sees no reports', assertFails(getDoc(doc(as('ad_none'), 'reports', 'r_b1'))));
+await check('a Super Admin with no barangay sees no reports', assertFails(getDoc(doc(as('sa_none'), 'reports', 'r_b1'))));
+await check("an Admin with no barangay can't read a report with no barangay", assertFails(getDoc(doc(as('ad_none'), 'reports', 'r1'))));
+await check("the Admin can't change another barangay's report", assertFails(updateDoc(doc(as('ad'), 'reports', 'r_b2'), { status: 'rejected' })));
+await check("the Admin can't delete another barangay's report", assertFails(deleteDoc(doc(as('ad'), 'reports', 'r_b2'))));
+await check("the Admin can't read another barangay's cleanup task", assertFails(getDoc(doc(as('ad'), 'cleanupTasks', 't_b2'))));
+await check("the Admin can't change another barangay's cleanup task", assertFails(updateDoc(doc(as('ad'), 'cleanupTasks', 't_b2'), { status: 'cancelled' })));
+await check("the Admin reads their barangay's cleanup task", assertSucceeds(getDoc(doc(as('ad'), 'cleanupTasks', 't1'))));
 
 console.log('\n== Reports stay inside their barangay');
 await check("an official reads their barangay's report", assertSucceeds(getDoc(doc(as('bg'), 'reports', 'r_b1'))));
@@ -292,7 +306,8 @@ await check("a crew can't add a stranger as the 'reporter'", assertFails(setDoc(
 await check("an official can't fake a crew's position", assertFails(updateDoc(doc(bg1, 'crewTracking', 't1'), { latitude: 0 })));
 await check("the barangay's official sees the truck", assertSucceeds(getDoc(doc(bg1, 'crewTracking', 't1'))));
 await check("another barangay's official doesn't", assertFails(getDoc(doc(bg2, 'crewTracking', 't1'))));
-await check('the Admin sees every truck on the way', assertSucceeds(getDocs(query(collection(ad, 'crewTracking'), where('status', '==', 'en_route')))));
+await check("the Admin sees their barangay's trucks on the way", assertSucceeds(getDocs(query(collection(ad, 'crewTracking'), where('barangayId', '==', 'b1'), where('status', '==', 'en_route')))));
+await check("the Admin can't list every barangay's trucks", assertFails(getDocs(query(collection(ad, 'crewTracking'), where('status', '==', 'en_route')))));
 await check("an unrelated citizen can't see where the crew is", assertFails(getDoc(doc(ct, 'crewTracking', 't1'))));
 
 console.log('\n== Profiles: people edit their own details, not their barangay');

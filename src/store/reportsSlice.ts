@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import {
-  getAllReports,
+  getReportsByBarangay,
   getReportsByUser,
   updateReportStatus,
 } from '../services/reportsService';
@@ -22,8 +22,10 @@ const initialState: ReportsState = {
   error: null,
 };
 
-export const fetchAllReports = createAsyncThunk('reports/fetchAll', async () => {
-  return await getAllReports();
+/** The Admin's reports: only their own barangay's, none if the account has no barangay. */
+export const fetchAllReports = createAsyncThunk('reports/fetchAll', async (barangayId: string | undefined) => {
+  if (!barangayId) return [];
+  return await getReportsByBarangay(barangayId, 200);
 });
 
 export const fetchUserReports = createAsyncThunk(

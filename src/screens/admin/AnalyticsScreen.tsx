@@ -18,12 +18,14 @@ export default function AdminAnalyticsScreen() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
+  const barangayId = useAppSelector((s) => s.auth.user?.barangayId);
+
   useEffect(() => {
-    buildDashboardAnalytics()
+    buildDashboardAnalytics(barangayId)
       .then(setAnalytics)
       .catch((e) => console.error('[Analytics]', e))
       .finally(() => setLoading(false));
-  }, [reports.length]);
+  }, [reports.length, barangayId]);
 
   // Live fallbacks from Redux while analytics loads
   const total = analytics?.totalReports ?? reports.length;

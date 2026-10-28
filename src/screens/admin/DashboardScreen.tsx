@@ -31,9 +31,10 @@ export default function AdminDashboardScreen() {
   const user = useAppSelector((s) => s.auth.user);
   const [trips, setTrips] = useState<CrewTracking[]>([]);
 
-  const load = useCallback(() => dispatch(fetchAllReports()), [dispatch]);
+  const barangayId = user?.barangayId;
+  const load = useCallback(() => dispatch(fetchAllReports(barangayId)), [dispatch, barangayId]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => subscribeActiveTrips({ role: 'admin' }, setTrips), []);
+  useEffect(() => subscribeActiveTrips({ role: 'admin', barangayId }, setTrips), [barangayId]);
 
   const open = reports.filter((r) => OPEN(r.status));
   const critical = open.filter((r) => r.severity === 'critical').length;
@@ -87,6 +88,15 @@ export default function AdminDashboardScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.blue} />}
       >
+        {!barangayId && (
+          <AlertStrip
+            icon="📍"
+            title="No barangay on your account"
+            sub="Admins only see their own barangay's reports. Ask the Super Admin to set your barangay."
+            color={colors.amberText}
+            bg={colors.amberBg}
+          />
+        )}
         {critical > 0 && (
           <AlertStrip
             icon="🚨"

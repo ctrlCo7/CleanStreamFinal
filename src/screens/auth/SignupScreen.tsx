@@ -65,7 +65,7 @@ export default function SignupScreen({ navigation }: Props) {
       Alert.alert('Weak password', 'Password must be at least 6 characters.');
       return;
     }
-    if ((role === 'citizen' || role === 'barangay') && !selectedBarangay) {
+    if (role !== 'cleanup_team' && !selectedBarangay) {
       Alert.alert('Barangay required', 'Please select your barangay.');
       return;
     }
@@ -153,7 +153,7 @@ export default function SignupScreen({ navigation }: Props) {
           <TextInput style={styles.input} placeholder="you@example.com" placeholderTextColor={colors.textHint} keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
         </View>
 
-        {(role === 'citizen' || role === 'barangay') && (
+        {role !== 'cleanup_team' && (
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Barangay</Text>
             <View style={styles.barangayWrap}>

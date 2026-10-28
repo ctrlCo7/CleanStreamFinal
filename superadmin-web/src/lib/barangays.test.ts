@@ -52,7 +52,8 @@ describe('account form with a typed barangay', () => {
   it('asks for one when the box is empty', () => {
     expect(validateNewAccount({ ...base, role: 'barangay', barangayName: '' }).barangayId).toBe('Enter the barangay.');
   });
-  it("doesn't ask Admins for a barangay", () => {
-    expect(validateNewAccount({ ...base, role: 'admin' })).toEqual({});
+  it('asks Admins for a barangay too (they only see its reports)', () => {
+    expect(validateNewAccount({ ...base, role: 'admin' }).barangayId).toBeTruthy();
+    expect(validateNewAccount({ ...base, role: 'admin', barangayName: 'Lahug' })).toEqual({});
   });
 });
