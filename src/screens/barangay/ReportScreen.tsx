@@ -9,9 +9,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { db } from '../../services/firebase';
 import { useTheme } from '../../hooks/useTheme';
+import { maintenanceText, useMaintenance } from '../../hooks/useMaintenance';
 import { ThemeColors } from '../../constants/theme';
 import { useAppSelector } from '../../store/hooks';
-import { createCheckpoint } from '../../services/checkpointService';
+import {
+  ManagedCheckpoint, createCheckpoint, formatCheckpointTime, isInspectedToday,
+  subscribeToBarangayCheckpoints, todayCheckpointDay,
+} from '../../services/checkpointService';
 import { getCurrentLocation } from '../../services/locationService';
 import { getNotificationRecipientsByRole, sendBulkNotification } from '../../services/notificationService';
 import { CameraIcon } from '../../components/common/TabIcons';
@@ -44,6 +48,7 @@ export default function BarangayReportScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const COND_COLORS = useMemo(() => buildCondColors(colors), [colors]);
   const { user } = useAppSelector((s) => s.auth);
+  const maintenance = useMaintenance();
   const [checkpointType, setCheckpointType] = useState(CHECKPOINT_TYPES[0]);
   const [condition, setCondition] = useState(CONDITIONS[2]);
   const [wasteType, setWasteType] = useState('Plastic');
@@ -56,6 +61,9 @@ export default function BarangayReportScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [location, setLocation] = useState<GeoLocation | null>(null);
   const [geoStatus, setGeoStatus] = useState<'detecting' | 'found' | 'error'>('detecting');
+  const [managed, setManaged] = useState<ManagedCheckpoint[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = managed.find((c) => c.id === selectedId) ?? null;
 
   const barangay = user?.barangay || 'Guadalupe';
 
@@ -97,6 +105,21 @@ export default function BarangayReportScreen() {
     }
   };
 
+  // Checkpoints the Super Admin set up for this barangay. Pre-select the first one due
+  // today that's assigned to this official and not yet inspected.
+  useEffect(() => {
+    if (!user?.uid || !user.barangayId) return;
+    const today = todayCheckpointDay();
+    let picked = false;
+    return subscribeToBarangayCheckpoints(user.barangayId, user.uid, (list) => {
+      setManaged(list);
+      if (picked) return;
+      picked = true;
+      const due = list.find((c) => c.assignedUserIds.includes(user.uid) && c.days.includes(today) && !isInspectedToday(c));
+      if (due) setSelectedId(due.id);
+    });
+  }, [user?.uid, user?.barangayId]);
+
   // Subscribe to recent checkpoints for this user
   useEffect(() => {
     if (!user?.uid) return;
@@ -125,6 +148,7 @@ export default function BarangayReportScreen() {
   }, [user?.uid]);
 
   const handleSubmit = async () => {
+    if (maintenance.enabled) { Alert.alert('Under maintenance', maintenanceText(maintenance.message)); return; }
     if (!photoUri) {
       Alert.alert('Photo required', 'Please capture a photo of the checkpoint first.');
       return;
@@ -147,6 +171,7 @@ export default function BarangayReportScreen() {
         notes.trim(),
         photoUri,
         location ?? undefined,
+        selected ?? undefined,
       );
 
       // Notify admins so checkpoint completions actually surface somewhere, per the
@@ -157,7 +182,7 @@ export default function BarangayReportScreen() {
           return sendBulkNotification(
             adminIds,
             'Checkpoint report submitted',
-            `${officerName} (${barangay}) submitted a ${checkpointType.toLowerCase()} checkpoint — condition: ${condition}.`,
+            `${officerName} (${barangay}) submitted a ${checkpointType.toLowerCase()} checkpoint${selected ? ` at ${selected.name}` : ''} — condition: ${condition}.`,
             'system',
           );
         })
@@ -166,6 +191,7 @@ export default function BarangayReportScreen() {
       setSubmitted(true);
       setNotes('');
       setPhotoUri(null);
+      setSelectedId(null);
       setTimeout(() => {
         setSubmitted(false);
         Alert.alert('Checkpoint submitted', 'Your field report has been sent to the admin.');
@@ -199,10 +225,67 @@ export default function BarangayReportScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        {maintenance.enabled && (
+          <View style={styles.maintenanceBanner}>
+            <Text style={styles.maintenanceText}>{maintenanceText(maintenance.message)}</Text>
+          </View>
+        )}
         {/* Info banner */}
         <View style={styles.infoBanner}>
           <Text style={styles.infoTitle}>Submit checkpoint report</Text>
           <Text style={styles.infoSub}>Document conditions before, during, and after cleanup operations. Your field reports help the admin prioritize resources.</Text>
+        </View>
+
+        {/* Which checkpoint is being inspected */}
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>Checkpoint</Text>
+          {managed.length === 0 ? (
+            <Text style={styles.cpEmpty}>No checkpoints are set up for {barangay} yet. This will be filed as a general patrol.</Text>
+          ) : (
+            <View style={styles.cpList}>
+              {managed.map((c) => {
+                const on = c.id === selectedId;
+                const mine = !!user?.uid && c.assignedUserIds.includes(user.uid);
+                const today = c.days.includes(todayCheckpointDay());
+                const done = isInspectedToday(c);
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[styles.cpItem, on && styles.cpItemOn]}
+                    onPress={() => setSelectedId(on ? null : c.id)}
+                    activeOpacity={0.85}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <View style={[styles.cpRadio, on && styles.cpRadioOn]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cpName}>{c.name}</Text>
+                      <Text style={styles.cpMeta}>
+                        {[c.waterway, `${c.days.join(', ')} · ${formatCheckpointTime(c.time)}`].filter(Boolean).join(' · ')}
+                      </Text>
+                    </View>
+                    {done ? (
+                      <Text style={[styles.cpTag, { color: colors.green }]}>Done today</Text>
+                    ) : today ? (
+                      <Text style={[styles.cpTag, { color: colors.amber }]}>Due today</Text>
+                    ) : mine ? (
+                      <Text style={styles.cpTag}>Assigned</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                style={[styles.cpItem, selectedId === null && styles.cpItemOn]}
+                onPress={() => setSelectedId(null)}
+                activeOpacity={0.85}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: selectedId === null }}
+              >
+                <View style={[styles.cpRadio, selectedId === null && styles.cpRadioOn]} />
+                <Text style={[styles.cpName, { flex: 1 }]}>General patrol (no checkpoint)</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Photo capture */}
@@ -265,6 +348,7 @@ export default function BarangayReportScreen() {
           <Text style={styles.cardTitle}>Auto-detected location</Text>
           {[
             { k: 'Barangay', v: barangay },
+            { k: 'Checkpoint', v: selected?.name ?? 'General patrol' },
             {
               k: 'GPS',
               v: geoStatus === 'found' && location
@@ -340,6 +424,8 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
   rolePill: { backgroundColor: Colors.brgyLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   rolePillText: { fontSize: 10, color: Colors.brgyDark, fontWeight: '500' },
+  maintenanceBanner: { backgroundColor: Colors.amberBg, borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: Colors.amber },
+  maintenanceText: { fontSize: 12, color: Colors.amberText, lineHeight: 17 },
   body: { padding: 16, gap: 14, paddingBottom: 28 },
   infoBanner: {
     backgroundColor: Colors.brgyLight, borderRadius: 12, padding: 12,
@@ -348,6 +434,19 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   infoTitle: { fontSize: 12, fontWeight: '500', color: Colors.brgyDark },
   infoSub: { fontSize: 10, color: Colors.brgyDark, opacity: 0.8, marginTop: 3, lineHeight: 15 },
   field: { gap: 5 },
+  cpEmpty: { fontSize: 11, color: Colors.textMuted, lineHeight: 16 },
+  cpList: { gap: 6 },
+  cpItem: {
+    backgroundColor: Colors.white, borderRadius: 14, paddingVertical: 11, paddingHorizontal: 13,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  cpItemOn: { borderColor: Colors.brgy, backgroundColor: Colors.brgyLight },
+  cpRadio: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: Colors.grayHint },
+  cpRadioOn: { borderColor: Colors.brgy, borderWidth: 5 },
+  cpName: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
+  cpMeta: { fontSize: 10, color: Colors.textMuted, marginTop: 2 },
+  cpTag: { fontSize: 10, fontWeight: '600', color: Colors.brgyDark },
   fieldLabel: { fontSize: 11, color: Colors.textMuted },
   cameraBtn: {
     backgroundColor: Colors.white, borderRadius: 16, paddingVertical: 24,

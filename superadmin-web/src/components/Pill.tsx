@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { statusOf } from '../lib/accountRules';
 import { Account, AccountStatus, ROLE_LABELS, Role } from '../lib/types';
+import { REPORT_STATUS_LABELS, ReportStatus, Severity } from '../lib/operations';
 import { MoreIcon } from './Icons';
 
 const STATUS_LABELS: Record<AccountStatus, string> = {
@@ -14,6 +15,16 @@ export const StatusPill = ({ account }: { account: Account }) => {
 
 export const RolePill = ({ role }: { role: Role }) => (
   <span className={`pill pill-role pill-role-${role}`}>{ROLE_LABELS[role]}</span>
+);
+
+const SEVERITY_LABELS: Record<Severity, string> = { critical: 'Critical', high: 'High', moderate: 'Moderate', low: 'Low' };
+
+export const SeverityPill = ({ severity }: { severity: Severity }) => (
+  <span className={`pill pill-sev-${severity}`}>{SEVERITY_LABELS[severity]}</span>
+);
+
+export const ReportStatusPill = ({ status }: { status: ReportStatus }) => (
+  <span className={`pill pill-rs-${status}`}>{REPORT_STATUS_LABELS[status]}</span>
 );
 
 export interface MenuItem { label: string; onSelect: () => void; danger?: boolean; disabled?: boolean; title?: string }

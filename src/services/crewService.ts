@@ -8,12 +8,14 @@
  * can record the work on their behalf (`recordWorkOnBehalf`). Notifications are best-effort: a
  * failed notification must never undo or block the work itself.
  */
-import { collection, doc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { CleanupTask, User, WasteReport } from '../types';
 import { addTaskPhoto, createCleanupTask, uploadTaskPhoto } from './cleanupTaskService';
 import { db } from './firebase';
 import { createNotification, sendReportNotification } from './notificationService';
 import { updateReportStatus } from './reportsService';
+import { mergeSummaries, summarizeAnalysis } from './cleanupComparison';
+import { withTimeout } from '../utils/async';
 
 const TASKS = 'cleanupTasks';
 
@@ -173,7 +175,25 @@ export const addPhotoToTask = async (task: CleanupTask, phase: 'before' | 'after
   const index = (phase === 'before' ? task.beforePhotoURLs : task.afterPhotoURLs)?.length ?? 0;
   const url = await uploadTaskPhoto(uri, task.id, phase, index);
   await addTaskPhoto(task.id, url, phase);
+  // Runs in the background: the crew doesn't wait for the AI.
+  analyzeTaskPhoto(task.id, phase, uri).catch((e) => console.warn('[Crew] Photo analysis failed (non-fatal):', e));
   return url;
+};
+
+/**
+ * Runs the on-device AI on a before/after photo and keeps the result on the task, so the
+ * official can see how much of the waste was removed. The AI module is loaded only when
+ * needed, so screens that never take task photos don't pay for it.
+ */
+const analyzeTaskPhoto = async (taskId: string, phase: 'before' | 'after', uri: string): Promise<void> => {
+  const { analyzeOnDevice } = await import('./onDeviceAI');
+  const ai = await withTimeout(analyzeOnDevice(uri), 45000, 'Task photo analysis');
+  const field = phase === 'before' ? 'beforeAnalysis' : 'afterAnalysis';
+  const current = (await getDoc(doc(db, TASKS, taskId))).data()?.[field];
+  await updateDoc(doc(db, TASKS, taskId), {
+    [field]: mergeSummaries(current, summarizeAnalysis(ai)),
+    updatedAt: serverTimestamp(),
+  });
 };
 
 export interface FinishInput { notes?: string; wasteCollectedKg?: number }

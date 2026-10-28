@@ -43,10 +43,13 @@ import { decodeJpeg } from '@tensorflow/tfjs-react-native';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
 import * as mobilenetLib from '@tensorflow-models/mobilenet';
 import { File } from 'expo-file-system';
-import { AIAnalysisResult } from '../types';
+import { AIAnalysisResult, RainOutlook, WaterContext } from '../types';
 import { buildAnalysisResult } from './wasteAnalysis';
 import { PictogramHit, detectHazardPictograms, detectHazardText } from './hazardDetection';
 import { recognizeText } from './textRecognition';
+import { SceneStats, computeSceneStats } from './waterwayAssessment';
+import { classifyWithCustomModel, prepareCustomModel } from './customModel';
+import type { CustomModelOutput } from './wasteAnalysis';
 
 // ─── tfjs-react-native init (runs once, on first use) ─────────────────────────
 
@@ -143,7 +146,11 @@ async function readPhotoAsTensor(photoUri: string): Promise<tf.Tensor3D> {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
-export async function analyzeOnDevice(photoUri: string): Promise<AIAnalysisResult> {
+export async function analyzeOnDevice(
+  photoUri: string,
+  reporterContext?: WaterContext,
+  rain?: Promise<RainOutlook | undefined>,
+): Promise<AIAnalysisResult> {
   const startMs = Date.now();
 
   // Label-text reading runs natively and independently of the models, so start it now
@@ -158,6 +165,8 @@ export async function analyzeOnDevice(photoUri: string): Promise<AIAnalysisResul
   let predictions: cocoSsd.DetectedObject[] = [];
   let classifications: Array<{ className: string; probability: number }> = [];
   let pictograms: PictogramHit[] = [];
+  let scene: SceneStats | undefined;
+  let custom: CustomModelOutput | undefined;
 
   // coco-ssd/mobilenet are supposed to tidy their own intermediate tensors, but
   // tfjs-react-native's stale rn-webgl backend paired with a much newer tfjs core
@@ -165,17 +174,28 @@ export async function analyzeOnDevice(photoUri: string): Promise<AIAnalysisResul
   // in an explicit engine scope so anything either library leaves behind still
   // gets force-disposed the moment this function returns, rather than slowly
   // accumulating GPU-texture memory across report submissions in the same session.
+  // Loaded before the scope below, which would otherwise dispose the model's weights.
+  const customModel = await prepareCustomModel();
   tf.engine().startScope();
   try {
     [predictions, classifications] = await Promise.all([
       cocoModel.detect(tensor, 20, 0.25),
       mobileNetModel.classify(tensor, 5),
     ]);
-    // Hazard warning symbols: plain pixel analysis on the same downscaled image.
+    // CleanStream's own trained classifier, when switched on in the Super Admin portal.
+    custom = await classifyWithCustomModel(tensor, customModel);
+    // Hazard warning symbols, photo quality and visible water: plain pixel analysis on
+    // the same downscaled image.
+    const pixels = await tensor.data();
     try {
-      pictograms = detectHazardPictograms(await tensor.data(), imageWidth, imageHeight);
+      pictograms = detectHazardPictograms(pixels, imageWidth, imageHeight);
     } catch (e) {
       console.warn('[onDeviceAI] Warning-symbol detection failed (non-fatal):', e);
+    }
+    try {
+      scene = computeSceneStats(pixels, imageWidth, imageHeight);
+    } catch (e) {
+      console.warn('[onDeviceAI] Scene analysis failed (non-fatal):', e);
     }
   } finally {
     tf.engine().endScope();
@@ -186,7 +206,7 @@ export async function analyzeOnDevice(photoUri: string): Promise<AIAnalysisResul
   const result = buildAnalysisResult(predictions, classifications, imageWidth, imageHeight, {
     pictograms,
     text: detectHazardText(labelText),
-  });
+  }, { scene, reporterContext, rain: await rain, custom });
 
   const mem = tf.memory() as tf.MemoryInfo & { numBytesInGPU?: number };
   console.log(

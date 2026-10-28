@@ -4,6 +4,7 @@ import { Provider } from 'react-redux';
 import { store } from './src/store';
 import { useAppDispatch } from './src/store/hooks';
 import { loadThemeMode } from './src/store/themeSlice';
+import { loadLanguage } from './src/store/languageSlice';
 import { useTheme } from './src/hooks/useTheme';
 import RootNavigator from './src/navigation/RootNavigator';
 import { AppErrorBoundary, installGlobalErrorHandler } from './src/components/common/AppErrorBoundary';
@@ -16,6 +17,7 @@ function AppShell() {
 
   useEffect(() => {
     dispatch(loadThemeMode());
+    dispatch(loadLanguage());
   }, [dispatch]);
 
   return (

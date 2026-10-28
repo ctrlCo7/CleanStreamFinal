@@ -11,6 +11,7 @@ import { Badge } from '../../components/common/Badge';
 import { BackIcon } from '../../components/common/TabIcons';
 import { useAppSelector } from '../../store/hooks';
 import { getReportById, verifyReport, rejectReport } from '../../services/reportsService';
+import { HOTSPOT_MIN_REPORTS } from '../../services/reportProximity';
 import { WASTE_TYPE_LABELS } from '../../services/wasteAnalysis';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BarangayVerifyDetail'>;
@@ -93,6 +94,27 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleCloseDuplicate = () => {
+    if (!user || saving || !report?.duplicateOfNumber) return;
+    Alert.alert('Close as duplicate?', `This report will be closed and the reporter told it duplicates ${report.duplicateOfNumber}.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Close as duplicate',
+        onPress: async () => {
+          setSaving(true);
+          try {
+            await rejectReport(reportId, user.uid, officerName, `Duplicate of ${report.duplicateOfNumber}`);
+            navigation.goBack();
+          } catch {
+            Alert.alert('Error', 'Failed to close this report. Please try again.');
+          } finally {
+            setSaving(false);
+          }
+        },
+      },
+    ]);
   };
 
   if (loading || !report) {
@@ -185,6 +207,29 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
                 Reporter says: {WASTE_TYPE_LABELS[report.citizenWasteType]}
               </Text>
             )}
+          </View>
+        )}
+
+        {/* Same spot reported again, or a place where dumping keeps returning */}
+        {!!report.duplicateOfNumber && (
+          <View style={[styles.flagCard, { backgroundColor: colors.purpleBg, borderColor: colors.purple }]}>
+            <Text style={[styles.flagTitle, { color: colors.purpleText }]}>Possible duplicate</Text>
+            <Text style={[styles.flagText, { color: colors.purpleText }]}>
+              {report.duplicateOfNumber} was filed {report.duplicateDistanceM ?? 'under 50'} m away within 24 hours before this one. Compare the photos.
+            </Text>
+            {!alreadyDecided && (
+              <TouchableOpacity style={[styles.flagBtn, { borderColor: colors.purple }]} onPress={handleCloseDuplicate} disabled={saving}>
+                <Text style={[styles.flagBtnText, { color: colors.purpleText }]}>Close as duplicate</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+        {(report.nearbyReportCount ?? 0) >= HOTSPOT_MIN_REPORTS && (
+          <View style={[styles.flagCard, { backgroundColor: colors.redBg, borderColor: colors.red }]}>
+            <Text style={[styles.flagTitle, { color: colors.redText }]}>Hotspot</Text>
+            <Text style={[styles.flagText, { color: colors.redText }]}>
+              {report.nearbyReportCount} reports within 100 m in the last 90 days. Consider a checkpoint, signage or a volunteer cleanup here.
+            </Text>
           </View>
         )}
 
@@ -281,6 +326,11 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   confirmSelectorText: { fontSize: 12, color: Colors.textPrimary },
   selectorArrow: { fontSize: 14, color: Colors.grayHint },
+  flagCard: { borderRadius: 12, borderWidth: 1, padding: 12, gap: 4 },
+  flagTitle: { fontSize: 13, fontWeight: '700' },
+  flagText: { fontSize: 12, lineHeight: 17 },
+  flagBtn: { alignSelf: 'flex-start', marginTop: 4, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
+  flagBtnText: { fontSize: 12, fontWeight: '700' },
   decidedBanner: {
     backgroundColor: Colors.white, borderRadius: 16, padding: 15, gap: 12,
     shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,

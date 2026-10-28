@@ -3,6 +3,10 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View } from 'react-native';
 import { useTheme } from '../hooks/useTheme';
 import { CitizenTabParamList } from '../types';
+import { useT } from '../hooks/useT';
+import { useOfflineSync } from '../hooks/useOfflineQueue';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { fetchUserReports } from '../store/reportsSlice';
 
 import CitizenHomeScreen from '../screens/citizen/HomeScreen';
 import CitizenHistoryScreen from '../screens/citizen/HistoryScreen';
@@ -22,6 +26,11 @@ const Tab = createBottomTabNavigator<CitizenTabParamList>();
 
 export default function CitizenNavigator() {
   const { colors } = useTheme();
+  const { t } = useT();
+  const dispatch = useAppDispatch();
+  const userId = useAppSelector((s) => s.auth.user?.uid);
+  // Reports filed without signal upload in the background while a resident uses the app.
+  useOfflineSync(userId, () => { if (userId) dispatch(fetchUserReports(userId)); });
 
   // Placeholder — tab press is intercepted by the listener below
   const MapTabPlaceholder = () => <View style={{ flex: 1, backgroundColor: colors.grayBg }} />;
@@ -54,7 +63,7 @@ export default function CitizenNavigator() {
         component={CitizenHomeScreen}
         options={{
           tabBarIcon: ({ focused, color }) => (
-            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label="Home" icon={<HomeIcon color={color} size={22} />} />
+            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label={t('tab.home')} icon={<HomeIcon color={color} size={22} />} />
           ),
         }}
       />
@@ -63,7 +72,7 @@ export default function CitizenNavigator() {
         component={CitizenHistoryScreen}
         options={{
           tabBarIcon: ({ focused, color }) => (
-            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label="History" icon={<HistoryIcon color={color} size={22} />} />
+            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label={t('tab.history')} icon={<HistoryIcon color={color} size={22} />} />
           ),
         }}
       />
@@ -72,7 +81,7 @@ export default function CitizenNavigator() {
         component={MapTabPlaceholder}
         options={{
           tabBarIcon: ({ focused, color }) => (
-            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label="Map" icon={<MapIcon color={color} size={22} />} />
+            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label={t('tab.map')} icon={<MapIcon color={color} size={22} />} />
           ),
         }}
         listeners={({ navigation }) => ({
@@ -87,7 +96,7 @@ export default function CitizenNavigator() {
         component={CitizenMessagesScreen}
         options={{
           tabBarIcon: ({ focused, color }) => (
-            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label="Messages" icon={<MessageIcon color={color} size={22} />} />
+            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label={t('tab.messages')} icon={<MessageIcon color={color} size={22} />} />
           ),
         }}
       />
@@ -96,7 +105,7 @@ export default function CitizenNavigator() {
         component={CitizenProfileScreen}
         options={{
           tabBarIcon: ({ focused, color }) => (
-            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label="Profile" icon={<ProfileIcon color={color} size={22} />} />
+            <TabBarIcon focused={focused} color={color} activeBg={colors.tealLight} label={t('tab.profile')} icon={<ProfileIcon color={color} size={22} />} />
           ),
         }}
       />

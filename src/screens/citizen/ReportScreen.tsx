@@ -1,36 +1,35 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, SafeAreaView,
-  ScrollView, ActivityIndicator, Alert, Image,
+  ScrollView, ActivityIndicator, Alert, Image, TextInput,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { useTheme } from '../../hooks/useTheme';
+import { maintenanceText, useMaintenance } from '../../hooks/useMaintenance';
+import { useT } from '../../hooks/useT';
+import { StringKey } from '../../i18n/strings';
+import { enqueueReport, isOnline } from '../../services/offlineQueue';
+import { analyzeAndSaveReport } from '../../services/reportSubmission';
 import { ThemeColors } from '../../constants/theme';
-import { RootStackParamList } from '../../types';
+import { RootStackParamList, WaterContext } from '../../types';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { upsertReport } from '../../store/reportsSlice';
 import { watchLocation, CEBU_BARANGAYS, CebuBarangay } from '../../services/locationService';
-import { analyzeWastePhoto, loadLocalModel } from '../../services/aiService';
-import { createReport, updateReportWithAI } from '../../services/reportsService';
-import { getNotificationRecipientsByRole, sendBulkNotification, sendReportNotification } from '../../services/notificationService';
+import { loadLocalModel } from '../../services/aiService';
+import { createReport } from '../../services/reportsService';
 import { GeoLocation } from '../../types';
-import { withTimeout } from '../../utils/async';
 import { LocationSearchModal } from '../../components/common/LocationSearchModal';
 import { BackIcon, CameraIcon, CheckIcon } from '../../components/common/TabIcons';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const AI_STEPS = [
-  'Uploading photo to cloud',
-  'Running YOLO object detection',
-  'Running CNN classification',
-  'Generating disposal recommendations',
-  'Calculating severity score',
-];
+const AI_STEPS: StringKey[] = ['report.step1', 'report.step2', 'report.step3', 'report.step4', 'report.step5'];
+
+const WATER_CONTEXT_OPTIONS: WaterContext[] = ['in_water', 'riverbank', 'drainage', 'unknown'];
 
 export default function CitizenReportScreen() {
   const { colors } = useTheme();
@@ -38,12 +37,17 @@ export default function CitizenReportScreen() {
   const navigation = useNavigation<Nav>();
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((s) => s.auth);
+  const maintenance = useMaintenance();
+  const { t } = useT();
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [location, setLocation] = useState<GeoLocation | null>(null);
   const [geoStatus, setGeoStatus] = useState<'detecting' | 'found' | 'manual' | 'error'>('detecting');
   const [notes, setNotes] = useState('');
   const [processing, setProcessing] = useState(false);
   const [aiStep, setAiStep] = useState(0);
+  const [waterContext, setWaterContext] = useState<WaterContext>('unknown');
+  // Set while analysis runs; calling it stops waiting and files the report without AI.
+  const skipAnalysisRef = useRef<(() => void) | null>(null);
 
   const [showSearch, setShowSearch] = useState(false);
   const promptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -163,12 +167,36 @@ Is this where you are?`,
   };
 
   const handleSubmit = async () => {
+    if (maintenance.enabled) { Alert.alert('Under maintenance', maintenanceText(maintenance.message)); return; }
     if (!photoUri) { Alert.alert('Photo required', 'Please capture a photo first.'); return; }
     if (!location) { Alert.alert('Location needed', 'Waiting for GPS location...'); return; }
     if (!user) return;
 
+    const userName = `${user.firstName} ${user.lastName}`;
     setProcessing(true);
     setAiStep(0);
+
+    // ── No connection: keep the report on the phone and send it later ──────
+    const saveOffline = async () => {
+      try {
+        await enqueueReport({
+          userId: user.uid, userRole: user.role, userName, photoUri, location, notes, waterContext,
+        });
+        Alert.alert(
+          t('report.offlineSavedTitle'),
+          t('report.offlineSavedBody'),
+          [{ text: 'OK', onPress: () => navigation.goBack() }],
+        );
+      } catch (e) {
+        console.error('[Submit] Could not save report offline:', e);
+        Alert.alert(t('report.failedTitle'), t('report.offlineSaveFailed'));
+      }
+    };
+    if (!(await isOnline())) {
+      setProcessing(false);
+      await saveOffline();
+      return;
+    }
 
     const stepInterval = setInterval(() => {
       setAiStep((s) => Math.min(s + 1, AI_STEPS.length - 1));
@@ -178,108 +206,35 @@ Is this where you are?`,
     let reportId: string;
     let reportNumber: string;
     try {
-      console.log('[Submit] Creating report...');
       const result = await createReport(
-        user.uid,
-        user.role,
-        `${user.firstName} ${user.lastName}`,
-        photoUri,
-        location,
-        notes,
-        undefined,
-        location.barangayId,
-        location.barangay,
+        user.uid, user.role, userName, photoUri, location, notes, undefined, location.barangayId, location.barangay,
       );
       reportId = result.reportId;
       reportNumber = result.reportNumber;
-      console.log('[Submit] Report created successfully. ID:', reportId, 'Number:', reportNumber);
     } catch (criticalErr) {
       clearInterval(stepInterval);
       setProcessing(false);
       console.error('[Submit] CRITICAL — Firestore document creation failed:', criticalErr);
-      const detail = criticalErr instanceof Error ? criticalErr.message : String(criticalErr);
-      Alert.alert('Submission failed', `Could not save your report.
-
-${detail}
-
-Please check your connection and try again.`);
+      Alert.alert(t('report.failedTitle'), t('report.failedBody'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('report.saveOnPhone'), onPress: () => { saveOffline(); } },
+      ]);
       return;
     }
 
-    // Report is saved. All remaining steps are non-critical.
-    const now = new Date().toISOString();
-    const userName = `${user.firstName} ${user.lastName}`;
-
-    sendReportNotification(user.uid, 'report_submitted', reportId, reportNumber)
-      .catch((e) => console.warn('[Submit] Notification send failed (non-fatal):', e));
-
-    // ── STEP 2: AI analysis (NON-CRITICAL) ────────────────────────────────
-    let aiResult: Awaited<ReturnType<typeof analyzeWastePhoto>> | null = null;
-    let aiWarning: string | null = null;
-
-    try {
-      console.log('[Submit] Running AI analysis for report:', reportId);
-      // Outer hard deadline on top of the per-stage timeouts inside analyzeWastePhoto,
-      // so the submit spinner can never outlive this no matter what stalls.
-      aiResult = await withTimeout(analyzeWastePhoto(photoUri, reportId, user.uid), 50000, 'AI analysis');
-      console.log('[Submit] AI analysis complete. Severity:', aiResult.severityLevel,
-        '| Confidence:', aiResult.confidence,
-        '| Objects:', aiResult.objectCount ?? 'N/A',
-        '| ProcessedURL:', aiResult.processedImageURL ?? 'none');
-    } catch (aiErr) {
-      console.error('[Submit] AI analysis failed (non-fatal):', aiErr);
-      aiWarning = 'AI analysis will be retried automatically.';
-    }
-
-    // ── STEP 3: Persist AI result to Firestore (NON-CRITICAL) ─────────────
-    if (aiResult) {
-      try {
-        console.log('[Submit] Saving AI result to Firestore...');
-        await withTimeout(updateReportWithAI(reportId, aiResult), 10000, 'Saving AI result');
-        console.log('[Submit] AI result saved.');
-      } catch (updateErr) {
-        console.error('[Submit] AI result save failed (non-fatal):', updateErr);
-      }
-
-      // Real-time alert: barangay officials should hear about critical/high
-      // severity reports in their own barangay the moment AI analysis flags
-      // them, not only when they happen to open Verify Reports later.
-      const isUrgent = aiResult.severityLevel === 'critical' || aiResult.severityLevel === 'high';
-      if (isUrgent && location.barangayId) {
-        getNotificationRecipientsByRole(['barangay'], location.barangayId)
-          .then((barangayUserIds) => {
-            if (barangayUserIds.length === 0) return;
-            return sendBulkNotification(
-              barangayUserIds,
-              `${aiResult!.severityLevel === 'critical' ? '🚨 Critical' : '⚠️ High'} severity report`,
-              `A new ${aiResult!.severityLevel} severity report (${reportNumber}) was just submitted in ${location.barangay || 'your barangay'}.`,
-              'system',
-              { severity: aiResult!.severityLevel, reportId },
-            );
-          })
-          .catch((e) => console.warn('[Submit] Barangay severity alert failed (non-fatal):', e));
-      }
-    }
+    // ── STEP 2: AI analysis, duplicate check, alerts (all non-critical) ────
+    // The reporter can stop waiting at any time ("Skip analysis").
+    const skip = new Promise<void>((resolve) => { skipAnalysisRef.current = resolve; });
+    const { ai, aiIssue, proximity } = await analyzeAndSaveReport({
+      reportId, reportNumber, userId: user.uid, location, photoUri, waterContext, skip,
+    });
+    skipAnalysisRef.current = null;
 
     clearInterval(stepInterval);
     setAiStep(AI_STEPS.length);
     setProcessing(false);
 
-    // ── Navigate with whatever result we have ──────────────────────────────
-    const effectiveAI = aiResult ?? {
-      modelVersion: 'Pending',
-      confidence: 0,
-      severityScore: 0,
-      severityLevel: 'low' as const,
-      wasteTypes: [],
-      estimatedVolume: 0,
-      spreadArea: 0,
-      hazardousDetected: false,
-      teamNeeded: 'TBD',
-      cleanupPriority: 'Pending AI analysis',
-      timestamp: now,
-    };
-
+    const now = new Date().toISOString();
     const reportPayload = {
       id: reportId,
       reportNumber,
@@ -287,10 +242,17 @@ Please check your connection and try again.`);
       userRole: user.role,
       userName,
       location,
-      photoURL: effectiveAI.processedImageURL ?? photoUri,
+      notes,
+      photoURL: ai.processedImageURL ?? photoUri,
       status: 'pending' as const,
-      severity: effectiveAI.severityLevel,
-      aiAnalysis: effectiveAI,
+      severity: ai.severityLevel,
+      aiAnalysis: ai,
+      nearbyReportCount: proximity?.nearbyCount,
+      ...(proximity?.duplicateOf ? {
+        duplicateOf: proximity.duplicateOf.id,
+        duplicateOfNumber: proximity.duplicateOf.reportNumber,
+        duplicateDistanceM: proximity.duplicateOf.distanceM,
+      } : {}),
       statusHistory: [{ status: 'pending' as const, changedBy: user.uid, changedByName: userName, changedAt: now }],
       createdAt: now,
       updatedAt: now,
@@ -299,14 +261,11 @@ Please check your connection and try again.`);
     // Put the new report in Redux immediately so History shows it right away
     dispatch(upsertReport(reportPayload));
 
-    if (aiWarning) {
+    if (aiIssue) {
       Alert.alert(
-        'Report submitted',
-        `Your report was saved successfully. ${aiWarning}`,
-        [{
-          text: 'View report',
-          onPress: () => navigation.navigate('CitizenAIResult', { report: reportPayload }),
-        }],
+        t('report.submittedTitle'),
+        t(aiIssue === 'skipped' ? 'report.aiSkipped' : 'report.aiFailed'),
+        [{ text: t('report.viewReport'), onPress: () => navigation.navigate('CitizenAIResult', { report: reportPayload }) }],
       );
     } else {
       navigation.navigate('CitizenAIResult', { report: reportPayload });
@@ -346,23 +305,28 @@ Please check your connection and try again.`);
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <BackIcon size={18} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>New report</Text>
+        <Text style={styles.headerTitle}>{t('report.title')}</Text>
         <View style={{ width: 38 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        {maintenance.enabled && (
+          <View style={styles.maintenanceBanner}>
+            <Text style={styles.maintenanceText}>{maintenanceText(maintenance.message)}</Text>
+          </View>
+        )}
         {/* Camera capture */}
         <TouchableOpacity style={styles.camera} onPress={handleCamera} activeOpacity={0.85}>
           <View style={styles.liveBadge}>
             <View style={styles.liveDot} />
-            <Text style={styles.liveBadgeText}>LIVE CAPTURE ONLY</Text>
+            <Text style={styles.liveBadgeText}>{t('report.liveOnly')}</Text>
           </View>
           {photoUri ? (
             <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
           ) : (
             <View style={styles.cameraInner}>
               <CameraIcon color="rgba(255,255,255,0.5)" size={36} />
-              <Text style={styles.cameraTip}>Tap to open live camera</Text>
+              <Text style={styles.cameraTip}>{t('report.tapCamera')}</Text>
             </View>
           )}
         </TouchableOpacity>
@@ -373,7 +337,7 @@ Please check your connection and try again.`);
             <Path d="M8 2l1.5 4.5L14 8l-4.5 1.5L8 14l-1.5-4.5L2 8l4.5-1.5z" stroke={colors.greenText} strokeWidth="2" strokeLinecap="round" />
           </Svg>
           <Text style={styles.antiFakeText}>
-            <Text style={{ fontWeight: '600' }}>Camera-only reporting.</Text> Gallery uploads disabled. Auto-GPS tag + timestamp watermark applied on every capture.
+            <Text style={{ fontWeight: '600' }}>{t('report.cameraOnly')}</Text> {t('report.cameraOnlyBody')}
           </Text>
         </View>
 
@@ -382,29 +346,60 @@ Please check your connection and try again.`);
           <View style={styles.featureChip}>
             <CheckIcon color={colors.teal} size={14} />
             <View>
-              <Text style={styles.featureTitle}>Waste Classification</Text>
-              <Text style={styles.featureSub}>5 types · CNN Model v2.4</Text>
+              <Text style={styles.featureTitle}>{t('report.featClass')}</Text>
+              <Text style={styles.featureSub}>{t('report.featClassSub')}</Text>
             </View>
           </View>
           <View style={styles.featureChip}>
             <Svg width={14} height={14} viewBox="0 0 16 16" fill="none">
-              <Rect x="2" y="2" width="12" height="12" rx="1" stroke={colors.blueText} strokeWidth="1.8" strokeLinecap="round" />
-              <Path d="M6 10V6M8 10V8M10 10V4" stroke={colors.blueText} strokeWidth="1.8" strokeLinecap="round" />
+              <Path d="M2 10c2-2 4-2 6 0s4 2 6 0M2 6c2-2 4-2 6 0s4 2 6 0" stroke={colors.blueText} strokeWidth="1.8" strokeLinecap="round" />
             </Svg>
             <View>
-              <Text style={styles.featureTitle}>Volume Estimate</Text>
-              <Text style={styles.featureSub}>m³ calculated from scan</Text>
+              <Text style={styles.featureTitle}>{t('report.featRisk')}</Text>
+              <Text style={styles.featureSub}>{t('report.featRiskSub')}</Text>
             </View>
           </View>
+        </View>
+
+        {/* Where is the waste? — the AI's water check uses this, and it beats a guess */}
+        <View style={styles.formCard}>
+          <Text style={styles.formLabel}>{t('report.where')}</Text>
+          <View style={styles.contextRow}>
+            {WATER_CONTEXT_OPTIONS.map((o) => {
+              const on = waterContext === o;
+              return (
+                <TouchableOpacity
+                  key={o}
+                  style={[styles.contextChip, on && styles.contextChipOn]}
+                  onPress={() => setWaterContext(o)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: on }}
+                >
+                  <Text style={[styles.contextChipText, on && styles.contextChipTextOn]}>{t(`ctx.${o}` as StringKey)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.formLabel}>{t('report.notes')}</Text>
+          <TextInput
+            style={styles.notesInput}
+            value={notes}
+            onChangeText={setNotes}
+            placeholder={t('report.notesPlaceholder')}
+            placeholderTextColor={colors.textHint}
+            multiline
+            maxLength={500}
+            textAlignVertical="top"
+          />
         </View>
 
         {/* Geo card */}
         <View style={styles.geoCard}>
           <View style={styles.geoCardHeader}>
-            <Text style={styles.geoCardTitle}>📍 Live GPS location</Text>
+            <Text style={styles.geoCardTitle}>📍 {t('report.gpsTitle')}</Text>
             <View style={[styles.geoBadge, geoStatus === 'found' ? styles.geoBadgeOk : styles.geoBadgePending]}>
               <Text style={[styles.geoBadgeText, geoStatus === 'found' && styles.geoBadgeTextOk]}>
-                {geoStatus === 'found' ? '✓ Verified' : geoStatus === 'detecting' ? 'Locating...' : geoStatus === 'manual' ? 'Manual' : 'No GPS'}
+                {geoStatus === 'found' ? `✓ ${t('report.gpsVerified')}` : t(geoStatus === 'detecting' ? 'report.gpsLocating' : geoStatus === 'manual' ? 'report.gpsManual' : 'report.gpsNone')}
               </Text>
             </View>
           </View>
@@ -415,7 +410,7 @@ Please check your connection and try again.`);
               <Circle cx="8" cy="7" r="1.5" stroke={colors.teal} strokeWidth="2" />
             </Svg>
             <View>
-              <Text style={styles.geoLabel}>GPS coordinates</Text>
+              <Text style={styles.geoLabel}>{t('report.gpsCoords')}</Text>
               <Text style={styles.geoValue}>
                 {location ? `${geoStatus === 'manual' ? '≈ ' : ''}${location.latitude.toFixed(4)}°N, ${location.longitude.toFixed(4)}°E` : geoStatus === 'error' ? 'Not available' : 'Detecting...'}
               </Text>
@@ -428,7 +423,7 @@ Please check your connection and try again.`);
               <Path d="M6 13v-3h4v3" stroke={colors.teal} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
             <View>
-              <Text style={styles.geoLabel}>Barangay · Cebu City</Text>
+              <Text style={styles.geoLabel}>{t('report.barangay')}</Text>
               <Text style={styles.geoValue}>{location?.barangay || (geoStatus === 'error' ? 'Choose below' : 'Detecting...')}</Text>
             </View>
           </View>
@@ -439,14 +434,14 @@ Please check your connection and try again.`);
               <Path d="M5 1v4M11 1v4M2 7h12" stroke={colors.teal} strokeWidth="2" strokeLinecap="round" />
             </Svg>
             <View>
-              <Text style={styles.geoLabel}>Timestamp</Text>
+              <Text style={styles.geoLabel}>{t('report.timestamp')}</Text>
               <Text style={styles.geoValue}>{new Date().toLocaleString()}</Text>
             </View>
           </View>
 
           {geoStatus !== 'found' && (
             <TouchableOpacity style={styles.searchLocationBtn} onPress={() => setShowSearch(true)}>
-              <Text style={styles.searchLocationText}>🔍 Search my location instead</Text>
+              <Text style={styles.searchLocationText}>🔍 {t('report.searchLocation')}</Text>
             </TouchableOpacity>
           )}
 
@@ -472,7 +467,7 @@ Please check your connection and try again.`);
           )}
 
           <TouchableOpacity onPress={refreshLocation}>
-            <Text style={styles.refreshBtn}>🔄 Refresh location</Text>
+            <Text style={styles.refreshBtn}>🔄 {t('report.refresh')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -483,7 +478,7 @@ Please check your connection and try again.`);
           disabled={!photoUri || !location || processing}
           activeOpacity={0.85}
         >
-          <Text style={styles.submitBtnText}>Submit live report</Text>
+          <Text style={styles.submitBtnText}>{t('report.submit')}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -491,7 +486,7 @@ Please check your connection and try again.`);
       {processing && (
         <View style={styles.overlay}>
           <ActivityIndicator size="large" color={colors.teal} />
-          <Text style={styles.overlayTitle}>AI Classification Running</Text>
+          <Text style={styles.overlayTitle}>{t('report.aiRunning')}</Text>
           <View style={styles.steps}>
             {AI_STEPS.map((step, i) => (
               <View key={step} style={styles.step}>
@@ -503,14 +498,17 @@ Please check your connection and try again.`);
                   i < aiStep && { color: colors.tealDark },
                   i === aiStep && { color: colors.amberText },
                 ]}>
-                  {step}
+                  {t(step)}
                 </Text>
               </View>
             ))}
           </View>
           <View style={styles.modelBadge}>
-            <Text style={styles.modelBadgeText}>CNN Model v2.4 · 94% accuracy</Text>
+            <Text style={styles.modelBadgeText}>{t('report.savedBadge')}</Text>
           </View>
+          <TouchableOpacity style={styles.skipBtn} onPress={() => skipAnalysisRef.current?.()}>
+            <Text style={styles.skipBtnText}>{t('report.skip')}</Text>
+          </TouchableOpacity>
         </View>
       )}
       <LocationSearchModal
@@ -538,6 +536,8 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg,
     alignItems: 'center', justifyContent: 'center',
   },
+  maintenanceBanner: { backgroundColor: Colors.amberBg, borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: Colors.amber },
+  maintenanceText: { fontSize: 12, color: Colors.amberText, lineHeight: 17 },
   body: { padding: 16, gap: 14, paddingBottom: 24 },
   camera: {
     borderRadius: 16, backgroundColor: '#1A1A18', height: 160,
@@ -620,4 +620,20 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     backgroundColor: Colors.tealLight, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
   },
   modelBadgeText: { fontSize: 10, color: Colors.tealDark },
+  skipBtn: { marginTop: 4, paddingVertical: 10, paddingHorizontal: 22, borderRadius: 22, borderWidth: 1, borderColor: Colors.borderMid },
+  skipBtnText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
+  formCard: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 14, gap: 9,
+    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
+  },
+  formLabel: { fontSize: 12, fontWeight: '600', color: Colors.textPrimary },
+  contextRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  contextChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.grayBg },
+  contextChipOn: { backgroundColor: Colors.teal, borderColor: Colors.teal },
+  contextChipText: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500' },
+  contextChipTextOn: { color: '#fff', fontWeight: '600' },
+  notesInput: {
+    minHeight: 72, borderRadius: 12, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.grayBg,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: Colors.textPrimary,
+  },
 });

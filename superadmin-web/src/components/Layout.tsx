@@ -2,14 +2,25 @@ import { ReactNode } from 'react';
 import { statusOf } from '../lib/accountRules';
 import { useAuth } from '../lib/auth';
 import { useData } from '../lib/data';
-import { ApprovalsIcon, HistoryIcon, LogoMark, LogoutIcon, OverviewIcon, UsersIcon } from './Icons';
+import {
+  AnalyticsIcon, ApprovalsIcon, HistoryIcon, LogoMark, LogoutIcon, ModelIcon, OverviewIcon, PinIcon, ReportsIcon, SettingsIcon, UnitsIcon,
+  UsersIcon,
+} from './Icons';
 
-export type Route = 'overview' | 'accounts' | 'approvals' | 'audit';
+export type Route = 'overview' | 'reports' | 'analytics' | 'accounts' | 'approvals' | 'units' | 'checkpoints' | 'training' | 'settings' | 'audit';
 
-const NAV: Array<{ route: Route; label: string; icon: ReactNode }> = [
+export const ROUTES: Route[] = ['overview', 'reports', 'analytics', 'accounts', 'approvals', 'units', 'checkpoints', 'training', 'settings', 'audit'];
+
+const NAV: Array<{ route: Route; label: string; icon: ReactNode; group?: string }> = [
   { route: 'overview', label: 'Overview', icon: <OverviewIcon /> },
-  { route: 'accounts', label: 'Accounts', icon: <UsersIcon /> },
+  { route: 'reports', label: 'All reports', icon: <ReportsIcon /> },
+  { route: 'analytics', label: 'Analytics', icon: <AnalyticsIcon /> },
+  { route: 'accounts', label: 'Accounts', icon: <UsersIcon />, group: 'People' },
   { route: 'approvals', label: 'Approvals', icon: <ApprovalsIcon /> },
+  { route: 'units', label: 'Barangay units', icon: <UnitsIcon />, group: 'Field operations' },
+  { route: 'checkpoints', label: 'Checkpoints', icon: <PinIcon /> },
+  { route: 'training', label: 'Training data', icon: <ModelIcon />, group: 'System' },
+  { route: 'settings', label: 'System settings', icon: <SettingsIcon /> },
   { route: 'audit', label: 'Audit log', icon: <HistoryIcon /> },
 ];
 
@@ -27,13 +38,14 @@ export function Layout({ route, children }: { route: Route; children: ReactNode 
           <div><strong>CleanStream</strong><span>Super Admin</span></div>
         </div>
         <nav aria-label="Main">
-          {NAV.map((n) => (
+          {NAV.flatMap((n) => [
+            n.group ? <span key={`g-${n.group}`} className="nav-group">{n.group}</span> : null,
             <a key={n.route} href={`#/${n.route}`} className={`nav-item${route === n.route ? ' active' : ''}`} aria-current={route === n.route ? 'page' : undefined}>
               {n.icon}
               <span>{n.label}</span>
               {n.route === 'approvals' && pending > 0 && <span className="badge" aria-label={`${pending} waiting`}>{pending}</span>}
-            </a>
-          ))}
+            </a>,
+          ])}
         </nav>
         <div className="sidebar-foot">
           <span className="muted small ellipsis" title={email}>{email}</span>

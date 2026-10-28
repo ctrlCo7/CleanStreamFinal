@@ -1,8 +1,8 @@
 /**
  * AI Service — real on-device inference (COCO-SSD + MobileNet via onDeviceAI.ts) is
- * the primary analysis path, with the Firebase Cloud Functions pipeline and a
- * deterministic local simulation as fallbacks. See analyzeWastePhoto()'s docstring
- * for the exact priority order and why.
+ * the primary analysis path, with the Firebase Cloud Functions pipeline as a
+ * fallback and an explicit "AI unavailable" result as the last resort. See
+ * analyzeWastePhoto()'s docstring for the exact priority order and why.
  */
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -15,9 +15,13 @@ import {
   SeverityLevel,
   type WasteCategory,
   WasteClassification,
+  RainOutlook,
+  WaterContext,
 } from '../types';
 import app from './firebase';
 import { analyzeOnDevice, warmUpOnDeviceModels } from './onDeviceAI';
+import { applyWaterwayAssessment } from './waterwayAssessment';
+import { getRainOutlook } from './weatherService';
 import { withTimeout } from '../utils/async';
 
 // ─── Cloud Function response shape ───────────────────────────────────────────
@@ -185,181 +189,6 @@ const analyzeWithCloud = async (
   };
 };
 
-// ─── Local simulation fallback ────────────────────────────────────────────────
-
-// FNV-1a 32-bit hash — same URI always yields the same seed
-const hashUri = (uri: string): number => {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < uri.length; i++) {
-    h ^= uri.charCodeAt(i);
-    h = (Math.imul(h, 0x01000193)) >>> 0;
-  }
-  return h;
-};
-
-// LCG PRNG — deterministic per photo, varies across different photos
-const makeRng = (seed: number) => {
-  let s = seed >>> 0;
-  return () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-    return s / 0x100000000;
-  };
-};
-
-type ObjectEntry = {
-  label: string;
-  wasteType: DetectedObject['wasteType'];
-  color: string;
-  cnnCategory: CNNClassification['category'];
-  cnnLabel: string;
-  recAction: string;
-  recFacility: string;
-  recUrgency: AIDisposalRecommendation['urgency'];
-  recIcon: string;
-  wtLabel: string;
-  wtColor: string;
-};
-
-const OBJECT_POOL: ObjectEntry[] = [
-  { label: 'Plastic bottle',   wasteType: 'plastic_bottle',  color: '#378ADD', cnnCategory: 'recyclable',    cnnLabel: 'Recyclable',       recAction: 'Rinse and place in blue recycling bin. Remove cap separately.',            recFacility: 'Materials Recovery Facility (MRF)',              recUrgency: 'routine',   recIcon: '🍶',  wtLabel: 'Plastic Bottle',  wtColor: '#378ADD' },
-  { label: 'Plastic bag',      wasteType: 'plastic_bag',     color: '#54B4E4', cnnCategory: 'non_recyclable', cnnLabel: 'Non-Recyclable',   recAction: 'Bring to plastic drop-off at supermarkets or dispose in black bin.',     recFacility: 'Barangay Collection Point',                      recUrgency: 'scheduled', recIcon: '🛍️', wtLabel: 'Plastic Bag',     wtColor: '#54B4E4' },
-  { label: 'Cardboard box',    wasteType: 'cardboard',       color: '#D35400', cnnCategory: 'recyclable',    cnnLabel: 'Recyclable',       recAction: 'Flatten boxes and keep dry. Drop off at barangay recycling center.',     recFacility: 'Cardboard / Paper MRF',                         recUrgency: 'routine',   recIcon: '📦', wtLabel: 'Cardboard',       wtColor: '#D35400' },
-  { label: 'Food waste',       wasteType: 'food_waste',      color: '#639922', cnnCategory: 'organic',       cnnLabel: 'Organic',          recAction: 'Place in the green biodegradable bin for composting.',                  recFacility: 'Barangay Composting Facility',                   recUrgency: 'immediate', recIcon: '🥦', wtLabel: 'Food Waste',      wtColor: '#639922' },
-  { label: 'Metal can',        wasteType: 'metal_can',       color: '#888780', cnnCategory: 'recyclable',    cnnLabel: 'Recyclable',       recAction: 'Rinse and flatten before placing in the metal recycling bin.',          recFacility: 'Scrap Metal Dealer / MRF',                       recUrgency: 'routine',   recIcon: '🥫', wtLabel: 'Metal / Can',     wtColor: '#888780' },
-  { label: 'Paper waste',      wasteType: 'paper_waste',     color: '#F39C12', cnnCategory: 'recyclable',    cnnLabel: 'Recyclable',       recAction: 'Keep dry and bundle before placing in the paper recycling bin.',        recFacility: 'Paper Recycling Center',                         recUrgency: 'routine',   recIcon: '📄', wtLabel: 'Paper Waste',     wtColor: '#F39C12' },
-  { label: 'Glass bottle',     wasteType: 'glass_bottle',    color: '#9B59B6', cnnCategory: 'recyclable',    cnnLabel: 'Recyclable',       recAction: 'Rinse and place in the glass recycling bin. Handle carefully.',        recFacility: 'Glass Recycling Center / Junk Shop',             recUrgency: 'routine',   recIcon: '🍾', wtLabel: 'Glass Bottle',    wtColor: '#9B59B6' },
-  { label: 'Electronic waste', wasteType: 'e_waste',         color: '#E07B3A', cnnCategory: 'electronic',    cnnLabel: 'Electronic Waste', recAction: 'Do NOT dispose in regular bins. Bring to an e-waste collection drive.', recFacility: 'DENR-Accredited E-Waste Facility',               recUrgency: 'scheduled', recIcon: '📱', wtLabel: 'E-Waste',         wtColor: '#E07B3A' },
-  { label: 'Styrofoam',        wasteType: 'styrofoam',       color: '#16A085', cnnCategory: 'non_recyclable', cnnLabel: 'Non-Recyclable',  recAction: 'Styrofoam is NOT recyclable. Place in black residual bin. Do not burn.', recFacility: 'Sanitary Landfill / Polystyrene Drop-Off',       recUrgency: 'scheduled', recIcon: '📦', wtLabel: 'Styrofoam',       wtColor: '#16A085' },
-  { label: 'Cigarette butt',   wasteType: 'cigarette_butt',  color: '#7F8C8D', cnnCategory: 'hazardous',     cnnLabel: 'Hazardous',        recAction: 'Collect in sealed container. Contains heavy metals — hazardous to waterways.', recFacility: 'DENR Hazardous Waste Drop-Off',             recUrgency: 'immediate', recIcon: '🚬', wtLabel: 'Cigarette Butt',  wtColor: '#7F8C8D' },
-  { label: 'Mixed waste',      wasteType: 'mixed_waste',     color: '#E74C3C', cnnCategory: 'non_recyclable', cnnLabel: 'Non-Recyclable',  recAction: 'Place in the black residual bin. Try to separate recyclable components.', recFacility: 'Sanitary Landfill',                             recUrgency: 'scheduled', recIcon: '🗑️', wtLabel: 'Mixed Waste',     wtColor: '#E74C3C' },
-  { label: 'Trash pile',       wasteType: 'trash_pile',      color: '#922B21', cnnCategory: 'non_recyclable', cnnLabel: 'Non-Recyclable',  recAction: 'Large accumulation detected. Contact barangay clean-up crew immediately.', recFacility: 'Barangay Clean-Up Operations Center',           recUrgency: 'immediate', recIcon: '🗂️', wtLabel: 'Trash Pile',      wtColor: '#922B21' },
-];
-
-const getSeverityLevel = (score: number): SeverityLevel => {
-  if (score >= 75) return 'critical';
-  if (score >= 50) return 'high';
-  if (score >= 25) return 'moderate';
-  return 'low';
-};
-
-const simulateLocalAnalysis = (photoUri: string): Promise<AIAnalysisResult> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const rng = makeRng(hashUri(photoUri));
-
-      // Deterministically pick 3–6 distinct object types per photo
-      const poolCopy = [...OBJECT_POOL].sort(() => rng() - 0.5);
-      const count = 3 + Math.floor(rng() * 4); // 3–6
-      const picked = poolCopy.slice(0, count);
-
-      const detectedObjects: DetectedObject[] = picked.map((obj) => ({
-        label: obj.label,
-        wasteType: obj.wasteType,
-        confidence: Math.floor(55 + rng() * 40), // 55–94 %
-        bbox: {
-          x: Math.floor(rng() * 200),
-          y: Math.floor(rng() * 200),
-          width: Math.floor(50 + rng() * 150),
-          height: Math.floor(50 + rng() * 150),
-        },
-        color: obj.color,
-      }));
-
-      const totalConf = detectedObjects.reduce((s, d) => s + d.confidence, 0);
-      const wasteTypes: WasteClassification[] = detectedObjects
-        .sort((a, b) => b.confidence - a.confidence)
-        .map((d, i) => ({
-          type: d.wasteType,
-          percentage: Math.round((d.confidence / totalConf) * 100),
-          label: picked[i].wtLabel,
-          color: picked[i].wtColor,
-        }));
-
-      const dominant = picked[0];
-      const cnnResult: CNNClassification = {
-        category: dominant.cnnCategory,
-        confidence: Math.floor(70 + rng() * 25),
-        label: dominant.cnnLabel,
-        allScores: [
-          { category: 'recyclable'     as WasteCategory, confidence: Math.floor(rng() * 60), label: 'Recyclable' },
-          { category: 'non_recyclable' as WasteCategory, confidence: Math.floor(rng() * 40), label: 'Non-Recyclable' },
-          { category: 'organic'        as WasteCategory, confidence: Math.floor(rng() * 30), label: 'Organic' },
-          { category: 'hazardous'      as WasteCategory, confidence: Math.floor(rng() * 15), label: 'Hazardous' },
-          { category: 'electronic'     as WasteCategory, confidence: Math.floor(rng() * 20), label: 'Electronic Waste' },
-        ].sort((a, b) => b.confidence - a.confidence),
-      };
-
-      const recommendations: AIDisposalRecommendation[] = picked.slice(0, 4).map((obj) => ({
-        wasteType: obj.wasteType,
-        wasteLabel: obj.wtLabel,
-        category: obj.cnnCategory as AIDisposalRecommendation['category'],
-        action: obj.recAction,
-        facility: obj.recFacility,
-        urgency: obj.recUrgency,
-        icon: obj.recIcon,
-      }));
-
-      const hasHazardous = picked.some(
-        (o) => o.wasteType === 'e_waste' || o.wasteType === 'cigarette_butt',
-      );
-      const objectCount = detectedObjects.length;
-
-      const coverageRatio = parseFloat((0.05 + rng() * 0.3).toFixed(3));
-      const densityClass = coverageRatio > 0.2 ? 'dense' : coverageRatio > 0.1 ? 'moderate' : 'sparse';
-
-      const environmental: EnvironmentalRiskScore = {
-        riskScore: Math.floor(20 + rng() * 60),
-        severityLevel: getSeverityLevel(Math.floor(20 + rng() * 60)),
-        coverageRatio,
-        densityClass: densityClass as EnvironmentalRiskScore['densityClass'],
-        hazardousPresent: hasHazardous,
-        estimatedCleanupHours: parseFloat((objectCount * 0.25 + rng()).toFixed(2)),
-        waterBodyAffected: coverageRatio > 0.15 && objectCount >= 3,
-        factors: {
-          objectCountScore: Math.floor(rng() * 25),
-          densityScore:     Math.floor(rng() * 25),
-          hazardScore:      hasHazardous ? Math.floor(10 + rng() * 15) : 0,
-          coverageScore:    Math.floor(coverageRatio * 80),
-        },
-      };
-
-      const severityScore = hasHazardous
-        ? Math.floor(60 + rng() * 35)
-        : Math.floor(20 + rng() * 55);
-      const severityLevel = getSeverityLevel(severityScore);
-      const volumeM3 = parseFloat((objectCount * 0.3 + rng() * 1.5).toFixed(1));
-
-      resolve({
-        modelVersion: 'COCO-SSD/MobileNetV2-CNN v2.0 (local simulation)',
-        confidence: parseFloat((72 + rng() * 22).toFixed(1)),
-        severityScore,
-        severityLevel,
-        wasteTypes,
-        estimatedVolume: volumeM3,
-        spreadArea: parseFloat((objectCount * 1.8 + rng() * 4).toFixed(1)),
-        hazardousDetected: hasHazardous,
-        teamNeeded: hasHazardous ? '5–10 workers' : severityScore >= 50 ? '3–5 workers' : '1–2 workers',
-        cleanupPriority:
-          severityLevel === 'critical'
-            ? 'CRITICAL — Immediate dispatch required'
-            : severityLevel === 'high'
-              ? 'HIGH — Schedule within 24 hours'
-              : severityLevel === 'moderate'
-                ? 'MODERATE — Schedule within 48 hours'
-                : 'LOW — Routine cleanup schedule',
-        timestamp: new Date().toISOString(),
-        objectCount,
-        coverageRatio,
-        environmentalImpact: hasHazardous ? 'high' : severityScore >= 50 ? 'moderate' : 'low',
-        detectedObjects,
-        cnnResult,
-        recommendations,
-        environmental,
-      });
-    }, 1800);
-  });
-};
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -372,31 +201,64 @@ const simulateLocalAnalysis = (photoUri: string): Promise<AIAnalysisResult> => {
  *      an opportunistic secondary path for if/when Cloud Functions get deployed
  *      (they aren't currently: the project is on the free Spark plan, which can't
  *      run Cloud Functions v2 at all).
- *   3. Deterministic local simulation — absolute last resort if on-device TF
- *      itself fails to load/run (e.g. an unsupported device), so report
- *      submission never hard-blocks on AI analysis.
+ *   3. An explicit "AI unavailable" result if neither could run (e.g. an
+ *      unsupported device), so report submission never hard-blocks on AI analysis.
+ *      It detects nothing and says so; the result screen then asks the reporter
+ *      what the waste is, and an official sets the real severity on review.
+ *
+ * Every path gets the waterway assessment (waterwayAssessment.ts) with the
+ * reporter's answer to "where is the waste?".
  */
 export const analyzeWastePhoto = async (
   photoUri: string,
   reportId?: string,
   userId?: string,
+  reporterContext?: WaterContext,
+  location?: { latitude: number; longitude: number },
 ): Promise<AIAnalysisResult> => {
+  // The forecast downloads while the models run, so it adds no waiting.
+  const rainPromise = location ? getRainOutlook(location.latitude, location.longitude) : Promise.resolve(undefined);
   try {
-    return await withTimeout(analyzeOnDevice(photoUri), ON_DEVICE_TIMEOUT_MS, 'On-device analysis');
+    return await withTimeout(analyzeOnDevice(photoUri, reporterContext, rainPromise), ON_DEVICE_TIMEOUT_MS, 'On-device analysis');
   } catch (err) {
-    console.warn('[AI] On-device analysis failed or timed out, trying cloud/simulation fallback:', err);
+    console.warn('[AI] On-device analysis failed or timed out, trying cloud fallback:', err);
   }
 
   if (reportId && userId) {
     const storagePath = `reports/${reportId}/photo.jpg`;
     try {
-      return await withTimeout(analyzeWithCloud(storagePath, reportId, userId), 8000, 'Cloud analysis');
+      const cloud = await withTimeout(analyzeWithCloud(storagePath, reportId, userId), 8000, 'Cloud analysis');
+      return applyWaterwayAssessment({ ...cloud, analysisSource: 'cloud' }, { reporterContext, rain: await rainPromise });
     } catch (err) {
-      console.warn('[AI] Cloud analysis failed, using local simulation:', err);
+      console.warn('[AI] Cloud analysis failed:', err);
     }
   }
-  return simulateLocalAnalysis(photoUri);
+  return unavailableAnalysis(reporterContext, await rainPromise);
 };
+
+/**
+ * What a report gets when no AI could run. Previously this was a "simulation" that
+ * invented 3–6 random waste types with 55–94% confidence, which looked exactly like a
+ * real result and could flag an empty photo as critical. Now it reports nothing
+ * detected, a neutral moderate placeholder severity, and 0% confidence.
+ */
+export const unavailableAnalysis = (reporterContext?: WaterContext, rain?: RainOutlook): AIAnalysisResult =>
+  applyWaterwayAssessment({
+    modelVersion: 'AI unavailable on this device',
+    analysisSource: 'unavailable',
+    confidence: 0,
+    severityScore: 30,
+    severityLevel: 'moderate',
+    wasteTypes: [],
+    estimatedVolume: 0,
+    spreadArea: 0,
+    hazardousDetected: false,
+    teamNeeded: '2–3 workers',
+    cleanupPriority: 'MODERATE — Schedule within 48 hours',
+    timestamp: new Date().toISOString(),
+    objectCount: 0,
+    detectedObjects: [],
+  }, { reporterContext, rain });
 
 export const loadLocalModel = async (): Promise<void> => {
   warmUpOnDeviceModels();

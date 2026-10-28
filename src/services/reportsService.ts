@@ -17,6 +17,7 @@ import {
 import { db } from './firebase';
 import { withTimeout } from '../utils/async';
 import { uploadToCloudinary } from './cloudinaryService';
+import { NearbyCandidate, ProximityResult, findProximity, isApproximateAddress } from './reportProximity';
 import {
   WasteReport,
   GeoLocation,
@@ -86,7 +87,16 @@ export const createReport = async (
   checkpoint?: string,
   barangayId?: string,
   barangay?: string,
+  // From the offline queue: a fixed ID (so a retry can never create a second report)
+  // and the time the photo was really taken.
+  opts?: { reportId?: string; capturedAt?: string },
 ): Promise<{ reportId: string; reportNumber: string }> => {
+  if (opts?.reportId) {
+    const existing = await getDoc(doc(db, 'reports', opts.reportId));
+    if (existing.exists()) {
+      return { reportId: opts.reportId, reportNumber: String(existing.data().reportNumber ?? opts.reportId) };
+    }
+  }
   const reportNumber = generateReportNumber(userName);
   const initialStatus: ReportStatus = 'pending';
 
@@ -100,7 +110,7 @@ export const createReport = async (
   console.log('[Report] Creating Firestore document...');
   // Client-generated ID + setDoc (instead of addDoc) so a stalled server ack
   // can't block us from knowing the report's ID.
-  const docRef = doc(collection(db, 'reports'));
+  const docRef = opts?.reportId ? doc(db, 'reports', opts.reportId) : doc(collection(db, 'reports'));
   const writePromise = setDoc(docRef, {
     reportNumber,
     userId,
@@ -118,6 +128,7 @@ export const createReport = async (
     severity: 'moderate',
     wasteTypes: [],
     statusHistory: [{ ...firstEntry, changedAt: new Date().toISOString() }],
+    ...(opts?.capturedAt ? { capturedAt: opts.capturedAt } : {}),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -423,3 +434,46 @@ export const setCitizenWasteType = async (reportId: string, wasteType: AIWasteTy
     updatedAt: serverTimestamp(),
   });
 };
+
+// ─── Duplicates and hotspots ─────────────────────────────────────────────────
+
+/**
+ * Looks for other reports near a new one (same barangay) and saves what it finds on
+ * the new report: `duplicateOf` when an open report of the same spot was filed in the
+ * last 24 hours, and `nearbyReportCount` for hotspot tracking. Non-critical: callers
+ * ignore failures. Only the reporter's own new report is written, which the rules allow.
+ */
+export const checkNearbyReports = async (
+  reportId: string,
+  location: GeoLocation,
+  barangayId?: string,
+): Promise<ProximityResult> => {
+  const here = { latitude: location.latitude, longitude: location.longitude, approximate: isApproximateAddress(location.address) };
+  if (!barangayId || here.approximate) return { nearbyCount: 1, isHotspot: false };
+
+  const snap = await getDocs(query(collection(db, 'reports'), where('barangayId', '==', barangayId)));
+  const candidates: NearbyCandidate[] = [];
+  snap.forEach((d) => {
+    const r = normalizeReport(d.id, d.data());
+    const lat = r.location?.latitude;
+    const lng = r.location?.longitude;
+    const created = r.createdAt ? new Date(r.createdAt) : null;
+    if (typeof lat !== 'number' || typeof lng !== 'number' || !created || Number.isNaN(created.getTime())) return;
+    candidates.push({
+      id: r.id, reportNumber: r.reportNumber, latitude: lat, longitude: lng, createdAt: created, status: r.status,
+      approximate: isApproximateAddress(r.location?.address),
+    });
+  });
+
+  const result = findProximity(here, candidates, reportId);
+  await updateDoc(doc(db, 'reports', reportId), {
+    nearbyReportCount: result.nearbyCount,
+    ...(result.duplicateOf
+      ? { duplicateOf: result.duplicateOf.id, duplicateOfNumber: result.duplicateOf.reportNumber, duplicateDistanceM: result.duplicateOf.distanceM }
+      : {}),
+  });
+  return result;
+};
+
+/** A report ID made on the phone without a network call, so an offline report keeps one ID for good. */
+export const newReportId = (): string => doc(collection(db, 'reports')).id;

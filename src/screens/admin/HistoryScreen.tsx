@@ -135,7 +135,9 @@ export default function AdminHistoryScreen() {
                 <View style={[styles.dot, { backgroundColor: cp.status === 'verified' ? colors.green : colors.amber }]} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.historyBarangay}>{cp.barangay}</Text>
-                  <Text style={styles.historyType}>{cp.type} · {cp.userName}</Text>
+                  <Text style={styles.historyType}>
+                    {cp.checkpointName ? `${cp.checkpointName} · ` : ''}{cp.type} · {cp.userName}
+                  </Text>
                 </View>
                 <Badge variant={cp.status === 'verified' ? 'completed' : 'pending'} label={cp.status === 'verified' ? 'Verified' : 'Pending'} />
               </View>

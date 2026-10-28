@@ -186,7 +186,7 @@ export const generatePassword = (length = 14, randomInt: (max: number) => number
 
 // A cell starting with = + - @ is treated as a formula by spreadsheet apps; prefix it so a
 // hostile name like "=HYPERLINK(...)" is shown as text instead of being executed.
-const csvCell = (value: unknown): string => {
+export const csvCell = (value: unknown): string => {
   let s = value == null ? '' : String(value);
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return `"${s.replace(/"/g, '""')}"`;

@@ -98,9 +98,16 @@ export const setFeatureFlag = async (
 export const subscribeToSystemSettings = (
   callback: (settings: SystemSettings | null) => void,
 ) => {
-  return onSnapshot(doc(db, COL, DOC_ID), (snap) => {
-    callback(snap.exists() ? (snap.data() as SystemSettings) : null);
-  });
+  return onSnapshot(
+    doc(db, COL, DOC_ID),
+    (snap) => {
+      callback(snap.exists() ? (snap.data() as SystemSettings) : null);
+    },
+    (err) => {
+      console.warn('[SystemSettings] Could not load settings:', err);
+      callback(null);
+    },
+  );
 };
 
 export const isFeatureEnabled = async (flag: string): Promise<boolean> => {

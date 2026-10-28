@@ -132,8 +132,74 @@ export interface EnvironmentalRiskScore {
   };
 }
 
+// ─── Waterway assessment ─────────────────────────────────────────────────────
+
+/** Where the waste is relative to the water. 'unknown' when neither the reporter nor the AI could tell. */
+export type WaterContext = 'in_water' | 'riverbank' | 'drainage' | 'unknown';
+
+export type WaterColor = 'blue' | 'green' | 'brown' | 'dark';
+
+export interface PhotoQuality {
+  level: 'good' | 'fair' | 'poor';
+  issues: Array<'too_dark' | 'overexposed' | 'blurry' | 'low_contrast'>;
+}
+
+/** Rain expected at the report's location (Open-Meteo forecast). */
+export interface RainOutlook {
+  level: 'none' | 'light' | 'moderate' | 'heavy';
+  next24hMm: number;
+  next72hMm: number;
+  /** Highest hourly chance of rain in the next 24 hours, 0–100. */
+  maxProbability: number;
+  fetchedAt: string;
+}
+
+/** What the AI found in one cleanup-task photo, kept small for the task document. */
+export interface PhotoWasteSummary {
+  objectCount: number;
+  volumeM3: number;
+  severityScore: number;
+  analyzedAt: string;
+  /** 'report' = taken from the original report's analysis because no before photo was analyzed. */
+  source: 'photo' | 'report';
+}
+
+export interface SeverityFactor {
+  label: string;
+  points: number;
+}
+
+export interface WaterwayAssessment {
+  context: WaterContext;
+  /** 'reporter' = the person filing said so; 'ai' = inferred from the photo. */
+  contextSource: 'reporter' | 'ai' | 'none';
+  /** 0–100: how likely the photo shows water. */
+  waterLikelihood: number;
+  /** Visual estimate of the water's color, when water was found in the photo. */
+  waterColor?: WaterColor;
+  blockage: { score: number; level: SeverityLevel };
+  floodRisk: SeverityLevel;
+  spreadRisk: SeverityLevel;
+  contamination: { score: number; level: SeverityLevel };
+  /** 0–100: share of the detected items that float and drift downstream. */
+  floatableShare: number;
+  rainySeason: boolean;
+  rain?: RainOutlook;
+  healthRisks: string[];
+  actions: string[];
+  equipment: string[];
+  /** Points added to the detection-based severity score, and why. */
+  severityFactors: SeverityFactor[];
+}
+
 export interface AIAnalysisResult {
   modelVersion: string;
+  /** 'unavailable' = the AI couldn't run on this phone; the numbers are a neutral placeholder. */
+  analysisSource?: 'on_device' | 'cloud' | 'unavailable';
+  /** Severity from the detected items alone, before waterway factors were added. */
+  baseSeverityScore?: number;
+  waterway?: WaterwayAssessment;
+  photoQuality?: PhotoQuality;
   confidence: number;
   severityScore: number;
   severityLevel: SeverityLevel;
@@ -211,6 +277,14 @@ export interface WasteReport {
   groundTruthWasteType?: AIWasteType;
   // What the reporter says the waste is (confirmed or corrected on the AI result screen).
   citizenWasteType?: AIWasteType;
+  // Set right after submission by checkNearbyReports (reportProximity.ts).
+  duplicateOf?: string;
+  duplicateOfNumber?: string;
+  duplicateDistanceM?: number;
+  /** Reports within 100 m in the last 90 days, this one included; 3+ makes it a hotspot. */
+  nearbyReportCount?: number;
+  /** Set when the report was filed offline and uploaded later. */
+  capturedAt?: string;
   statusHistory: StatusHistoryEntry[];
   createdAt: string;
   updatedAt: string;
@@ -268,6 +342,9 @@ export interface CleanupTask {
   actualEndTime?: string;
   beforePhotoURLs: string[];
   afterPhotoURLs: string[];
+  // What the on-device AI found in the before/after photos (cleanupComparison.ts).
+  beforeAnalysis?: PhotoWasteSummary;
+  afterAnalysis?: PhotoWasteSummary;
   progressNotes?: string;
   completionNotes?: string;
   equipmentNeeded: string[];
@@ -523,6 +600,8 @@ export interface SystemSettings {
     criticalAlerts: boolean;
   };
   featureFlags: Record<string, boolean>;
+  /** CleanStream's own trained waste classifier (set in the Super Admin portal). */
+  customModel?: { enabled: boolean; url: string; version?: string };
   supportEmail: string;
   supportPhone: string;
   updatedAt: string;

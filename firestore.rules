@@ -192,14 +192,28 @@ service cloud.firestore {
 
     // ─── Field Checkpoints (barangay officer patrol/inspection reports) ─────────
     match /fieldCheckpoints/{checkpointId} {
-      // Owner reads their own submissions; admin reviews/verifies across all barangays
-      allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+      // Owner reads their own submissions; admin reviews/verifies across all barangays;
+      // the Super Admin reads them for inspection-compliance figures.
+      allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin() || isSuperAdmin());
       allow create: if isBarangayOfficer() && request.resource.data.userId == currentUid();
       // Only admin can verify, and only the verification fields may change
       allow update: if isAdmin()
                     && request.resource.data.diff(resource.data).affectedKeys()
                         .hasOnly(['status', 'verifiedBy', 'verifiedByName', 'verifiedAt']);
       allow delete: if isAdmin();
+    }
+
+    // ─── Checkpoints (named waterway monitoring points) ───────────────────────
+    // Set up by the Super Admin (or Admin): location, assigned officials and inspection days.
+    // An official can only stamp "last inspected" on a checkpoint in their own barangay.
+    match /checkpoints/{checkpointId} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isSuperAdmin() || isAdmin();
+      allow update: if isSuperAdmin() || isAdmin()
+                    || (isBarangayOfficer()
+                        && sameBarangay(resource.data.barangayId)
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['lastInspectedAt', 'lastInspectedBy', 'lastInspectedByName', 'lastCondition']));
     }
 
     // ─── Checkpoint Alarms (admin sets each barangay's daily check time; ───────
@@ -237,7 +251,8 @@ service cloud.firestore {
                         && request.resource.data.diff(resource.data).affectedKeys()
                             .hasOnly(['status', 'declineReason', 'progressNotes', 'completionNotes',
                                       'actualStartTime', 'actualEndTime', 'completedAt',
-                                      'wasteCollectedKg', 'beforePhotoURLs', 'afterPhotoURLs', 'updatedAt']))
+                                      'wasteCollectedKg', 'beforePhotoURLs', 'afterPhotoURLs',
+                                      'beforeAnalysis', 'afterAnalysis', 'updatedAt']))
                     );
 
       allow delete: if isAdmin();
@@ -340,7 +355,7 @@ service cloud.firestore {
     match /systemSettings/{doc} {
       // All authenticated users can read settings (for maintenance mode, feature flags)
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isAdmin() || isSuperAdmin();
     }
 
     // ─── Conversations ──────────────────────────────────────────────────────────

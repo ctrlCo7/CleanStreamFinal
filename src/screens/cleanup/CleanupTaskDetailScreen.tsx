@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
-import { CleanupTask, RootStackParamList } from '../../types';
+import { AIAnalysisResult, CleanupTask, RootStackParamList } from '../../types';
 import { useAppSelector } from '../../store/hooks';
 import { BackIcon } from '../../components/common/TabIcons';
 import { Badge } from '../../components/common/Badge';
@@ -18,6 +18,9 @@ import {
   subscribeToTask, respondToTask, startTask, addPhotoToTask, finishTask, confirmTaskCompleted, recordWorkOnBehalf,
 } from '../../services/crewService';
 import { captureTaskPhoto } from '../../services/taskPhotoCapture';
+import { getReportById } from '../../services/reportsService';
+import { VERDICT_TEXT, compareCleanup } from '../../services/cleanupComparison';
+import { formatVolume } from '../../utils/units';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CleanupTaskDetail'>;
 type Phase = 'before' | 'after';
@@ -40,6 +43,14 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
   const [kg, setKg] = useState('');
   const [notes, setNotes] = useState('');
   const [viewing, setViewing] = useState<string | null>(null);
+  const [reportAi, setReportAi] = useState<AIAnalysisResult | undefined>();
+
+  // The original report's analysis is the "before" when no before photo was analyzed.
+  const reportId = task?.reportId;
+  useEffect(() => {
+    if (!reportId) return;
+    getReportById(reportId).then((r) => setReportAi(r?.aiAnalysis)).catch(() => undefined);
+  }, [reportId]);
 
   useEffect(() => {
     setLoading(true);
@@ -365,6 +376,44 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
             <Photos title="After photos" urls={task.afterPhotoURLs} phase="after" />
           )}
 
+          {hasAfter && (() => {
+            const cmp = compareCleanup(task.beforeAnalysis, task.afterAnalysis, reportAi);
+            const tone = cmp.verdict === 'clean' || cmp.verdict === 'mostly' ? colors.tealDark
+              : cmp.verdict === 'partial' ? colors.amberText : cmp.verdict === 'little' ? colors.redText : colors.textMuted;
+            return (
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Cleanup result (AI)</Text>
+                {!task.afterAnalysis ? (
+                  <Text style={styles.cmpNote}>The AI result appears here shortly after the after photo is added. If it never does, the AI couldn't run on the phone that took the photo.</Text>
+                ) : (
+                  <>
+                    <View style={styles.cmpRow}>
+                      <View style={styles.cmpCol}>
+                        <Text style={styles.cmpLabel}>Before{cmp.before?.source === 'report' ? ' (report)' : ''}</Text>
+                        <Text style={styles.cmpValue}>{cmp.before ? `${cmp.before.objectCount} items` : '—'}</Text>
+                        <Text style={styles.cmpSub}>{cmp.before ? formatVolume(cmp.before.volumeM3) : ''}</Text>
+                      </View>
+                      <Text style={styles.cmpArrow}>→</Text>
+                      <View style={styles.cmpCol}>
+                        <Text style={styles.cmpLabel}>After</Text>
+                        <Text style={styles.cmpValue}>{cmp.after ? `${cmp.after.objectCount} items` : '—'}</Text>
+                        <Text style={styles.cmpSub}>{cmp.after ? formatVolume(cmp.after.volumeM3) : ''}</Text>
+                      </View>
+                      {cmp.removedPct !== undefined && (
+                        <View style={[styles.cmpCol, { alignItems: 'flex-end' }]}>
+                          <Text style={styles.cmpLabel}>Removed</Text>
+                          <Text style={[styles.cmpValue, { color: tone }]}>{cmp.removedPct}%</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.cmpVerdict, { color: tone }]}>{VERDICT_TEXT[cmp.verdict]}</Text>
+                    <Text style={styles.cmpNote}>Counts what the AI can see in the photos. Check the photos yourself before confirming.</Text>
+                  </>
+                )}
+              </View>
+            );
+          })()}
+
           {isLeader && task.status === 'in_progress' && (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Photos</Text>
@@ -498,6 +547,14 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
 
 const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
+  cmpRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.grayBg, borderRadius: 12, padding: 12 },
+  cmpCol: { flex: 1, gap: 2 },
+  cmpArrow: { fontSize: 18, color: Colors.textHint },
+  cmpLabel: { fontSize: 11, color: Colors.textMuted },
+  cmpValue: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary },
+  cmpSub: { fontSize: 11, color: Colors.textMuted },
+  cmpVerdict: { fontSize: 13, fontWeight: '700', marginTop: 4 },
+  cmpNote: { fontSize: 11, color: Colors.textMuted, lineHeight: 16 },
   header: { backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 16, fontWeight: '600', color: Colors.textPrimary },

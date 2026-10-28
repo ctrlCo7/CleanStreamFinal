@@ -8,17 +8,22 @@ import { ThemeColors } from '../../constants/theme';
 import { Badge } from '../../components/common/Badge';
 import { MapPreview } from '../../components/common/MapPreview';
 import { useAppSelector } from '../../store/hooks';
-import { RootStackParamList, WasteReport, CleanupEvent, Announcement } from '../../types';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { BarangayTabParamList, RootStackParamList, WasteReport, CleanupEvent, Announcement } from '../../types';
 import { subscribeToBarangayReports } from '../../services/reportsService';
 import { subscribeToUpcomingEvents } from '../../services/cleanupEventService';
 import { getOrCreateAdminConversation } from '../../services/messagingService';
 import { subscribeToAnnouncements } from '../../services/announcementService';
 import { subscribeToBarangayTasks } from '../../services/cleanupTaskService';
+import {
+  ManagedCheckpoint, formatCheckpointTime, isInspectedToday, subscribeToBarangayCheckpoints, todayCheckpointDay,
+} from '../../services/checkpointService';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function BarangayDashboardScreen() {
   const navigation = useNavigation<Nav>();
+  const tabNav = useNavigation<BottomTabNavigationProp<BarangayTabParamList>>();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAppSelector((s) => s.auth);
@@ -33,6 +38,18 @@ export default function BarangayDashboardScreen() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   // Tasks that wait on this official: declined by the crew, or finished but not yet confirmed.
   const [needsYouCount, setNeedsYouCount] = useState(0);
+  const [checkpoints, setCheckpoints] = useState<ManagedCheckpoint[]>([]);
+
+  useEffect(() => {
+    if (!myBarangayId || !user?.uid) return;
+    return subscribeToBarangayCheckpoints(myBarangayId, user.uid, setCheckpoints);
+  }, [myBarangayId, user?.uid]);
+
+  // This official's inspections due today (all of today's, if nobody is assigned anywhere).
+  const today = todayCheckpointDay();
+  const dueToday = checkpoints.filter((c) => c.days.includes(today));
+  const mineToday = dueToday.filter((c) => !!user?.uid && c.assignedUserIds.includes(user.uid));
+  const todayList = mineToday.length > 0 ? mineToday : dueToday;
 
   useEffect(() => {
     if (!myBarangayId) return;
@@ -222,6 +239,36 @@ export default function BarangayDashboardScreen() {
         )}
 
         {/* Quick actions */}
+        {checkpoints.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>
+                Today's checkpoint inspections ({todayList.filter((c) => isInspectedToday(c)).length}/{todayList.length})
+              </Text>
+            </View>
+            {todayList.length === 0 ? (
+              <Text style={styles.cpNone}>No inspections scheduled today. {checkpoints.length} checkpoint{checkpoints.length === 1 ? '' : 's'} in {myBarangay}.</Text>
+            ) : (
+              todayList.map((c) => {
+                const done = isInspectedToday(c);
+                return (
+                  <TouchableOpacity key={c.id} style={styles.cpRow} onPress={() => tabNav.navigate('BarangayReport')} activeOpacity={0.85}>
+                    <View style={[styles.cpDot, { backgroundColor: done ? colors.green : colors.amber }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cpName}>{c.name}</Text>
+                      <Text style={styles.cpMeta}>
+                        {formatCheckpointTime(c.time)}{c.waterway ? ` · ${c.waterway}` : ''}
+                        {done && c.lastInspectedByName ? ` · by ${c.lastInspectedByName}` : ''}
+                      </Text>
+                    </View>
+                    <Text style={[styles.cpStatus, { color: done ? colors.green : colors.amber }]}>{done ? 'Done' : 'Inspect ›'}</Text>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </>
+        )}
+
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Quick actions</Text>
         </View>
@@ -301,6 +348,15 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   pendingSub: { fontSize: 10, color: Colors.amberText, opacity: 0.8, marginTop: 2 },
   pendingArrow: { fontSize: 18, color: Colors.amberText },
   sectionHeader: { marginTop: 4 },
+  cpNone: { fontSize: 11, color: Colors.textMuted },
+  cpRow: {
+    backgroundColor: Colors.white, borderRadius: 14, paddingVertical: 11, paddingHorizontal: 13,
+    flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 0.5, borderColor: Colors.border,
+  },
+  cpDot: { width: 9, height: 9, borderRadius: 4.5 },
+  cpName: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
+  cpMeta: { fontSize: 10, color: Colors.textMuted, marginTop: 2 },
+  cpStatus: { fontSize: 11, fontWeight: '600' },
   sectionTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
   emptyCard: {
     backgroundColor: Colors.white, borderRadius: 16, padding: 18, alignItems: 'center',

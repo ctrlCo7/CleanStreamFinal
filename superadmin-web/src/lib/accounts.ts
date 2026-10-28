@@ -84,6 +84,10 @@ export const ACTION_LABELS: Record<AuditAction, string> = {
   'account.reset_password': 'Sent password reset',
   'identity.approve': 'Approved ID verification',
   'identity.reject': 'Rejected ID verification',
+  'checkpoint.create': 'Added checkpoint',
+  'checkpoint.update': 'Changed checkpoint',
+  'checkpoint.delete': 'Deleted checkpoint',
+  'settings.update': 'Changed system settings',
 };
 
 const logAudit = async (actor: Actor, action: AuditAction, target: Pick<Account, 'uid' | 'email' | 'firstName' | 'lastName'>, details: string) => {

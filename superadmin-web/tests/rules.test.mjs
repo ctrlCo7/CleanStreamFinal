@@ -178,6 +178,8 @@ await check('a crew leader reads a task assigned to them', assertSucceeds(getDoc
 await check("a crew leader cannot read another crew's task", assertFails(getDoc(doc(crew, 'cleanupTasks', 't2'))));
 await check('a crew leader accepts their task', assertSucceeds(updateDoc(doc(crew, 'cleanupTasks', 't1'), { status: 'accepted', updatedAt: serverTimestamp() })));
 await check('a crew leader starts it', assertSucceeds(updateDoc(doc(crew, 'cleanupTasks', 't1'), { status: 'in_progress', actualStartTime: serverTimestamp(), updatedAt: serverTimestamp() })));
+await check('a crew leader saves the AI result of a cleanup photo', assertSucceeds(updateDoc(doc(crew, 'cleanupTasks', 't1'), { afterAnalysis: { objectCount: 1, volumeM3: 0.001, severityScore: 10, analyzedAt: 'x', source: 'photo' }, updatedAt: serverTimestamp() })));
+await check("a crew leader can't save it on another crew's task", assertFails(updateDoc(doc(crew, 'cleanupTasks', 't2'), { afterAnalysis: { objectCount: 0 } })));
 await check('a crew leader adds photos and finishes it', assertSucceeds(updateDoc(doc(crew, 'cleanupTasks', 't1'), { status: 'completed', afterPhotoURLs: ['https://x/a.jpg'], completionNotes: 'done', wasteCollectedKg: 12, completedAt: serverTimestamp(), updatedAt: serverTimestamp() })));
 await check('a crew leader can decline with a reason', assertSucceeds(updateDoc(doc(crew2, 'cleanupTasks', 't2'), { status: 'cancelled', declineReason: 'No truck available', updatedAt: serverTimestamp() })));
 await check("a crew leader can't hand the task to someone else", assertFails(updateDoc(doc(crew2, 'cleanupTasks', 't_b2'), { assignedTeamId: 'cl' })));
@@ -226,6 +228,29 @@ await check("a resident can't join under another person's id", assertFails(setDo
 await check("a resident can't mark their own attendance", assertFails(updateDoc(doc(v1, 'cleanupEvents', 'ev1', 'participants', 'vol1'), { attendanceStatus: 'attended' })));
 await check('the official of that barangay marks attendance', assertSucceeds(updateDoc(doc(bg1, 'cleanupEvents', 'ev1', 'participants', 'vol1'), { attendanceStatus: 'attended' })));
 await check("another barangay's official can't mark attendance", assertFails(updateDoc(doc(bg2, 'cleanupEvents', 'ev1', 'participants', 'vol1'), { attendanceStatus: 'no_show' })));
+
+console.log('\n== Checkpoints, inspections and system settings');
+const cpDoc = (barangayId) => ({ name: 'Bridge 2', barangayId, barangay: 'B', days: ['Mon'], time: '07:00', isActive: true, assignedUserIds: ['bg'] });
+const stamp = { lastInspectedAt: serverTimestamp(), lastInspectedBy: 'bg', lastInspectedByName: 'Bg', lastCondition: 'Clean' };
+await check('the Super Admin adds a checkpoint', assertSucceeds(setDoc(doc(sa, 'checkpoints', 'cp1'), cpDoc('b1'))));
+await check('the Super Admin adds one in another barangay', assertSucceeds(setDoc(doc(sa, 'checkpoints', 'cp_b2'), cpDoc('b2'))));
+await check('the Admin can manage checkpoints too', assertSucceeds(updateDoc(doc(ad, 'checkpoints', 'cp1'), { time: '08:00' })));
+await check('an official reads checkpoints', assertSucceeds(getDoc(doc(bg1, 'checkpoints', 'cp1'))));
+await check('an official stamps their own barangay checkpoint as inspected', assertSucceeds(updateDoc(doc(bg1, 'checkpoints', 'cp1'), stamp)));
+await check("an official can't stamp another barangay's checkpoint", assertFails(updateDoc(doc(bg1, 'checkpoints', 'cp_b2'), stamp)));
+await check("an official can't change the schedule or assignments", assertFails(updateDoc(doc(bg1, 'checkpoints', 'cp1'), { days: ['Sun'] })));
+await check("an official can't create checkpoints", assertFails(setDoc(doc(bg1, 'checkpoints', 'cp_bad'), cpDoc('b1'))));
+await check("a citizen can't create checkpoints", assertFails(setDoc(doc(ct, 'checkpoints', 'cp_bad2'), cpDoc('b1'))));
+await check("a pending official can't stamp a checkpoint", assertFails(updateDoc(doc(as('bg_pend'), 'checkpoints', 'cp1'), stamp)));
+await check("a citizen can't delete a checkpoint", assertFails(deleteDoc(doc(ct, 'checkpoints', 'cp1'))));
+await check('an official files an inspection against a checkpoint', assertSucceeds(setDoc(doc(bg1, 'fieldCheckpoints', 'fc1'), { userId: 'bg', barangayId: 'b1', checkpointId: 'cp1', checkpointName: 'Bridge 2', status: 'pending' })));
+await check('the Super Admin reads inspections (compliance)', assertSucceeds(getDoc(doc(sa, 'fieldCheckpoints', 'fc1'))));
+await check("a citizen can't read someone's inspection", assertFails(getDoc(doc(ct, 'fieldCheckpoints', 'fc1'))));
+await check('the Super Admin saves system settings', assertSucceeds(setDoc(doc(sa, 'systemSettings', 'app'), { maintenanceMode: true, maintenanceMessage: 'Back soon' }, { merge: true })));
+await check('every signed-in user can read settings', assertSucceeds(getDoc(doc(ct, 'systemSettings', 'app'))));
+await check("a citizen can't change settings", assertFails(setDoc(doc(ct, 'systemSettings', 'app'), { maintenanceMode: false }, { merge: true })));
+await check("a deactivated Super Admin can't change settings", assertFails(setDoc(doc(as('sa_off'), 'systemSettings', 'app'), { maintenanceMode: false }, { merge: true })));
+await check('the Super Admin deletes a checkpoint', assertSucceeds(deleteDoc(doc(sa, 'checkpoints', 'cp_b2'))));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup();

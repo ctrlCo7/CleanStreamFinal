@@ -4,6 +4,9 @@ import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { logout } from '../../store/authSlice';
+import { changeLanguage } from '../../store/languageSlice';
+import { useT } from '../../hooks/useT';
+import { LANG_NAMES, Lang } from '../../i18n/strings';
 import { BackIcon } from '../../components/common/TabIcons';
 import { useNavigation } from '@react-navigation/native';
 
@@ -11,6 +14,7 @@ export default function CitizenProfileScreen() {
   const dispatch = useAppDispatch();
   const navigation = useNavigation();
   const { colors, isDark, setMode } = useTheme();
+  const { t, lang } = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { user } = useAppSelector((s) => s.auth);
   const { userReports } = useAppSelector((s) => s.reports);
@@ -111,6 +115,31 @@ export default function CitizenProfileScreen() {
               trackColor={{ false: colors.grayMid, true: colors.teal }}
               thumbColor="#fff"
             />
+          </View>
+          <View style={[styles.settingsRow, { flexWrap: 'wrap' }]}>
+            <View style={[styles.infoIcon, { backgroundColor: colors.grayBg }]}>
+              <Text>🌐</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingsLabel}>{t('profile.language')}</Text>
+              <Text style={{ fontSize: 11, color: colors.textMuted }}>{t('profile.languageHint')}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 6, width: '100%', marginTop: 8 }}>
+              {(Object.keys(LANG_NAMES) as Lang[]).map((l) => (
+                <TouchableOpacity
+                  key={l}
+                  onPress={() => dispatch(changeLanguage(l))}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: lang === l }}
+                  style={{
+                    flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
+                    backgroundColor: lang === l ? colors.teal : colors.grayBg,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: lang === l ? '#fff' : colors.textPrimary }}>{LANG_NAMES[l]}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
           {[
             { icon: '🔔', label: 'Notification preferences' },

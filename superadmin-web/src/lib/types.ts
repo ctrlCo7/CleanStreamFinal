@@ -46,7 +46,8 @@ export interface Account {
 export type AuditAction =
   | 'account.create' | 'account.update' | 'account.verify' | 'account.unverify'
   | 'account.deactivate' | 'account.reactivate' | 'account.remove' | 'account.restore'
-  | 'account.reset_password' | 'identity.approve' | 'identity.reject';
+  | 'account.reset_password' | 'identity.approve' | 'identity.reject'
+  | 'checkpoint.create' | 'checkpoint.update' | 'checkpoint.delete' | 'settings.update';
 
 export interface AuditEntry {
   id: string;

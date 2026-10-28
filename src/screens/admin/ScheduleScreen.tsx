@@ -16,6 +16,7 @@ import { formatDateKey, formatHHmm, toDateKey } from '../../utils/dates';
 import { formatPhone } from '../../utils/phone';
 import { CEBU_BARANGAYS } from '../../services/locationService';
 import { getNotificationRecipientsByRole, sendBulkNotification, sendReportNotification } from '../../services/notificationService';
+import { formatVolume } from '../../utils/units';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AdminSchedule'>;
 
@@ -175,7 +176,7 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
           <Text style={styles.sevSub}>{severity.charAt(0).toUpperCase() + severity.slice(1)} · {report?.aiAnalysis?.hazardousDetected ? 'Hazardous waste' : 'Waste detected'}</Text>
           <View style={styles.sevBadgeRow}>
             <Badge variant={severity as 'critical' | 'high' | 'moderate' | 'low'} label={`CNN: ${report?.aiAnalysis?.confidence != null ? Number(report.aiAnalysis.confidence).toFixed(1) : '—'}%`} />
-            <Badge variant="moderate" label={`Vol. ~${report?.aiAnalysis?.estimatedVolume?.toFixed(1) ?? '—'}m³`} />
+            <Badge variant="moderate" label={`Vol. ${formatVolume(report?.aiAnalysis?.estimatedVolume)}`} />
           </View>
         </View>
 

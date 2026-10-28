@@ -15,8 +15,11 @@ import {
   SeverityLevel,
   WasteCategory,
   WasteClassification,
+  RainOutlook,
+  WaterContext,
 } from '../types';
-import { PictogramHit, TextHazard } from './hazardDetection';
+import type { PictogramHit, TextHazard } from './hazardDetection';
+import { SceneStats, applyWaterwayAssessment, priorityForSeverity, teamForSeverity } from './waterwayAssessment';
 
 // Below this overall confidence the result screen asks the reporter to say what the waste is.
 export const LOW_CONFIDENCE_THRESHOLD = 60;
@@ -395,23 +398,31 @@ function buildRecommendations(detections: DetectedObject[]): AIDisposalRecommend
     .map(([wasteType]) => ({ wasteType, wasteLabel: WASTE_TYPE_LABELS[wasteType], ...RECOMMENDATIONS[wasteType] }));
 }
 
-function estimateTeamNeeded(score: number): string {
-  if (score >= 75) return '5–10 workers';
-  if (score >= 50) return '3–5 workers';
-  if (score >= 25) return '2–3 workers';
-  return '1–2 workers';
-}
+// A phone photo of a canal or riverbank taken from a few metres away shows roughly
+// this much ground or water surface.
+const FRAME_AREA_M2 = 6;
 
 function estimateSpreadArea(objectCount: number, coverageRatio: number): number {
   if (objectCount === 0) return 0;
-  return coverageRatio > 0 ? Math.round(coverageRatio * 25 * 10) / 10 : Math.round(objectCount * 1.8);
+  return Math.round(Math.max(coverageRatio * FRAME_AREA_M2, objectCount * 0.15) * 10) / 10;
 }
 
-function estimateVolume(objectCount: number, densityClass: EnvironmentalRiskScore['densityClass']): number {
-  if (objectCount === 0) return 0;
-  const baseL = objectCount * 0.3;
-  const densityMultiplier = densityClass === 'severe' ? 0.7 : densityClass === 'dense' ? 0.85 : 1.0;
-  return Math.round(baseL * densityMultiplier * 10) / 10;
+// Typical loose volume of one item, in litres.
+const ITEM_LITRES: Record<AIWasteType, number> = {
+  plastic_bottle: 1, plastic_bag: 4, glass_bottle: 1, metal_can: 0.5, paper_waste: 2, cardboard: 15,
+  food_waste: 3, styrofoam: 6, cigarette_butt: 0.01, hazardous_waste: 4, e_waste: 5, mixed_waste: 8, trash_pile: 250,
+};
+
+/**
+ * Estimated waste volume in cubic metres. The detectors find individual items but
+ * undercount a heap, so when the boxes cover a lot of the frame the covered area
+ * (with a shallow layer of waste) is used instead, whichever is larger.
+ */
+function estimateVolume(detections: DetectedObject[], coverageRatio: number): number {
+  if (detections.length === 0) return 0;
+  const itemsM3 = detections.reduce((s, d) => s + (ITEM_LITRES[d.wasteType] ?? 5), 0) / 1000;
+  const layerM3 = coverageRatio > 0.25 ? coverageRatio * FRAME_AREA_M2 * 0.1 : 0;
+  return Math.round(Math.max(itemsM3, layerM3) * 1000) / 1000;
 }
 
 
@@ -437,12 +448,53 @@ function hazardEvidenceToDetections(hazard: HazardEvidence | undefined, imageWid
   }];
 }
 
+// ─── CleanStream's own trained model (optional) ───────────────────────────────
+
+/** Class probabilities from the custom classifier (ml/train_waste_classifier.py), highest first. */
+export interface CustomModelOutput {
+  version: string;
+  predictions: Array<{ wasteType: AIWasteType; probability: number }>;
+}
+
+// The custom model was trained on labelled CleanStream photos, so a confident answer
+// from it is trusted over the general-purpose detectors.
+const CUSTOM_MIN_PROBABILITY = 0.55;
+
+/**
+ * Adds the custom model's top answer: raises the confidence of a matching detection, or
+ * adds it as a whole-frame detection when the general detectors missed it. Hazardous
+ * evidence from symbols/text stays in front.
+ */
+export function applyCustomModel(
+  detections: DetectedObject[],
+  custom: CustomModelOutput | undefined,
+  imageWidth: number,
+  imageHeight: number,
+): DetectedObject[] {
+  const top = custom?.predictions[0];
+  if (!top || top.probability < CUSTOM_MIN_PROBABILITY || !(top.wasteType in WASTE_TYPE_LABELS)) return detections;
+  const confidence = Math.round(top.probability * 100);
+  if (detections.some((d) => d.wasteType === top.wasteType)) {
+    return detections.map((d) => (d.wasteType === top.wasteType ? { ...d, confidence: Math.max(d.confidence, confidence) } : d));
+  }
+  const added: DetectedObject = {
+    label: `${WASTE_TYPE_LABELS[top.wasteType]} (CleanStream model)`,
+    wasteType: top.wasteType,
+    confidence,
+    bbox: { x: 0, y: 0, width: imageWidth, height: imageHeight },
+    color: WASTE_TYPE_COLORS[top.wasteType],
+  };
+  const hazards = detections.filter((d) => d.wasteType === 'hazardous_waste');
+  return [...hazards, added, ...detections.filter((d) => d.wasteType !== 'hazardous_waste')];
+}
+
 export function buildAnalysisResult(
   predictions: RawDetection[],
   classifications: RawClassification[],
   imageWidth: number,
   imageHeight: number,
   hazard?: HazardEvidence,
+  waterway?: { scene?: SceneStats; reporterContext?: WaterContext; rain?: RainOutlook; now?: Date; custom?: CustomModelOutput },
 ): AIAnalysisResult {
   const imageArea = imageWidth * imageHeight;
   const mobileNetLabels = classifications.map((c) => c.className.toLowerCase());
@@ -467,7 +519,9 @@ export function buildAnalysisResult(
     imageWidth,
     imageHeight,
   );
-  const detectedObjects: DetectedObject[] = [...hazardObjects, ...cocoObjects, ...classifierObjects];
+  const detectedObjects: DetectedObject[] = applyCustomModel(
+    [...hazardObjects, ...cocoObjects, ...classifierObjects], waterway?.custom, imageWidth, imageHeight,
+  );
 
   for (const pred of classifications) {
     const cls = pred.className.toLowerCase();
@@ -545,21 +599,18 @@ export function buildAnalysisResult(
             : severityLevel === 'moderate' ? 'low'
               : 'minimal';
 
-  return {
-    modelVersion: 'COCO-SSD/MobileNetV2 (on-device)',
+  const result: AIAnalysisResult = {
+    modelVersion: waterway?.custom ? `COCO-SSD/MobileNetV2 + ${waterway.custom.version} (on-device)` : 'COCO-SSD/MobileNetV2 (on-device)',
+    analysisSource: 'on_device',
     confidence: reportedConfidence,
     severityScore,
     severityLevel,
     wasteTypes,
-    estimatedVolume: estimateVolume(detectedObjects.length, environmental.densityClass),
+    estimatedVolume: estimateVolume(detectedObjects, coverageRatio),
     spreadArea: estimateSpreadArea(detectedObjects.length, coverageRatio),
     hazardousDetected,
-    teamNeeded: estimateTeamNeeded(severityScore),
-    cleanupPriority:
-      severityLevel === 'critical' ? 'CRITICAL — Immediate dispatch required'
-        : severityLevel === 'high' ? 'HIGH — Schedule within 24 hours'
-          : severityLevel === 'moderate' ? 'MODERATE — Schedule within 48 hours'
-            : 'LOW — Routine cleanup schedule',
+    teamNeeded: teamForSeverity(severityScore),
+    cleanupPriority: priorityForSeverity(severityLevel),
     timestamp: new Date().toISOString(),
     objectCount: detectedObjects.length,
     coverageRatio,
@@ -569,4 +620,11 @@ export function buildAnalysisResult(
     recommendations,
     environmental,
   };
+  return applyWaterwayAssessment(result, {
+    scene: waterway?.scene,
+    sceneLabels: classifications,
+    reporterContext: waterway?.reporterContext,
+    rain: waterway?.rain,
+    now: waterway?.now,
+  });
 }
