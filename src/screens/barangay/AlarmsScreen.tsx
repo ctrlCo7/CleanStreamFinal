@@ -116,9 +116,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    borderBottomWidth: 0.5, borderBottomColor: Colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border,
   },
-  headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary },
   backBtn: {
     width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg,
     alignItems: 'center', justifyContent: 'center',
@@ -128,11 +128,11 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     backgroundColor: Colors.brgyLight, borderRadius: 16, padding: 14,
     flexDirection: 'row', gap: 9, alignItems: 'flex-start',
   },
-  introText: { flex: 1, fontSize: 11, color: Colors.brgyDark, lineHeight: 16 },
+  introText: { flex: 1, fontSize: 12, color: Colors.brgyDark, lineHeight: 16 },
   warnCard: {
     backgroundColor: Colors.amberBg, borderRadius: 16, padding: 14,
   },
-  warnText: { fontSize: 11, color: Colors.amberText, lineHeight: 16 },
+  warnText: { fontSize: 12, color: Colors.amberText, lineHeight: 16 },
   emptyCard: {
     backgroundColor: Colors.white, borderRadius: 18, padding: 28, alignItems: 'center',
     shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
@@ -144,5 +144,5 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   alarmTime: { fontSize: 36, fontWeight: '700', color: Colors.brgy },
   alarmLabel: { fontSize: 13, color: Colors.textPrimary, fontWeight: '500' },
-  alarmMeta: { fontSize: 11, color: Colors.textHint, marginTop: 4 },
+  alarmMeta: { fontSize: 12, color: Colors.textHint, marginTop: 4 },
 });

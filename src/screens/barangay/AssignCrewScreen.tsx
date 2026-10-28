@@ -358,7 +358,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary },
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
   body: { padding: 16, gap: 12, paddingBottom: 32 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 },
@@ -377,7 +377,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   noteBanner: { fontSize: 12, color: Colors.amberText, backgroundColor: Colors.amberBg, borderRadius: 10, padding: 10, lineHeight: 17 },
   sectionTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary, marginTop: 4 },
   muted: { fontSize: 12, color: Colors.textMuted, lineHeight: 18 },
-  hint: { fontSize: 11, color: Colors.textHint },
+  hint: { fontSize: 12, color: Colors.textHint },
   error: { fontSize: 12, color: Colors.redText },
   crewCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, padding: 14, borderRadius: 16,

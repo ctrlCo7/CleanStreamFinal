@@ -230,9 +230,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    borderBottomWidth: 0.5, borderBottomColor: Colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border,
   },
-  headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary },
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
   body: { padding: 16, gap: 14, paddingBottom: 24 },
   sevBanner: {
@@ -241,7 +241,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
   },
   sevTitle: { fontSize: 14, fontWeight: '500', color: Colors.textPrimary },
-  sevSub: { fontSize: 11, color: Colors.textMuted, marginTop: 3 },
+  sevSub: { fontSize: 12, color: Colors.textMuted, marginTop: 3 },
   sevBadgeRow: { flexDirection: 'row', gap: 5, marginTop: 6 },
   schedCard: {
     backgroundColor: Colors.white, borderRadius: 16, padding: 15,
@@ -250,14 +250,14 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   schedCardTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary, marginBottom: 9 },
   schedRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: 6, borderBottomWidth: 0.5, borderBottomColor: Colors.border,
+    paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border,
   },
-  schedKey: { fontSize: 11, color: Colors.textMuted },
-  schedVal: { fontSize: 11, fontWeight: '500', color: Colors.textPrimary },
+  schedKey: { fontSize: 12, color: Colors.textMuted },
+  schedVal: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
   field: { gap: 4 },
-  fieldLabel: { fontSize: 11, color: Colors.textMuted },
+  fieldLabel: { fontSize: 12, color: Colors.textMuted },
   selector: {
-    backgroundColor: Colors.white, borderWidth: 0.5, borderColor: Colors.borderMid,
+    backgroundColor: Colors.white, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.borderMid,
     borderRadius: 10, padding: 9, paddingHorizontal: 12,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
@@ -270,7 +270,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   crewCardOn: { borderColor: Colors.blue, backgroundColor: Colors.blueBg },
   crewName: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
-  crewHint: { fontSize: 11, color: Colors.textMuted, lineHeight: 16 },
+  crewHint: { fontSize: 12, color: Colors.textMuted, lineHeight: 16 },
   crewRadio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: Colors.grayMid, alignItems: 'center', justifyContent: 'center' },
   crewRadioOn: { borderColor: Colors.blue },
   crewRadioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.blue },
@@ -278,7 +278,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   approveBtn: { flex: 1, backgroundColor: Colors.teal, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
   approveBtnDisabled: { opacity: 0.6 },
   approveBtnText: { fontSize: 12, fontWeight: '500', color: '#fff' },
-  modifyBtn: { flex: 1, backgroundColor: Colors.white, borderWidth: 0.5, borderColor: Colors.borderMid, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
+  modifyBtn: { flex: 1, backgroundColor: Colors.white, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.borderMid, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
   modifyBtnText: { fontSize: 12, color: Colors.textPrimary },
   successCard: {
     backgroundColor: Colors.white, borderRadius: 18, padding: 18,

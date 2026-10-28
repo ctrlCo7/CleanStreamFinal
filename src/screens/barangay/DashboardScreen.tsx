@@ -7,6 +7,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useAppSettings } from '../../services/appSettings';
 import { ThemeColors } from '../../constants/theme';
 import { Badge } from '../../components/common/Badge';
+import { ActionGrid, AlertStrip, Card, EmptyNote, ListRow, Pill, ScreenHeader, SectionHead, StatStrip, greetingFor } from '../../components/ui/Kit';
 import { MapPreview } from '../../components/common/MapPreview';
 import { useAppSelector } from '../../store/hooks';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -130,183 +131,165 @@ export default function BarangayDashboardScreen() {
     }
   };
 
+  const doneToday = todayList.filter((c) => isInspectedToday(c)).length;
+  const attention = criticalCount + pendingReviewCount + needsYouCount;
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Barangay Dashboard</Text>
-          <Text style={styles.subGreeting}>{myBarangay} BSP · {user ? `${user.firstName} ${user.lastName}` : 'Barangay Official'}</Text>
-        </View>
-        <View style={styles.rolePill}>
-          <Text style={styles.rolePillText}>BSP</Text>
-        </View>
-      </View>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScreenHeader
+        title={`${greetingFor()}, ${user?.firstName || 'Official'}`}
+        subtitle={`Brgy. ${myBarangay} · Barangay official`}
+        right={<Pill label="BSP" color={colors.brgyDark} bg={colors.brgyLight} />}
+      />
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-        {/* Latest instructions from Admin */}
-        {features.announcements && announcements.length > 0 && (
-          <View style={styles.announceCard}>
-            <Text style={styles.announceHeader}>Latest from Admin</Text>
-            {announcements.map((a) => (
-              <View key={a.id} style={styles.announceItem}>
-                <View style={[styles.dot, { backgroundColor: a.priority === 'urgent' ? colors.critical : colors.blue }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.announceTitle}>{a.title}</Text>
-                  <Text style={styles.announceBody} numberOfLines={2}>{a.content}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Stats row */}
-        <View style={styles.statsRow}>
-          {[
-            { val: myReports.length || 0, label: 'Total', color: colors.brgy },
-            { val: activeReports.length || 0, label: 'Active', color: colors.amber },
-            { val: criticalCount || 0, label: 'Critical', color: colors.critical },
-            { val: resolvedCount || 0, label: 'Resolved', color: colors.green },
-          ].map((s) => (
-            <View key={s.label} style={styles.statCard}>
-              <Text style={[styles.statVal, { color: s.color }]}>{s.val}</Text>
-              <Text style={styles.statLabel}>{s.label}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Map */}
-{features.mapView && (
-        <MapPreview
-          pins={hotspots}
-          onPress={() => navigation.navigate('Map', {})}
-          tagText={`${myBarangay} Hotspots`}
-        />
-)}
-
-        {/* Active alerts */}
-        {criticalCount > 0 && (
-          <TouchableOpacity style={styles.criticalBanner} onPress={() => navigation.navigate('BarangayVerify')} activeOpacity={0.85}>
-            <View style={[styles.dot, { backgroundColor: colors.critical }]} />
+        {/* What needs the official now */}
+        {attention === 0 ? (
+          <View style={styles.allClear}>
+            <Text style={styles.allClearIcon}>✓</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.criticalTitle}>Critical alert — {myBarangay}</Text>
-              <Text style={styles.criticalSub}>Immediate specialist response required</Text>
+              <Text style={styles.allClearTitle}>All caught up</Text>
+              <Text style={styles.allClearSub}>No reports waiting for review and no urgent alerts in {myBarangay}.</Text>
             </View>
-            <Badge variant="critical" label="Urgent" />
-          </TouchableOpacity>
-        )}
-
-        {pendingReviewCount > 0 && (
-          <TouchableOpacity style={styles.pendingBanner} onPress={() => navigation.navigate('BarangayVerify')} activeOpacity={0.85}>
-            <View style={[styles.dot, { backgroundColor: colors.amber }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.pendingTitle}>{pendingReviewCount} report{pendingReviewCount > 1 ? 's' : ''} awaiting review</Text>
-              <Text style={styles.pendingSub}>Tap to verify or reject submitted reports</Text>
-            </View>
-            <Text style={styles.pendingArrow}>›</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Upcoming tasks */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Upcoming cleanup events</Text>
-        </View>
-
-        {upcomingTasks.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No upcoming events scheduled</Text>
           </View>
         ) : (
-          upcomingTasks.map((task) => {
-            const eventDate = task.eventDate
-              ? new Date(task.eventDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-              : '—';
-            const isJoined = task.participantIds?.includes(user?.uid ?? '');
-            return (
-              <TouchableOpacity
-                key={task.id}
-                style={styles.taskCard}
-                onPress={() => navigation.navigate('BarangaySchedule', {})}
-                activeOpacity={0.85}
-              >
-                <View style={styles.taskLeft}>
-                  <View style={[styles.taskDot, { backgroundColor: isJoined ? colors.teal : colors.amber }]} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.taskTitle}>{task.title}</Text>
-                  <Text style={styles.taskDate}>{eventDate}</Text>
-                  <Text style={styles.taskTeam}>{task.startTime} – {task.endTime}</Text>
-                </View>
-                <Badge variant={isJoined ? 'low' : 'pending'} label={isJoined ? 'Joined' : 'Upcoming'} />
-              </TouchableOpacity>
-            );
-          })
+          <View style={{ gap: 8 }}>
+            {criticalCount > 0 && (
+              <AlertStrip
+                icon="🚨"
+                title={`${criticalCount} critical report${criticalCount === 1 ? '' : 's'} open`}
+                sub="Needs an immediate cleanup response"
+                color={colors.criticalText}
+                bg={colors.criticalBg}
+                onPress={() => navigation.navigate('BarangayVerify')}
+              />
+            )}
+            {pendingReviewCount > 0 && (
+              <AlertStrip
+                icon="📝"
+                title={`${pendingReviewCount} report${pendingReviewCount === 1 ? '' : 's'} waiting for review`}
+                sub="Verify or reject what residents sent"
+                color={colors.amberText}
+                bg={colors.amberBg}
+                onPress={() => navigation.navigate('BarangayVerify')}
+              />
+            )}
+            {needsYouCount > 0 && (
+              <AlertStrip
+                icon="🚛"
+                title={`${needsYouCount} cleanup task${needsYouCount === 1 ? '' : 's'} need you`}
+                sub="A crew declined, or finished and waits for your confirmation"
+                color={colors.tealDark}
+                bg={colors.tealLight}
+                onPress={() => navigation.navigate('BarangayCrewTasks')}
+              />
+            )}
+          </View>
         )}
 
-        {/* Quick actions */}
+        <StatStrip
+          items={[
+            { value: myReports.length, label: 'Reports', color: colors.brgy },
+            { value: activeReports.length, label: 'Active', color: colors.amber },
+            { value: criticalCount, label: 'Critical', color: colors.critical },
+            { value: resolvedCount, label: 'Resolved', color: colors.green },
+          ]}
+        />
+
+        {/* Today's checkpoint inspections */}
         {checkpoints.length > 0 && (
           <>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>
-                Today's checkpoint inspections ({todayList.filter((c) => isInspectedToday(c)).length}/{todayList.length})
-              </Text>
-            </View>
+            <SectionHead title={`Today's inspections · ${doneToday}/${todayList.length}`} action="File one" onAction={() => tabNav.navigate('BarangayReport')} />
             {todayList.length === 0 ? (
-              <Text style={styles.cpNone}>No inspections scheduled today. {checkpoints.length} checkpoint{checkpoints.length === 1 ? '' : 's'} in {myBarangay}.</Text>
+              <EmptyNote title="No inspections scheduled today" text={`${checkpoints.length} checkpoint${checkpoints.length === 1 ? '' : 's'} in ${myBarangay}.`} />
             ) : (
-              todayList.map((c) => {
-                const done = isInspectedToday(c);
-                return (
-                  <TouchableOpacity key={c.id} style={styles.cpRow} onPress={() => tabNav.navigate('BarangayReport')} activeOpacity={0.85}>
-                    <View style={[styles.cpDot, { backgroundColor: done ? colors.green : colors.amber }]} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.cpName}>{c.name}</Text>
-                      <Text style={styles.cpMeta}>
-                        {formatCheckpointTime(c.time)}{c.waterway ? ` · ${c.waterway}` : ''}
-                        {done && c.lastInspectedByName ? ` · by ${c.lastInspectedByName}` : ''}
-                      </Text>
-                    </View>
-                    <Text style={[styles.cpStatus, { color: done ? colors.green : colors.amber }]}>{done ? 'Done' : 'Inspect ›'}</Text>
-                  </TouchableOpacity>
-                );
-              })
+              <Card style={styles.listCard}>
+                {todayList.map((c, i) => {
+                  const done = isInspectedToday(c);
+                  return (
+                    <ListRow
+                      key={c.id}
+                      first={i === 0}
+                      accent={done ? colors.green : colors.amber}
+                      title={c.name}
+                      meta={`${formatCheckpointTime(c.time)}${c.waterway ? ` · ${c.waterway}` : ''}${done && c.lastInspectedByName ? ` · by ${c.lastInspectedByName}` : ''}`}
+                      right={<Text style={[styles.rowStatus, { color: done ? colors.green : colors.amber }]}>{done ? 'Done' : 'Inspect ›'}</Text>}
+                      onPress={() => tabNav.navigate('BarangayReport')}
+                    />
+                  );
+                })}
+              </Card>
             )}
           </>
         )}
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Quick actions</Text>
-        </View>
-        <View style={styles.actionsRow}>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.amberBg, borderColor: colors.amber }]} onPress={() => navigation.navigate('BarangayVerify')}>
-            <Text style={[styles.actionBtnText, { color: colors.amberText }]}>Review reports</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.brgyLight, borderColor: colors.brgyMid }]} onPress={() => navigation.navigate('BarangaySchedule', {})}>
-            <Text style={[styles.actionBtnText, { color: colors.brgyDark }]}>View schedule</Text>
-          </TouchableOpacity>
-{features.messaging && (
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.tealLight, borderColor: colors.tealMid }]} onPress={handleMessageAdmin} disabled={messagingAdmin}>
-            <Text style={[styles.actionBtnText, { color: colors.tealDark }]}>{messagingAdmin ? 'Opening…' : 'Message admin'}</Text>
-          </TouchableOpacity>
-)}
-        </View>
-        <View style={[styles.actionsRow, { marginTop: 6 }]}>
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.tealLight, borderColor: colors.tealMid }]} onPress={() => navigation.navigate('BarangayCrewTasks')}>
-            <Text style={[styles.actionBtnText, { color: colors.tealDark }]}>
-              {needsYouCount > 0 ? `Crews & cleanup tasks (${needsYouCount} need you)` : 'Crews & cleanup tasks'}
-            </Text>
-          </TouchableOpacity>
-{features.cleanupEvents && (
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.brgyLight, borderColor: colors.brgyMid }]} onPress={() => navigation.navigate('BarangayCreateEvent')}>
-            <Text style={[styles.actionBtnText, { color: colors.brgyDark }]}>Plan a volunteer cleanup</Text>
-          </TouchableOpacity>
-)}
-        </View>
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: colors.brgyLight, borderColor: colors.brgyMid, marginTop: 6 }]}
-          onPress={() => navigation.navigate('BarangayAlarms')}
-        >
-          <Text style={[styles.actionBtnText, { color: colors.brgyDark }]}>⏰ View daily checkpoint alarm</Text>
-        </TouchableOpacity>
+        <SectionHead title="Quick actions" />
+        <ActionGrid
+          tiles={[
+            { icon: '📝', label: 'Review reports', sub: pendingReviewCount ? `${pendingReviewCount} waiting` : 'Verify what residents sent', tint: colors.amberText, tintBg: colors.amberBg, onPress: () => navigation.navigate('BarangayVerify'), badge: pendingReviewCount },
+            { icon: '🚛', label: 'Crews & cleanup tasks', sub: 'Assign, follow and confirm', tint: colors.tealDark, tintBg: colors.tealLight, onPress: () => navigation.navigate('BarangayCrewTasks'), badge: needsYouCount },
+            { icon: '📅', label: 'Schedule', sub: 'Cleanups and events', tint: colors.brgyDark, tintBg: colors.brgyLight, onPress: () => navigation.navigate('BarangaySchedule', {}) },
+            { icon: '⏰', label: 'Daily alarm', sub: 'Waterway check reminder', tint: colors.brgyDark, tintBg: colors.brgyLight, onPress: () => navigation.navigate('BarangayAlarms') },
+            ...(features.cleanupEvents ? [{ icon: '🤝', label: 'Plan a volunteer cleanup', sub: 'Invite residents', tint: colors.greenText, tintBg: colors.greenBg, onPress: () => navigation.navigate('BarangayCreateEvent') }] : []),
+            ...(features.messaging ? [{ icon: '💬', label: messagingAdmin ? 'Opening…' : 'Message the Admin', sub: 'Ask or report a problem', tint: colors.blueText, tintBg: colors.blueBg, onPress: handleMessageAdmin, disabled: messagingAdmin }] : []),
+          ]}
+        />
+
+        {/* Map */}
+        {features.mapView && (
+          <>
+            <SectionHead title={`${myBarangay} hotspots`} action="Open map" onAction={() => navigation.navigate('Map', {})} />
+            <MapPreview pins={hotspots} onPress={() => navigation.navigate('Map', {})} tagText="Tap to expand" />
+          </>
+        )}
+
+        {/* Latest instructions from the Admin */}
+        {features.announcements && announcements.length > 0 && (
+          <>
+            <SectionHead title="From the Admin" />
+            <Card style={styles.listCard}>
+              {announcements.map((a, i) => (
+                <ListRow
+                  key={a.id}
+                  first={i === 0}
+                  accent={a.priority === 'urgent' ? colors.critical : colors.blue}
+                  title={a.title}
+                  meta={a.content}
+                />
+              ))}
+            </Card>
+          </>
+        )}
+
+        {/* Upcoming events */}
+        {features.cleanupEvents && (
+          <>
+            <SectionHead title="Upcoming cleanup events" action={upcomingTasks.length ? 'Schedule' : undefined} onAction={() => navigation.navigate('BarangaySchedule', {})} />
+            {upcomingTasks.length === 0 ? (
+              <EmptyNote title="No upcoming events" text="Plan a volunteer cleanup to involve residents." />
+            ) : (
+              <Card style={styles.listCard}>
+                {upcomingTasks.map((task, i) => {
+                  const eventDate = task.eventDate
+                    ? new Date(task.eventDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+                    : '—';
+                  const isJoined = task.participantIds?.includes(user?.uid ?? '');
+                  return (
+                    <ListRow
+                      key={task.id}
+                      first={i === 0}
+                      accent={isJoined ? colors.teal : colors.amber}
+                      title={task.title}
+                      meta={`${eventDate} · ${task.startTime} – ${task.endTime}`}
+                      right={<Badge variant={isJoined ? 'low' : 'pending'} label={isJoined ? 'Joined' : 'Upcoming'} />}
+                      onPress={() => navigation.navigate('BarangayEventDetail', { eventId: task.id })}
+                    />
+                  );
+                })}
+              </Card>
+            )}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -314,74 +297,11 @@ export default function BarangayDashboardScreen() {
 
 const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
-  header: {
-    backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 13,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    borderBottomWidth: 0.5, borderBottomColor: Colors.border,
-  },
-  greeting: { fontSize: 15, fontWeight: '500', color: Colors.textPrimary },
-  subGreeting: { fontSize: 10, color: Colors.textMuted, marginTop: 2 },
-  rolePill: { backgroundColor: Colors.brgyLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  rolePillText: { fontSize: 10, color: Colors.brgyDark, fontWeight: '500' },
-  body: { padding: 16, gap: 14, paddingBottom: 24 },
-  announceCard: {
-    backgroundColor: Colors.brgyLight, borderRadius: 13, padding: 12,
-    borderWidth: 0.5, borderColor: Colors.brgyMid, gap: 8,
-  },
-  announceHeader: { fontSize: 11, fontWeight: '500', color: Colors.brgyDark, textTransform: 'uppercase', letterSpacing: 0.03 },
-  announceItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  announceTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
-  announceBody: { fontSize: 11, color: Colors.textMuted, marginTop: 2, lineHeight: 15 },
-  statsRow: { flexDirection: 'row', gap: 10 },
-  statCard: {
-    flex: 1, backgroundColor: Colors.white, borderRadius: 16, padding: 13, alignItems: 'center',
-    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
-  },
-  statVal: { fontSize: 18, fontWeight: '500' },
-  statLabel: { fontSize: 9, color: Colors.textMuted, marginTop: 2 },
-  criticalBanner: {
-    backgroundColor: Colors.criticalBg, borderRadius: 12, padding: 11, paddingHorizontal: 13,
-    borderWidth: 0.5, borderColor: 'rgba(192,57,43,0.2)', borderLeftWidth: 3, borderLeftColor: Colors.critical,
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-  },
-  dot: { width: 9, height: 9, borderRadius: 4.5 },
-  criticalTitle: { fontSize: 12, fontWeight: '500', color: Colors.criticalText },
-  criticalSub: { fontSize: 10, color: Colors.criticalText, opacity: 0.8, marginTop: 2 },
-  pendingBanner: {
-    backgroundColor: Colors.amberBg, borderRadius: 12, padding: 11, paddingHorizontal: 13,
-    borderWidth: 0.5, borderColor: 'rgba(217,164,65,0.3)', borderLeftWidth: 3, borderLeftColor: Colors.amber,
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-  },
-  pendingTitle: { fontSize: 12, fontWeight: '500', color: Colors.amberText },
-  pendingSub: { fontSize: 10, color: Colors.amberText, opacity: 0.8, marginTop: 2 },
-  pendingArrow: { fontSize: 18, color: Colors.amberText },
-  sectionHeader: { marginTop: 4 },
-  cpNone: { fontSize: 11, color: Colors.textMuted },
-  cpRow: {
-    backgroundColor: Colors.white, borderRadius: 14, paddingVertical: 11, paddingHorizontal: 13,
-    flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 0.5, borderColor: Colors.border,
-  },
-  cpDot: { width: 9, height: 9, borderRadius: 4.5 },
-  cpName: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
-  cpMeta: { fontSize: 10, color: Colors.textMuted, marginTop: 2 },
-  cpStatus: { fontSize: 11, fontWeight: '600' },
-  sectionTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
-  emptyCard: {
-    backgroundColor: Colors.white, borderRadius: 16, padding: 18, alignItems: 'center',
-    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
-  },
-  emptyText: { fontSize: 12, color: Colors.textHint },
-  taskCard: {
-    backgroundColor: Colors.white, borderRadius: 17, padding: 14,
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1,
-  },
-  taskLeft: { width: 20, alignItems: 'center' },
-  taskDot: { width: 9, height: 9, borderRadius: 4.5 },
-  taskTitle: { fontSize: 12, fontWeight: '500', color: Colors.textPrimary },
-  taskDate: { fontSize: 10, color: Colors.textMuted, marginTop: 2 },
-  taskTeam: { fontSize: 10, color: Colors.textHint, marginTop: 1 },
-  actionsRow: { flexDirection: 'row', gap: 6 },
-  actionBtn: { flex: 1, minHeight: 44, borderRadius: 12, paddingVertical: 11, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5 },
-  actionBtnText: { fontSize: 10.5, fontWeight: '500', textAlign: 'center' },
+  body: { padding: 16, gap: 12, paddingBottom: 32 },
+  allClear: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, padding: 14, backgroundColor: Colors.tealLight },
+  allClearIcon: { fontSize: 20, fontWeight: '800', color: Colors.tealDark, width: 36, height: 36, borderRadius: 18, textAlign: 'center', lineHeight: 36, backgroundColor: Colors.surface, overflow: 'hidden' },
+  allClearTitle: { fontSize: 15, fontWeight: '700', color: Colors.tealDark },
+  allClearSub: { fontSize: 12, color: Colors.tealDark, marginTop: 2, lineHeight: 17 },
+  listCard: { paddingVertical: 2 },
+  rowStatus: { fontSize: 13, fontWeight: '700' },
 });

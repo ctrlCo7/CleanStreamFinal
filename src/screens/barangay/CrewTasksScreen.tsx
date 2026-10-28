@@ -160,7 +160,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary },
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
   body: { padding: 16, gap: 12, paddingBottom: 32 },
   shortcut: {
@@ -179,7 +179,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   segmentTextOn: { color: '#fff' },
   count: { minWidth: 20, paddingHorizontal: 5, height: 20, borderRadius: 10, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
   countOn: { backgroundColor: Colors.white },
-  countText: { fontSize: 11, fontWeight: '700', color: Colors.textMuted },
+  countText: { fontSize: 12, fontWeight: '700', color: Colors.textMuted },
   countTextOn: { color: Colors.brgy },
   card: {
     backgroundColor: Colors.white, borderRadius: 16, padding: 14, gap: 6,

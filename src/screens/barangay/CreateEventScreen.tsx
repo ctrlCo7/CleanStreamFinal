@@ -313,9 +313,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    borderBottomWidth: 0.5, borderBottomColor: Colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border,
   },
-  headerTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary },
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
   body: { padding: 16, gap: 14, paddingBottom: 32 },
   centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
