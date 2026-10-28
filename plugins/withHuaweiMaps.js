@@ -70,6 +70,8 @@ const withFiles = (config, useAgc) =>
 module.exports = function withHuaweiMaps(config) {
   const useAgc = fs.existsSync(path.join(process.cwd(), AGC_FILE));
   config = withHuaweiRepos(config, useAgc);
+  // Lets the app know Map Kit can authenticate without an API key in app.json.
+  config.extra = { ...(config.extra ?? {}), huaweiAgconnect: useAgc };
   if (useAgc) config = withAgcPlugin(config);
   return withFiles(config, useAgc);
 };

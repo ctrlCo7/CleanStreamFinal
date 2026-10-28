@@ -47,13 +47,22 @@ export function getPetal(): PetalModule | null {
   return petal;
 }
 
+type PetalExtra = { huaweiMapApiKey?: string; huaweiAgconnect?: boolean };
+const petalExtra = () => (Constants.expoConfig?.extra ?? {}) as PetalExtra;
+
+/**
+ * Petal Maps draws nothing (and may still report ready) without credentials, so only use it
+ * when an API key is in app.json or agconnect-services.json was built into the app.
+ */
+export const hasPetalCredentials = (): boolean => !!petalExtra().huaweiMapApiKey?.trim() || petalExtra().huaweiAgconnect === true;
+
 let initPromise: Promise<void> | null = null;
 
 /** Starts Map Kit once with the API key (Asia-Pacific data centre, which serves the Philippines). */
 export function initPetal(): Promise<void> {
   if (initPromise) return initPromise;
   const mod = getPetal();
-  const apiKey = (Constants.expoConfig?.extra as { huaweiMapApiKey?: string } | undefined)?.huaweiMapApiKey ?? '';
+  const apiKey = petalExtra().huaweiMapApiKey?.trim() ?? '';
   initPromise = !mod
     ? Promise.reject(new Error('Map Kit not available'))
     // Without a key here, Map Kit authenticates with agconnect-services.json instead.

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { MAP_READY_TIMEOUT_MS, PREFER_PETAL_MAPS } from '../utils/mapProvider';
-import { getPetal } from '../components/map/PetalMap';
+import { getPetal, hasPetalCredentials } from '../components/map/PetalMap';
 
 /**
  * Which map engine to draw with:
@@ -16,7 +16,7 @@ const PETAL_READY_TIMEOUT_MS = 10000;
 
 export function useMapEngine() {
   const [engine, setEngine] = useState<MapEngine>(() =>
-    Platform.OS === 'web' ? 'osm' : PREFER_PETAL_MAPS && getPetal() ? 'petal' : 'native');
+    Platform.OS === 'web' ? 'osm' : PREFER_PETAL_MAPS && hasPetalCredentials() && getPetal() ? 'petal' : 'native');
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
