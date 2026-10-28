@@ -45,6 +45,7 @@
     "expo-task-manager": "~57.0.21",
     "expo-web-browser": "~57.0.3",
     "firebase": "^12.19.0",
+    "prop-types": "^15.8.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
