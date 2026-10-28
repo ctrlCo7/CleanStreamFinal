@@ -152,14 +152,11 @@ service cloud.firestore {
 
     // ─── Reports ───────────────────────────────────────────────────────────────
     match /reports/{reportId} {
-      // Citizens see every report (the public map). Everyone else (officials, crews, the
-      // Admin and the Super Admin) only sees their own barangay's reports, plus any report
-      // they filed themselves: queries must filter on barangayId. An account without a
-      // barangay sees none.
+      // Everyone (citizens, officials, crews, the Admin and the Super Admin) only sees their
+      // own barangay's reports, plus any report they filed themselves: queries must filter
+      // on barangayId or userId. An account without a barangay sees only its own reports.
       allow read: if isAuthenticated()
-                  && (isOwner(resource.data.userId)
-                      || getUserData().role == 'citizen'
-                      || inMyBarangay(resource.data.barangayId));
+                  && (isOwner(resource.data.userId) || inMyBarangay(resource.data.barangayId));
 
       // Citizens and barangay officers can create reports
       allow create: if isAuthenticated()

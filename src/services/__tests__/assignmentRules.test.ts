@@ -43,8 +43,10 @@ describe('canViewReport', () => {
   it('still shows an official a report they filed themselves', () => {
     expect(canViewReport(r('tinago', 'o1'), { role: 'barangay', barangayId: 'guadalupe', uid: 'o1' })).toBe(true);
   });
-  it('lets citizens see every report', () => {
-    expect(canViewReport(r('tinago'), { role: 'citizen', barangayId: 'guadalupe', uid: 'x' })).toBe(true);
+  it('keeps citizens to their own barangay, plus their own reports', () => {
+    expect(canViewReport(r('guadalupe'), { role: 'citizen', barangayId: 'guadalupe', uid: 'x' })).toBe(true);
+    expect(canViewReport(r('tinago'), { role: 'citizen', barangayId: 'guadalupe', uid: 'x' })).toBe(false);
+    expect(canViewReport(r('tinago', 'x'), { role: 'citizen', barangayId: 'guadalupe', uid: 'x' })).toBe(true);
     expect(canViewReport(r('tinago'), null)).toBe(false);
   });
   it('keeps the Admin and Super Admin to their own barangay too', () => {

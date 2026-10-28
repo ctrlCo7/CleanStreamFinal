@@ -292,7 +292,13 @@ export default function MapScreen({ navigation }: Props) {
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <BackIcon />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Waste Map</Text>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={styles.headerTitle}>Waste Map</Text>
+          {/* Everyone only sees their own barangay's reports. */}
+          <Text style={{ fontSize: 12, color: colors.textMuted }} numberOfLines={1}>
+            {viewer?.barangay ? `Brgy. ${viewer.barangay}` : 'No barangay on your account'}
+          </Text>
+        </View>
         <View style={{ width: 34 }} />
       </View>
 
