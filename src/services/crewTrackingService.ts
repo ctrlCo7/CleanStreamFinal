@@ -15,7 +15,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
+import { getNotifications } from './notificationsModule';
 import * as TaskManager from 'expo-task-manager';
 import { collection, doc, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -153,7 +153,7 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
   // kept between launches) and the position can't be saved. Stop and ask the crew to reopen.
   if (auth.currentUser?.uid !== t0.state.crewId) {
     await stopUpdates();
-    Notifications.scheduleNotificationAsync({
+    getNotifications()?.scheduleNotificationAsync({
       content: { title: 'Location sharing paused', body: 'Open CleanStream and tap “Resume sharing” so the barangay can keep following your truck.' },
       trigger: null,
     }).catch(() => undefined);
@@ -225,7 +225,7 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
     saveTrip();
     publish();
     if (t.background) {
-      Notifications.scheduleNotificationAsync({
+      getNotifications()?.scheduleNotificationAsync({
         content: { title: 'You have arrived', body: 'Location sharing has stopped. Take a before photo, then tap Start work.' },
         trigger: null,
       }).catch(() => undefined);

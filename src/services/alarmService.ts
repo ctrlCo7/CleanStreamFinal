@@ -15,7 +15,7 @@
  * using a fixed identifier so re-scheduling after an admin change just
  * replaces the one standing alarm rather than accumulating duplicates.
  */
-import * as Notifications from 'expo-notifications';
+import { getNotifications } from './notificationsModule';
 import { collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -52,6 +52,8 @@ let handlerConfigured = false;
 export function configureAlarmNotificationHandler(): void {
   if (handlerConfigured) return;
   handlerConfigured = true;
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowBanner: true,
@@ -63,6 +65,8 @@ export function configureAlarmNotificationHandler(): void {
 }
 
 export async function requestAlarmPermissions(): Promise<boolean> {
+  const Notifications = getNotifications();
+  if (!Notifications) return false;
   const current = await Notifications.getPermissionsAsync();
   if (current.granted) return true;
   const requested = await Notifications.requestPermissionsAsync();
@@ -73,6 +77,8 @@ let channelReady = false;
 
 export async function initAlarmChannel(): Promise<void> {
   if (channelReady) return;
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   configureAlarmNotificationHandler();
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
     name: 'Daily checkpoint alarm',
@@ -150,6 +156,8 @@ export const subscribeToCheckpointAlarm = (
  * as the defensive re-sync for that case too. */
 export const reconcileDailyCheckpointAlarm = async (config: CheckpointAlarmConfig | null): Promise<void> => {
   await initAlarmChannel();
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   await Notifications.cancelScheduledNotificationAsync(CHECKPOINT_NOTIFICATION_ID).catch(() => {});
   if (!config) return;
 
