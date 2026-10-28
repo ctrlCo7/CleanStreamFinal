@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { fullName, statusOf } from '../lib/accountRules';
-import { BARANGAYS } from '../lib/barangays';
+import { listBarangays } from '../lib/barangays';
 import { useData } from '../lib/data';
 import { Checkpoint, CheckpointInput, DAYS, validateCheckpoint } from '../lib/operations';
 import { Dialog } from './Dialog';
@@ -71,7 +71,7 @@ export function CheckpointForm({ checkpoint, defaultBarangayId, busy, onClose, o
               aria-invalid={!!shown.barangayId}
             >
               <option value="">Choose…</option>
-              {BARANGAYS.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {listBarangays().map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
             {shown.barangayId && <p className="field-error">{shown.barangayId}</p>}
           </div>

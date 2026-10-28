@@ -1,6 +1,8 @@
 import * as Location from 'expo-location';
 import { GeoLocation } from '../types';
 import { withTimeout } from '../utils/async';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from './firebase';
 
 export const slugifyBarangay = (name: string): string =>
   name
@@ -34,11 +36,27 @@ export const CEBU_BARANGAYS: CebuBarangay[] = [
  * `barangayId` a citizen's report and a barangay official's account both rely on.
  * Returns undefined if the name doesn't match any canonical entry.
  */
-export const findBarangayByName = (name: string | undefined | null): CebuBarangay | undefined => {
+export const findBarangayByName = (name: string | undefined | null): { id: string; name: string } | undefined => {
   if (!name) return undefined;
-  const normalized = name.trim().toLowerCase();
-  return CEBU_BARANGAYS.find((b) => b.name.toLowerCase() === normalized);
+  const normalized = name.trim().toLowerCase().replace(/^(brgy\.?|barangay)\s+/, '');
+  const slug = slugifyBarangay(normalized);
+  return CEBU_BARANGAYS.find((b) => b.name.toLowerCase() === normalized)
+    ?? registeredBarangays.find((b) => b.name.toLowerCase() === normalized || b.id === slug);
 };
+
+// Barangays the Super Admin added in the portal (Firestore `barangays`, custom: true). They
+// have no centre point, so they're only matched by the name the phone's address lookup gives.
+let registeredBarangays: Array<{ id: string; name: string }> = [];
+
+/** Loads the registered barangays (needs a signed-in user). Safe to call again to refresh. */
+export async function loadRegisteredBarangays(): Promise<void> {
+  try {
+    const snap = await getDocs(query(collection(db, 'barangays'), where('custom', '==', true)));
+    registeredBarangays = snap.docs.map((d) => ({ id: d.id, name: String(d.data().name ?? d.id) }));
+  } catch (e) {
+    console.warn('[Location] Could not load registered barangays:', e);
+  }
+}
 
 const haversineDistance = (
   lat1: number, lng1: number, lat2: number, lng2: number,

@@ -182,8 +182,9 @@ service cloud.firestore {
     // ─── Barangays ─────────────────────────────────────────────────────────────
     match /barangays/{barangayId} {
       allow read: if isAuthenticated();
-      allow create: if isAdmin();
-      allow update: if isAdmin()
+      // The Super Admin adds barangays that aren't on the built-in list when creating accounts.
+      allow create: if isAdmin() || (isSuperAdmin() && request.resource.data.id == barangayId);
+      allow update: if isAdmin() || isSuperAdmin()
                     || (isBarangayOfficer() && sameBarangay(barangayId)
                         && !request.resource.data.diff(resource.data).affectedKeys()
                             .hasAny(['isActive', 'captainName']));
@@ -197,7 +198,7 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin() || isSuperAdmin());
       allow create: if isBarangayOfficer() && request.resource.data.userId == currentUid();
       // Only admin can verify, and only the verification fields may change
-      allow update: if isAdmin()
+      allow update: if isAdmin() || isSuperAdmin()
                     && request.resource.data.diff(resource.data).affectedKeys()
                         .hasOnly(['status', 'verifiedBy', 'verifiedByName', 'verifiedAt']);
       allow delete: if isAdmin();
@@ -291,7 +292,7 @@ service cloud.firestore {
                     && request.resource.data.organizedBy == currentUid()
                     && (isAdmin()
                         || (isBarangayOfficer() && request.resource.data.barangayId == getUserData().barangayId));
-      allow update: if isAdmin()
+      allow update: if isAdmin() || isSuperAdmin()
                     || (isBarangayOfficer() && sameBarangay(resource.data.barangayId))
                     // Anyone signed in can add or remove only THEMSELVES from the volunteer list, and the
                     // count must equal the list, so it can't be inflated.
@@ -338,7 +339,7 @@ service cloud.firestore {
     match /announcements/{announcementId} {
       allow read: if isAuthenticated() && resource.data.isActive == true;
       allow create: if isAdmin();
-      allow update: if isAdmin()
+      allow update: if isAdmin() || isSuperAdmin()
                     || (isBarangayOfficer()
                         && resource.data.authorId == currentUid()
                         && !request.resource.data.diff(resource.data).affectedKeys()
@@ -370,7 +371,7 @@ service cloud.firestore {
                     && request.resource.data.userId == currentUid()
                     && request.resource.data.rating >= 1
                     && request.resource.data.rating <= 5;
-      allow update: if isAdmin()
+      allow update: if isAdmin() || isSuperAdmin()
                     && request.resource.data.diff(resource.data).affectedKeys()
                         .hasOnly(['status', 'adminResponse', 'updatedAt']);
       allow delete: if isAdmin();

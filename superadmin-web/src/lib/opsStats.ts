@@ -1,4 +1,4 @@
-import { BARANGAYS } from './barangays';
+import { barangayById } from './barangays';
 import { Checkpoint, DAYS, Day, Inspection, Report, WASTE_GROUPS, WasteGroup } from './operations';
 
 // Pure calculations behind the Overview, Analytics and Barangay Units pages.
@@ -111,7 +111,7 @@ const barangayRows = (reports: Report[]): BarangayReportStat[] => {
     const times = list.map(responseHours).filter((h): h is number => h !== null);
     return {
       id,
-      name: BARANGAYS.find((b) => b.id === id)?.name ?? list[0].barangay ?? 'Unknown barangay',
+      name: barangayById(id)?.name ?? list[0].barangay ?? 'Unknown barangay',
       total: list.length,
       open: list.filter(isOpen).length,
       resolved,

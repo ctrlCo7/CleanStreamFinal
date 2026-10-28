@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { DownloadIcon, SearchIcon } from '../components/Icons';
 import { ReportStatusPill, SeverityPill } from '../components/Pill';
 import { csvCell } from '../lib/accountRules';
-import { BARANGAYS } from '../lib/barangays';
+import { listBarangays } from '../lib/barangays';
 import { useToast } from '../lib/feedback';
 import { formatDateTime } from '../lib/format';
 import {
   REPORT_STATUSES, REPORT_STATUS_LABELS, Report, ReportStatus, SEVERITIES, Severity, WASTE_GROUPS, WASTE_LABELS, WasteGroup,
 } from '../lib/operations';
 import { OpsErrors, useOps } from '../lib/opsData';
+import { useData } from '../lib/data';
 
 const PAGE_SIZE = 25;
 
@@ -49,6 +50,7 @@ const toCsv = (reports: Report[]): string => {
 
 export function Reports() {
   const { reports, loading } = useOps();
+  useData(); // re-render when newly registered barangays arrive
   const toast = useToast();
   const [filter, setFilter] = useState<Filter>({ query: '', barangayId: 'all', severity: 'all', status: 'all', waste: 'all', water: 'all' });
   const [page, setPage] = useState(0);
@@ -87,7 +89,7 @@ export function Reports() {
         </label>
         <select value={filter.barangayId} onChange={(e) => update({ barangayId: e.target.value })} aria-label="Filter by barangay">
           <option value="all">All barangays</option>
-          {BARANGAYS.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          {listBarangays().map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
         <select value={filter.severity} onChange={(e) => update({ severity: e.target.value as Filter['severity'] })} aria-label="Filter by severity">
           <option value="all">Any severity</option>

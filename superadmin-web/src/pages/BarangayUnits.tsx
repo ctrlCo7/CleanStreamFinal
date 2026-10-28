@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { statusOf } from '../lib/accountRules';
-import { BARANGAYS } from '../lib/barangays';
+import { listBarangays } from '../lib/barangays';
 import { useData } from '../lib/data';
 import { useTick } from '../lib/feedback';
 import { relativeTime } from '../lib/format';
@@ -8,14 +8,14 @@ import { OpsErrors, useOps } from '../lib/opsData';
 import { inspectionCompliance, reportStats } from '../lib/opsStats';
 
 export function BarangayUnits({ openCheckpoints }: { openCheckpoints: (barangayId: string) => void }) {
-  const { accounts } = useData();
+  const { accounts, customBarangays } = useData();
   const { reports, checkpoints, inspections, loading } = useOps();
   useTick();
 
   const rows = useMemo(() => {
     const now = new Date();
     const byBarangay = new Map(reportStats(reports, now).byBarangay.map((b) => [b.id, b]));
-    return BARANGAYS.map((b) => {
+    return listBarangays().map((b) => {
       const live = accounts.filter((a) => a.barangayId === b.id && statusOf(a) === 'active');
       const cps = checkpoints.filter((c) => c.barangayId === b.id);
       const comp = inspectionCompliance(cps, inspections, now).total;
@@ -32,7 +32,7 @@ export function BarangayUnits({ openCheckpoints }: { openCheckpoints: (barangayI
         critical: byBarangay.get(b.id)?.critical ?? 0,
       };
     });
-  }, [accounts, reports, checkpoints, inspections]);
+  }, [accounts, customBarangays, reports, checkpoints, inspections]);
 
   const totals = rows.reduce(
     (t, r) => ({ officials: t.officials + r.officials, checkpoints: t.checkpoints + r.checkpoints, missed: t.missed + r.compliance.missed, open: t.open + r.openReports }),

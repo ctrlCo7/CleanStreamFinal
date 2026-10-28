@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthChange } from '../services/authService';
 import { restoreSession, setUser } from '../store/authSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { loadRegisteredBarangays } from '../services/locationService';
 import { useTheme } from '../hooks/useTheme';
 import { RootStackParamList } from '../types';
 
@@ -61,6 +62,11 @@ export default function RootNavigator() {
     });
     return unsub;
   }, [dispatch]);
+
+  // Barangays the Super Admin added in the portal, so reports there get the right barangay.
+  useEffect(() => {
+    if (isAuthenticated) loadRegisteredBarangays();
+  }, [isAuthenticated]);
 
   if (initializing) return <LoadingScreen />;
 

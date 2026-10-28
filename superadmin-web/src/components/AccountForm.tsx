@@ -3,11 +3,22 @@ import {
   AccountFormInput, MIN_PASSWORD_LENGTH, NewAccountInput, generatePassword, needsBarangay, requiresPhone, usesPhone,
   validateAccountForm, validateNewAccount,
 } from '../lib/accountRules';
-import { BARANGAYS } from '../lib/barangays';
+import { barangayById, listBarangays, resolveBarangay } from '../lib/barangays';
+import { useData } from '../lib/data';
 import { Account, ROLES, ROLE_LABELS, Role } from '../lib/types';
 import { Dialog } from './Dialog';
 
 interface BaseProps { onClose: () => void; busy: boolean }
+
+/** Tells the Super Admin whether the typed name matches a known barangay or will add a new one. */
+const barangayHint = (typed: string): string => {
+  if (!typed.trim()) return 'Pick from the suggestions, or type a barangay that isn’t listed.';
+  const r = resolveBarangay(typed);
+  if (!r.ok) return 'Pick from the suggestions, or type a barangay that isn’t listed.';
+  return r.isNew
+    ? `“${r.name}” isn’t on the list yet. It will be added when you save, and reports the app places in ${r.name} will go to this account.`
+    : `Barangay ${r.name}.`;
+};
 
 interface CreateProps extends BaseProps {
   mode: 'create';
@@ -27,7 +38,9 @@ export function AccountForm(props: CreateProps | EditProps) {
   const [firstName, setFirstName] = useState(editing?.firstName ?? '');
   const [lastName, setLastName] = useState(editing?.lastName ?? '');
   const [role, setRole] = useState<Role>(editing?.role ?? 'barangay');
-  const [barangayId, setBarangayId] = useState(editing?.barangayId ?? '');
+  // Typed, with the known barangays offered as suggestions; a name not on the list is added as a new barangay.
+  const [barangayName, setBarangayName] = useState(editing?.barangay ?? barangayById(editing?.barangayId)?.name ?? '');
+  useData(); // re-render when newly registered barangays arrive, so they show up as suggestions
   const [employeeId, setEmployeeId] = useState(editing?.employeeId ?? '');
   const [agency, setAgency] = useState(editing?.agency ?? '');
   const [phone, setPhone] = useState(editing?.phone ?? '');
@@ -42,7 +55,7 @@ export function AccountForm(props: CreateProps | EditProps) {
     e.preventDefault();
     const base: AccountFormInput = {
       email, firstName, lastName, role,
-      barangayId: needsBarangay(role) ? barangayId : undefined,
+      barangayName: needsBarangay(role) ? barangayName : undefined,
       employeeId: employeeId || undefined,
       agency: agency || undefined,
       phone: usesPhone(role) ? phone || undefined : undefined,
@@ -98,10 +111,20 @@ export function AccountForm(props: CreateProps | EditProps) {
           {needsBarangay(role) && (
             <div className="span-2">
               {field('barangayId', 'Barangay',
-                <select {...aria('barangayId')} value={barangayId} onChange={(e) => setBarangayId(e.target.value)}>
-                  <option value="">Select a barangay…</option>
-                  {BARANGAYS.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>)}
+                <>
+                  <input
+                    {...aria('barangayId')}
+                    list={id('barangay-options')}
+                    value={barangayName}
+                    onChange={(e) => setBarangayName(e.target.value)}
+                    placeholder="Type or pick a barangay, e.g. Guadalupe"
+                    autoComplete="off"
+                  />
+                  <datalist id={id('barangay-options')}>
+                    {listBarangays().map((b) => <option key={b.id} value={b.name} />)}
+                  </datalist>
+                </>,
+                barangayHint(barangayName))}
             </div>
           )}
 

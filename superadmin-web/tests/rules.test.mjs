@@ -266,6 +266,14 @@ await check("another barangay's official doesn't", assertFails(getDoc(doc(bg2, '
 await check('the Admin sees every truck on the way', assertSucceeds(getDocs(query(collection(ad, 'crewTracking'), where('status', '==', 'en_route')))));
 await check("an unrelated citizen can't see where the crew is", assertFails(getDoc(doc(ct, 'crewTracking', 't1'))));
 
+console.log('\n== Barangays typed in by the Super Admin');
+const newBrgy = (id) => ({ id, name: 'Lahug', city: 'Cebu City', custom: true, isActive: true });
+await check('the Super Admin adds a barangay that is not on the list', assertSucceeds(setDoc(doc(sa, 'barangays', 'lahug'), newBrgy('lahug'))));
+await check("the id inside must match the document's", assertFails(setDoc(doc(sa, 'barangays', 'pasil'), newBrgy('lahug'))));
+await check('everyone signed in can read it (the app matches reports to it)', assertSucceeds(getDoc(doc(ct, 'barangays', 'lahug'))));
+await check("a citizen can't add barangays", assertFails(setDoc(doc(ct, 'barangays', 'fake'), newBrgy('fake'))));
+await check("a deactivated Super Admin can't add barangays", assertFails(setDoc(doc(as('sa_off'), 'barangays', 'x'), newBrgy('x'))));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup();
 process.exit(fail ? 1 : 0);

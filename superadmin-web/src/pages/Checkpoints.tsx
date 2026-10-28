@@ -3,13 +3,14 @@ import { CheckpointForm } from '../components/CheckpointForm';
 import { PlusIcon, SearchIcon } from '../components/Icons';
 import { MenuItem, RowMenu } from '../components/Pill';
 import { useActor } from '../lib/auth';
-import { BARANGAYS } from '../lib/barangays';
+import { listBarangays } from '../lib/barangays';
 import { useConfirm, useTick, useToast } from '../lib/feedback';
 import { relativeTime } from '../lib/format';
 import {
   Checkpoint, CheckpointInput, createCheckpoint, deleteCheckpoint, setCheckpointActive, updateCheckpoint,
 } from '../lib/operations';
 import { OpsErrors, useOps } from '../lib/opsData';
+import { useData } from '../lib/data';
 import { CHECKPOINT_STATE_LABELS, CheckpointState, checkpointState } from '../lib/opsStats';
 
 const STATE_PILL: Record<CheckpointState, string> = {
@@ -25,6 +26,7 @@ type FormState = null | { mode: 'create' } | { mode: 'edit'; checkpoint: Checkpo
 
 export function Checkpoints({ initialBarangayId }: { initialBarangayId?: string }) {
   const { checkpoints, loading } = useOps();
+  useData(); // re-render when newly registered barangays arrive
   const actor = useActor();
   const toast = useToast();
   const confirm = useConfirm();
@@ -102,7 +104,7 @@ export function Checkpoints({ initialBarangayId }: { initialBarangayId?: string 
         </label>
         <select value={barangayId} onChange={(e) => setBarangayId(e.target.value)} aria-label="Filter by barangay">
           <option value="all">All barangays</option>
-          {BARANGAYS.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          {listBarangays().map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
         <span className="muted nowrap">{rows.length} checkpoint{rows.length === 1 ? '' : 's'}</span>
       </div>

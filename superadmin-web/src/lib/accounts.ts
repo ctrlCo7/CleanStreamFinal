@@ -3,8 +3,8 @@ import {
   Timestamp, addDoc, collection, deleteField, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp,
   setDoc, updateDoc, writeBatch,
 } from 'firebase/firestore';
-import { AccountFormInput, NewAccountInput, fullName } from './accountRules';
-import { barangayById } from './barangays';
+import { AccountFormInput, NewAccountInput, fullName, needsBarangay } from './accountRules';
+import { barangayById, resolveBarangay } from './barangays';
 import { normalizePhone } from './phone';
 import { auth, db, withSecondaryAuth } from './firebase';
 import { matchSummaryForRecord } from './faceVerdict';
@@ -136,8 +136,30 @@ export const subscribeAudit = (onData: (entries: AuditEntry[]) => void, onError:
 const clean = (obj: Record<string, unknown>): Record<string, unknown> =>
   Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
 
+/** The barangay the form points at: typed (known or new) or, for older callers, picked by id. */
+const barangayFor = (input: AccountFormInput): { id: string; name: string; isNew: boolean } | undefined => {
+  if (!needsBarangay(input.role)) return undefined;
+  if (input.barangayName !== undefined) {
+    const r = resolveBarangay(input.barangayName);
+    return r.ok ? r : undefined;
+  }
+  const b = barangayById(input.barangayId);
+  return b ? { id: b.id, name: b.name, isNew: false } : undefined;
+};
+
+/**
+ * Saves a barangay that was typed in rather than picked, so the mobile app and every portal
+ * list know it. Its id matches what the app derives from a reverse-geocoded barangay name.
+ */
+const registerBarangay = async (actor: Actor, b: { id: string; name: string }) => {
+  await setDoc(doc(db, 'barangays', b.id), {
+    id: b.id, name: b.name, city: 'Cebu City', province: 'Cebu', custom: true, isActive: true,
+    createdBy: actor.uid, createdAt: serverTimestamp(),
+  }, { merge: true });
+};
+
 const profileFields = (input: AccountFormInput) => {
-  const b = input.role === 'citizen' || input.role === 'barangay' || input.role === 'cleanup_team' ? barangayById(input.barangayId) : undefined;
+  const b = barangayFor(input);
   return {
     firstName: input.firstName.trim(),
     lastName: input.lastName.trim(),
@@ -157,6 +179,8 @@ export const createAccount = async (
 ): Promise<{ uid: string; resetEmailError: string | null }> => {
   const email = input.email.trim().toLowerCase();
   const fields = profileFields(input);
+  const newBarangay = barangayFor(input);
+  if (newBarangay?.isNew) await registerBarangay(actor, newBarangay);
 
   const uid = await withSecondaryAuth(async (secondaryAuth) => {
     const cred = await createUserWithEmailAndPassword(secondaryAuth, email, input.password);
@@ -216,6 +240,8 @@ export const updateAccount = async (actor: Actor, target: Account, input: Accoun
   const fields = profileFields(input);
   const summary = diffSummary(target, fields);
   if (!summary) return false;
+  const newBarangay = barangayFor(input);
+  if (newBarangay?.isNew) await registerBarangay(actor, newBarangay);
 
   // deleteField() clears optional fields that no longer apply (e.g. barangay after becoming an Admin).
   await updateDoc(doc(db, 'users', target.uid), {

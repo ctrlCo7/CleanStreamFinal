@@ -1,3 +1,4 @@
+import { barangayById, resolveBarangay } from './barangays';
 import { normalizePhone } from './phone';
 import { Account, AccountStatus, Actor, ROLES, ROLE_LABELS, Role, SELF_REGISTERING_STAFF } from './types';
 
@@ -54,6 +55,8 @@ export interface AccountFormInput {
   lastName: string;
   role: Role;
   barangayId?: string;
+  /** What was typed in the barangay box; resolved to a known or new barangay on save. */
+  barangayName?: string;
   employeeId?: string;
   agency?: string;
   phone?: string;
@@ -77,7 +80,14 @@ export const validateAccountForm = (input: AccountFormInput): Record<string, str
   if (!input.lastName.trim()) errors.lastName = 'Last name is required.';
   if (!EMAIL_RE.test(input.email.trim())) errors.email = 'Enter a valid email address.';
   if (!ROLES.includes(input.role)) errors.role = 'Choose a role.';
-  if (needsBarangay(input.role) && !input.barangayId) errors.barangayId = 'Choose a barangay for this role.';
+  if (needsBarangay(input.role)) {
+    if (input.barangayName !== undefined) {
+      const r = resolveBarangay(input.barangayName);
+      if (!r.ok) errors.barangayId = r.error;
+    } else if (!barangayById(input.barangayId)) {
+      errors.barangayId = 'Enter the barangay for this role.';
+    }
+  }
   if (input.role === 'barangay' && !input.employeeId?.trim()) {
     errors.employeeId = 'Employee ID is required for barangay officials.';
   }
