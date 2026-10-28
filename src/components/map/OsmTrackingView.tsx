@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
-import { osmBaseCss, osmTilesJs } from '../common/OsmMapView';
-import { MAP_COLORS, } from './mapTheme';
-import { TRUCK_SVG, teardropPinHtml } from './MapIcons';
+import { MAP_COLORS } from './mapTheme';
+import { TRUCK_SVG, teardropPinHtml } from './mapIconsHtml';
+import { glideJs, mapHead, mapInitJs } from './openFreeMap';
 
 export interface TrackingFrame {
   truck: { latitude: number; longitude: number; heading: number };
@@ -23,72 +23,68 @@ interface Props {
 }
 
 /**
- * Live truck tracking on OpenStreetMap (Leaflet in a WebView), for phones without Google
- * services. The page is built once; each GPS update is pushed into it, and the page itself
- * glides and turns the truck, so nothing reloads or flickers.
+ * Live truck tracking on OpenFreeMap (MapLibre in a WebView), for phones without Google
+ * services and as the fallback. The page is built once; each GPS update is pushed into it,
+ * and the page glides and turns the truck itself, so nothing reloads or flickers.
  */
 export function OsmTrackingView({ frame, dark, onUserPan, style }: Props) {
   const ref = useRef<WebView>(null);
   const [loaded, setLoaded] = useState(false);
-  // Built from the first frame only; later frames go through csUpdate().
   const first = useRef(frame).current;
 
   const html = useMemo(() => `<!DOCTYPE html>
-<html><head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<style>${osmBaseCss(dark)}
-  .cs-truck { width: 44px; height: 44px; transition: none; }
-</style>
-</head><body><div id="map"></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<html><head>${mapHead(dark)}</head>
+<body><div id="map"></div>
 <script>
-  var map = L.map('map', { zoomControl: false, attributionControl: true });
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
-  map.attributionControl.setPrefix(false);
-  ${osmTilesJs(dark)}
+  ${mapInitJs({ dark, latitude: first.truck.latitude, longitude: first.truck.longitude, zoom: 14, interactive: true })}
+  ${glideJs}
 
-  var casing = L.polyline([], { color: '${MAP_COLORS.routeCasing}', weight: 9, opacity: 0.9 }).addTo(map);
-  var line = L.polyline([], { color: '${MAP_COLORS.route}', weight: 5 }).addTo(map);
-  var dest = L.marker([0, 0], { icon: L.divIcon({ className: '', html: '${teardropPinHtml(MAP_COLORS.destination, true, '🗑️')}',
-    iconSize: [34, 42], iconAnchor: [17, 40] }) }).addTo(map);
-  var truck = L.marker([0, 0], { icon: L.divIcon({ className: '', html: '<div class="cs-truck" id="truck">${TRUCK_SVG.replace(/\n/g, '')}</div>',
-    iconSize: [44, 44], iconAnchor: [22, 22] }), zIndexOffset: 1000 }).addTo(map);
-
-  var shown = null, anim = 0, fitted = false, follow = true;
-  map.on('dragstart', function () {
-    follow = false;
-    if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage('pan');
+  var latest = null, follow = true, fitted = false;
+  var empty = { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } };
+  function routeData() {
+    return !latest ? empty : { type: 'Feature', properties: {}, geometry: { type: 'LineString',
+      coordinates: latest.ahead.map(function (p) { return [p.longitude, p.latitude]; }) } };
+  }
+  // Route layers live in the style, so they are (re)added whenever a style finishes loading.
+  csOnStyle(function () {
+    if (!map.getSource('route')) map.addSource('route', { type: 'geojson', data: routeData() });
+    if (!map.getLayer('route-casing')) map.addLayer({ id: 'route-casing', type: 'line', source: 'route',
+      layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '${MAP_COLORS.routeCasing}', 'line-width': 9 } });
+    if (!map.getLayer('route-line')) map.addLayer({ id: 'route-line', type: 'line', source: 'route',
+      layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '${MAP_COLORS.route}', 'line-width': 5 } });
+    if (latest) map.setPaintProperty('route-line', 'line-dasharray', latest.straight ? [2, 1.5] : [1, 0]);
   });
 
-  function turnTo(deg) { var el = document.getElementById('truck'); if (el) el.style.transform = 'rotate(' + deg + 'deg)'; }
-  function lerpAngle(a, b, t) { var d = ((b - a + 540) % 360) - 180; return (a + d * t + 360) % 360; }
+  var destEl = document.createElement('div');
+  destEl.innerHTML = '${teardropPinHtml(MAP_COLORS.destination, true, '🗑️')}';
+  var dest = new maplibregl.Marker({ element: destEl, anchor: 'bottom' }).setLngLat([0, 0]);
+  var truckEl = document.createElement('div');
+  truckEl.className = 'cs-truck';
+  truckEl.innerHTML = ${JSON.stringify(TRUCK_SVG.replace(/\n/g, ''))};
+  var truck = new maplibregl.Marker({ element: truckEl, rotationAlignment: 'map', pitchAlignment: 'map' }).setLngLat([0, 0]);
+  var truckState = {}, added = false;
+
+  map.on('dragstart', function () { follow = false; csPost('pan'); });
 
   window.csUpdate = function (f) {
+    latest = f;
     follow = f.follow;
-    var ll = f.ahead.map(function (p) { return [p.latitude, p.longitude]; });
-    casing.setLatLngs(ll); line.setLatLngs(ll);
-    line.setStyle({ dashArray: f.straight ? '10 8' : null });
-    dest.setLatLng([f.destination.latitude, f.destination.longitude]);
+    if (!added) { dest.addTo(map); truck.setLngLat([f.truck.longitude, f.truck.latitude]).addTo(map); added = true; }
+    dest.setLngLat([f.destination.longitude, f.destination.latitude]);
+    var src = map.getSource && map.getSource('route');
+    if (src) { src.setData(routeData()); map.setPaintProperty('route-line', 'line-dasharray', f.straight ? [2, 1.5] : [1, 0]); }
+    csGlide(truck, truckState, f.truck);
 
-    var to = f.truck;
-    if (!shown) { shown = { lat: to.latitude, lng: to.longitude, h: to.heading }; truck.setLatLng([shown.lat, shown.lng]); turnTo(shown.h); }
-    var from = { lat: shown.lat, lng: shown.lng, h: shown.h }, start = Date.now();
-    cancelAnimationFrame(anim);
-    (function step() {
-      var t = Math.min(1, (Date.now() - start) / 1800), e = 1 - Math.pow(1 - t, 3);
-      shown = { lat: from.lat + (to.latitude - from.lat) * e, lng: from.lng + (to.longitude - from.lng) * e, h: lerpAngle(from.h, to.heading, e) };
-      truck.setLatLng([shown.lat, shown.lng]); turnTo(shown.h);
-      if (t < 1) anim = requestAnimationFrame(step);
-    })();
-
-    var bounds = L.latLngBounds([[to.latitude, to.longitude], [f.destination.latitude, f.destination.longitude]]);
-    if (!fitted) { map.fitBounds(bounds.extend(line.getBounds()), { padding: [48, 48], maxZoom: 17 }); fitted = true; }
-    else if (follow) map.fitBounds(bounds, { padding: [56, 56], maxZoom: 17, animate: true });
+    var b = new maplibregl.LngLatBounds([f.truck.longitude, f.truck.latitude], [f.truck.longitude, f.truck.latitude]);
+    b.extend([f.destination.longitude, f.destination.latitude]);
+    if (!fitted) { f.ahead.forEach(function (p) { b.extend([p.longitude, p.latitude]); }); }
+    if (!fitted || follow) map.fitBounds(b, { padding: 56, maxZoom: 17, duration: fitted ? 800 : 0 });
+    fitted = true;
   };
   window.csUpdate(${JSON.stringify(first)});
 </script></body></html>`, [dark]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => setLoaded(false), [html]);
   useEffect(() => {
     if (!loaded) return;
     ref.current?.injectJavaScript(`window.csUpdate && window.csUpdate(${JSON.stringify(frame)}); true;`);
@@ -108,6 +104,7 @@ export function OsmTrackingView({ frame, dark, onUserPan, style }: Props) {
         onLoadEnd={() => setLoaded(true)}
         onMessage={onMessage}
         javaScriptEnabled
+        domStorageEnabled
         scrollEnabled={false}
       />
     </View>

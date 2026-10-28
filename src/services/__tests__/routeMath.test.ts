@@ -71,10 +71,21 @@ describe('simplifyPath', () => {
   });
 });
 
-describe('argb (Petal Maps colours)', () => {
-  it('packs #RRGGBB and alpha into a signed Android colour int', async () => {
-    const { argb } = await import('../../components/map/argb');
-    expect(argb('#1D9E75')).toBe(0xff1d9e75 | 0);
-    expect(argb('#123D82', 0x20 / 255)).toBe(538066306); // the Map Kit sample's transparent blue
+describe('OpenFreeMap page script', () => {
+  it('produces JavaScript that parses, for light and dark, interactive or not', async () => {
+    const { glideJs, mapInitJs, openFreeMapStyle, zoomForDelta } = await import('../../components/map/openFreeMap');
+    for (const dark of [false, true]) {
+      for (const interactive of [false, true]) {
+        // eslint-disable-next-line no-new-func
+        expect(() => new Function(mapInitJs({ dark, latitude: 10.3, longitude: 123.9, zoom: 13, interactive }) + glideJs)).not.toThrow();
+      }
+    }
+    expect(openFreeMapStyle(false)).toBe('https://tiles.openfreemap.org/styles/liberty');
+    expect(openFreeMapStyle(true)).toBe('https://tiles.openfreemap.org/styles/dark');
+    expect(zoomForDelta(0.08)).toBeCloseTo(12.1, 1);
+    // The tracking page embeds the pin HTML inside a single-quoted JS string.
+    const { teardropPinHtml, TRUCK_SVG } = await import('../../components/map/mapIconsHtml');
+    expect(teardropPinHtml('#EF4444', true, '🗑️')).not.toContain("'");
+    expect(TRUCK_SVG).not.toContain('`');
   });
 });

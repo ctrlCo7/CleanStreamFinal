@@ -13,7 +13,6 @@ import { MapErrorBoundary } from '../common/MapErrorBoundary';
 import { MAP_COLORS, nativeMapLook } from './mapTheme';
 import { TeardropPin, TruckIcon } from './MapIcons';
 import { OsmTrackingView, TrackingFrame } from './OsmTrackingView';
-import { PetalTrackingMap } from './PetalMap';
 
 // No update for this long means the crew's phone lost signal or closed the app.
 const STALE_S = 120;
@@ -115,20 +114,7 @@ function TrackingMap({ tracking, isDark, height }: { tracking: CrewTracking; isD
 
   return (
     <View style={[styles.map, { height }]}>
-      {Platform.OS === 'web' ? null : engine === 'petal' ? (
-        <PetalTrackingMap
-          truck={truckTarget}
-          ahead={ahead}
-          destination={tracking.destination}
-          straight={tracking.routeSource === 'straight'}
-          follow={follow}
-          dark={isDark}
-          onUserPan={() => setFollow(false)}
-          onReady={onReady}
-          onError={onError}
-          style={StyleSheet.absoluteFill}
-        />
-      ) : engine === 'osm' ? (
+      {Platform.OS === 'web' ? null : engine === 'osm' ? (
         <OsmTrackingView frame={frame} dark={isDark} onUserPan={() => setFollow(false)} style={StyleSheet.absoluteFill} />
       ) : (
         <MapErrorBoundary onError={onError}>

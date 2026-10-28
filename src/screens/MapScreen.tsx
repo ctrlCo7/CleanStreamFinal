@@ -19,7 +19,6 @@ import { BackIcon } from '../components/common/TabIcons';
 import { useMapReports } from '../hooks/useMapReports';
 import { MapErrorBoundary } from '../components/common/MapErrorBoundary';
 import { useMapEngine } from '../hooks/useMapFallback';
-import { PetalPinsMap } from '../components/map/PetalMap';
 import { OsmMapView, OsmMarker, escapeHtml } from '../components/common/OsmMapView';
 import { nativeMapLook } from '../components/map/mapTheme';
 import { TeardropPin, TruckIcon } from '../components/map/MapIcons';
@@ -243,7 +242,7 @@ export default function MapScreen({ navigation }: Props) {
 
   const openTask = useCallback((taskId: string) => navigation.navigate('CleanupTaskDetail', { taskId } as never), [navigation]);
 
-  // Petal Maps on Huawei, Google Maps / Apple Maps elsewhere, OpenStreetMap if neither starts.
+  // Google Maps / Apple Maps, or OpenFreeMap on Huawei phones and when the native map can't start.
   const { engine, onReady: onMapReadyEngine, onError: onMapError } = useMapEngine();
   const useFallbackMap = engine === 'osm';
 
@@ -264,24 +263,13 @@ export default function MapScreen({ navigation }: Props) {
 
   const handleFilter = useCallback((val: string) => setFilter(val), []);
 
-  // Petal Maps pins and trucks (Huawei). The pin's info window opens the report.
-  const petalPins = useMemo(
-    () => filtered.map((r) => ({
-      id: r.id,
-      latitude: r.location.latitude,
-      longitude: r.location.longitude,
-      severity: r.severity,
-      title: `${SEVERITY_LABELS[r.severity as SeverityLevel] ?? r.severity} · ${r.location.barangay ?? r.barangay ?? 'Unknown'}`,
-      snippet: `${r.aiAnalysis?.wasteTypes?.[0]?.label ?? 'Waste'} · Tap for details`,
-    })),
-    [filtered],
-  );
-  const petalTrucks = useMemo(
+  // Trucks on the OpenFreeMap map (Huawei phones and the fallback); tapping one opens its task.
+  const osmTrucks = useMemo(
     () => trips.map((t) => ({
       id: t.taskId, latitude: t.latitude, longitude: t.longitude, heading: t.heading,
-      title: t.crewName, snippet: `On the way · arriving in ${formatEta(t.etaSeconds)}`, onPress: () => openTask(t.taskId),
+      label: `${t.crewName} · arriving in ${formatEta(t.etaSeconds)}`,
     })),
-    [trips, openTask],
+    [trips],
   );
 
   const osmMarkers: OsmMarker[] = useMemo(
@@ -341,19 +329,15 @@ export default function MapScreen({ navigation }: Props) {
               Open CleanStream on iOS or Android (Expo Go or a dev build) to view the live waste map.
             </Text>
           </View>
-        ) : engine === 'petal' ? (
-          <PetalPinsMap
+        ) : useFallbackMap ? (
+          <OsmMapView
             region={CEBU}
-            pins={petalPins}
-            trucks={petalTrucks}
-            dark={isDark}
-            onPinPress={handleNavigate}
-            onReady={onMapReadyEngine}
-            onError={onMapError}
+            markers={osmMarkers}
+            trucks={osmTrucks}
+            onMarkerPress={handleNavigate}
+            onTruckPress={openTask}
             style={styles.map}
           />
-        ) : useFallbackMap ? (
-          <OsmMapView region={CEBU} markers={osmMarkers} onMarkerPress={handleNavigate} style={styles.map} />
         ) : (
           <MapErrorBoundary onError={onMapError}>
             <MapView
@@ -395,7 +379,7 @@ export default function MapScreen({ navigation }: Props) {
         <View style={styles.liveBadge}>
           <View style={styles.liveDot} />
           <Text style={styles.liveText}>
-            {trips.length > 0 && engine !== 'osm' ? `Live · 🚚 ${trips.length} on the way` : 'Live'}
+            {trips.length > 0 ? `Live · 🚚 ${trips.length} on the way` : 'Live'}
           </Text>
         </View>
 

@@ -88,14 +88,12 @@
           "color": "#2E86DE",
           "sounds": []
         }
-      ],
-      "./plugins/withHuaweiMaps"
+      ]
     ],
     "extra": {
       "eas": {
         "projectId": "2279a8e0-22c2-4892-b6ed-a152eec4ff8a"
-      },
-      "huaweiMapApiKey": ""
+      }
     }
   }
 }

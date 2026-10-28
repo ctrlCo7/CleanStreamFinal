@@ -1,8 +1,9 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { useTheme } from '../../hooks/useTheme';
-import { TEARDROP_CSS, teardropPinHtml } from '../map/MapIcons';
+import { TRUCK_SVG, teardropPinHtml } from '../map/mapIconsHtml';
+import { glideJs, mapHead, mapInitJs, zoomForDelta } from '../map/openFreeMap';
 
 export interface OsmMapRegion {
   latitude: number;
@@ -21,10 +22,22 @@ export interface OsmMarker {
   popupHtml?: string;
 }
 
+/** A cleanup truck on its way (officials' and Admin's map). */
+export interface OsmTruck {
+  id: string;
+  latitude: number;
+  longitude: number;
+  heading: number;
+  /** Plain text shown when the truck is tapped. */
+  label: string;
+}
+
 interface OsmMapViewProps {
   region: OsmMapRegion;
   markers: OsmMarker[];
+  trucks?: OsmTruck[];
   onMarkerPress?: (id: string) => void;
+  onTruckPress?: (id: string) => void;
   /** Pan/zoom/tap enabled. Set false for a static preview widget. */
   interactive?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -38,123 +51,107 @@ export const escapeHtml = (value: string): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-export const regionToZoom = (longitudeDelta: number): number => {
-  const zoom = Math.round(Math.log2(360 / Math.max(longitudeDelta, 0.0001)));
-  return Math.min(19, Math.max(2, zoom));
-};
+const markersPayload = (markers: OsmMarker[]) =>
+  markers.map((m) => ({
+    id: m.id, latitude: m.latitude, longitude: m.longitude,
+    html: teardropPinHtml(m.color, !!m.glow), popupHtml: m.popupHtml ?? null,
+  }));
 
-/**
- * Base map tiles: CARTO Voyager (light) or Dark Matter (dark), which are much cleaner than
- * the default OpenStreetMap tiles, with OpenStreetMap's own tiles as an automatic fallback
- * if CARTO can't be reached. Expects a Leaflet map in `map`. Shared with OsmTrackingView.
- */
-export const osmTilesJs = (dark: boolean) => `
-  var tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/${dark ? 'dark_all' : 'rastertiles/voyager'}/{z}/{x}/{y}{r}.png', {
-    maxZoom: 20, subdomains: 'abcd', attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-  }).addTo(map);
-  var tileErrors = 0;
-  tiles.on('tileerror', function () {
-    if (++tileErrors !== 4) return;
-    map.removeLayer(tiles);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-  });
-`;
-
-export const osmBaseCss = (dark: boolean) => `
-  html, body, #map { height: 100%; margin: 0; padding: 0; background: ${dark ? '#1b1f1e' : '#eef2ef'}; }
-  .leaflet-control-attribution { font-size: 9px; }
-  .leaflet-bar { border: none !important; box-shadow: 0 2px 8px rgba(0,0,0,0.22) !important; border-radius: 10px !important; overflow: hidden; }
-  .leaflet-bar a { width: 34px !important; height: 34px !important; line-height: 34px !important; }
-  .leaflet-popup-content-wrapper { border-radius: 12px; }
-  .leaflet-popup-content { margin: 10px; font-family: -apple-system, Roboto, sans-serif; }
-  .leaflet-popup-content img { width: 100%; border-radius: 8px; margin-bottom: 6px; display: block; }
-  .cs-popup-tap { color: #1D9E75; font-size: 11px; font-weight: 700; margin-top: 6px; display: block; }
-  ${TEARDROP_CSS}
-`;
-
-const buildHtml = (region: OsmMapRegion, markers: OsmMarker[], interactive: boolean, dark: boolean): string => {
-  const zoom = regionToZoom(region.longitudeDelta);
-  const interactiveJs = interactive ? 'true' : 'false';
-  const markersJson = JSON.stringify(
-    markers.map((m) => ({
-      id: m.id,
-      latitude: m.latitude,
-      longitude: m.longitude,
-      html: teardropPinHtml(m.color, !!m.glow),
-      popupHtml: m.popupHtml ?? null,
-    })),
-  );
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<style>${osmBaseCss(dark)}</style>
-</head>
-<body>
-<div id="map"></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+const buildHtml = (region: OsmMapRegion, interactive: boolean, dark: boolean): string => `<!DOCTYPE html>
+<html><head>${mapHead(dark)}</head>
+<body><div id="map"></div>
 <script>
-  var markers = ${markersJson};
-  var map = L.map('map', {
-    zoomControl: false,
-    dragging: ${interactiveJs},
-    scrollWheelZoom: ${interactiveJs},
-    doubleClickZoom: ${interactiveJs},
-    touchZoom: ${interactiveJs},
-    boxZoom: ${interactiveJs},
-    keyboard: ${interactiveJs},
-    attributionControl: true,
-  }).setView([${region.latitude}, ${region.longitude}], ${zoom});
-  if (${interactiveJs}) L.control.zoom({ position: 'bottomright' }).addTo(map);
-  map.attributionControl.setPrefix(false);
-  ${osmTilesJs(dark)}
+  ${mapInitJs({ dark, latitude: region.latitude, longitude: region.longitude, zoom: zoomForDelta(region.longitudeDelta), interactive })}
+  ${glideJs}
 
-  window.csNavigate = function (id) {
-    if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(id);
+  // Report pins: added, moved or removed by id, so updates never reload the map.
+  var pins = {};
+  window.csSetMarkers = function (list) {
+    var seen = {};
+    list.forEach(function (m) {
+      seen[m.id] = true;
+      var p = pins[m.id];
+      if (!p || p.html !== m.html) {
+        if (p) p.marker.remove();
+        var el = document.createElement('div');
+        el.innerHTML = m.html;
+        var marker = new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([m.longitude, m.latitude]);
+        if (m.popupHtml) marker.setPopup(new maplibregl.Popup({ offset: 36, maxWidth: '240px' }).setHTML(m.popupHtml));
+        else if (${interactive ? 'true' : 'false'}) el.addEventListener('click', function () { csPost('pin:' + m.id); });
+        marker.addTo(map);
+        pins[m.id] = { marker: marker, html: m.html };
+      } else {
+        p.marker.setLngLat([m.longitude, m.latitude]);
+      }
+    });
+    Object.keys(pins).forEach(function (id) { if (!seen[id]) { pins[id].marker.remove(); delete pins[id]; } });
   };
 
-  markers.forEach(function (m) {
-    var icon = L.divIcon({ className: '', html: m.html, iconSize: [34, 42], iconAnchor: [17, 40], popupAnchor: [0, -36] });
-    var marker = L.marker([m.latitude, m.longitude], { icon: icon }).addTo(map);
-    if (m.popupHtml) {
-      marker.bindPopup(m.popupHtml, { maxWidth: 220 });
-    } else if (${interactiveJs}) {
-      marker.on('click', function () { window.csNavigate(m.id); });
-    }
-  });
-</script>
-</body>
-</html>`;
-};
+  // Trucks on the road: glide between GPS updates and face the way they drive.
+  var trucks = {};
+  window.csSetTrucks = function (list) {
+    var seen = {};
+    list.forEach(function (t) {
+      seen[t.id] = true;
+      var tr = trucks[t.id];
+      if (!tr) {
+        var el = document.createElement('div');
+        el.className = 'cs-truck';
+        el.innerHTML = ${JSON.stringify(TRUCK_SVG.replace(/\n/g, ''))};
+        el.title = t.label;
+        el.addEventListener('click', function () { csPost('truck:' + t.id); });
+        tr = trucks[t.id] = { marker: new maplibregl.Marker({ element: el, rotationAlignment: 'map', pitchAlignment: 'map' })
+          .setLngLat([t.longitude, t.latitude]).addTo(map), state: {} };
+      }
+      csGlide(tr.marker, tr.state, t);
+    });
+    Object.keys(trucks).forEach(function (id) { if (!seen[id]) { trucks[id].marker.remove(); delete trucks[id]; } });
+  };
+
+  window.csNavigate = function (id) { csPost('pin:' + id); };
+</script></body></html>`;
 
 /**
- * OpenStreetMap/Leaflet-based map rendered in a WebView. Used wherever react-native-maps
- * (Google Maps) can't run -- most notably on Huawei phones without Google Play Services,
- * where PROVIDER_GOOGLE crashes on init. Has no dependency on Google Play Services at all.
+ * Map for phones without Google services (most Huawei phones) and the fallback when Google
+ * Maps or Apple Maps can't start: MapLibre drawing OpenFreeMap's vector map in a WebView.
+ * Needs no Google Play Services, API key or account.
  */
-export function OsmMapView({ region, markers, onMarkerPress, interactive = true, style }: OsmMapViewProps) {
-  const webviewRef = useRef<WebView>(null);
+export function OsmMapView({
+  region, markers, trucks = [], onMarkerPress, onTruckPress, interactive = true, style,
+}: OsmMapViewProps) {
+  const ref = useRef<WebView>(null);
   const { isDark } = useTheme();
+  const [loaded, setLoaded] = useState(false);
+  // Built once per theme; pins and trucks are pushed in afterwards.
+  const firstRegion = useRef(region).current;
+  const html = useMemo(() => buildHtml(firstRegion, interactive, isDark), [firstRegion, interactive, isDark]);
+  useEffect(() => setLoaded(false), [html]);
 
-  const html = useMemo(() => buildHtml(region, markers, interactive, isDark), [region, markers, interactive, isDark]);
+  useEffect(() => {
+    if (!loaded) return;
+    ref.current?.injectJavaScript(`window.csSetMarkers && window.csSetMarkers(${JSON.stringify(markersPayload(markers))}); true;`);
+  }, [markers, loaded]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    ref.current?.injectJavaScript(`window.csSetTrucks && window.csSetTrucks(${JSON.stringify(trucks)}); true;`);
+  }, [trucks, loaded]);
 
   const handleMessage = (event: WebViewMessageEvent) => {
-    const id = event.nativeEvent.data;
-    if (id && onMarkerPress) onMarkerPress(id);
+    const msg = event.nativeEvent.data;
+    if (msg.startsWith('pin:')) onMarkerPress?.(msg.slice(4));
+    else if (msg.startsWith('truck:')) onTruckPress?.(msg.slice(6));
   };
 
   return (
     <View style={[styles.container, style]}>
       <WebView
-        ref={webviewRef}
+        ref={ref}
         source={{ html }}
         originWhitelist={['*']}
         style={styles.webview}
         onMessage={handleMessage}
+        onLoadEnd={() => setLoaded(true)}
         javaScriptEnabled
         domStorageEnabled
         scrollEnabled={false}

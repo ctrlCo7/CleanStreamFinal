@@ -5,7 +5,6 @@ import { useTheme } from '../../hooks/useTheme';
 import { MapErrorBoundary } from './MapErrorBoundary';
 import { OsmMapView, OsmMarker } from './OsmMapView';
 import { useMapEngine } from '../../hooks/useMapFallback';
-import { PetalPinsMap } from '../map/PetalMap';
 import { nativeMapLook } from '../map/mapTheme';
 import { TeardropPin } from '../map/MapIcons';
 
@@ -49,7 +48,7 @@ export function MapPreview({
   };
   const resolvedAccent = accentColor ?? colors.tealDark;
 
-  // Petal Maps on Huawei, Google Maps / Apple Maps elsewhere, OpenStreetMap if neither starts.
+  // Google Maps / Apple Maps, or OpenFreeMap on Huawei phones and when the native map can't start.
   const { engine, onReady, onError } = useMapEngine();
   const useFallbackMap = engine === 'osm';
 
@@ -69,17 +68,7 @@ export function MapPreview({
     <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
       <View style={[styles.container, { height, backgroundColor: isDark ? colors.grayMid : '#D4EFE4' }]}>
         {Platform.OS !== 'web' && (
-          engine === 'petal' ? (
-            <PetalPinsMap
-              region={CEBU_REGION}
-              pins={pins}
-              dark={isDark}
-              interactive={false}
-              onReady={onReady}
-              onError={onError}
-              style={StyleSheet.absoluteFill}
-            />
-          ) : useFallbackMap ? (
+          useFallbackMap ? (
             <OsmMapView
               region={CEBU_REGION}
               markers={osmMarkers}
