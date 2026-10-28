@@ -12,7 +12,7 @@
  * into the Android app by plugins/withHuaweiMaps.js.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, StyleProp, ViewStyle } from 'react-native';
+import { Platform, StyleProp, UIManager, ViewStyle } from 'react-native';
 import Constants from 'expo-constants';
 import type HMSMapType from '@hmscore/react-native-hms-map';
 import type { HMSMarker as HMSMarkerType, HMSPolyline as HMSPolylineType } from '@hmscore/react-native-hms-map';
@@ -34,6 +34,9 @@ export function getPetal(): PetalModule | null {
   if (petal !== undefined) return petal;
   petal = null;
   if (Platform.OS !== 'android') return petal;
+  // The JavaScript side always bundles, but the native map view only exists in builds made
+  // with the Map Kit plugin. Expo Go, for one, doesn't have it, and drawing it there crashes.
+  if (!UIManager.hasViewManagerConfig?.('HMSMapView')) return petal;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require('@hmscore/react-native-hms-map');
