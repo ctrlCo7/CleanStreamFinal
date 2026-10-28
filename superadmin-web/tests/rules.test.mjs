@@ -29,14 +29,16 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'cleanupEvents', 'ev_b2'), ev('b2'));
   await setDoc(doc(db, 'cleanupEvents', 'ev1', 'participants', 'ct'), { userId: 'ct', userName: 'Ct', attendanceStatus: 'registered' });
   await setDoc(doc(db, 'reports', 'r_b1'), { userId: 'ct', barangayId: 'b1', location: { latitude: 1, longitude: 2 }, status: 'pending', severity: 'low' });
+  await setDoc(doc(db, 'reports', 'r_b2'), { userId: 'ct', barangayId: 'b2', location: { latitude: 1, longitude: 2 }, status: 'verified', severity: 'low' });
   await setDoc(doc(db, 'verifications', 'bg_rej'), { uid: 'bg_rej', status: 'rejected', reason: 'blurry' });
   await setDoc(doc(db, 'verifications', 'bg_pend'), { uid: 'bg_pend', role: 'barangay', status: 'pending', idImage: 'data:x' });
   for (const [uid, role, extra] of [
     ['sa', 'superadmin'], ['ad', 'admin'], ['bg', 'barangay', { barangayId: 'b1' }], ['ct', 'citizen'],
-    ['cl', 'cleanup_team'], ['victim', 'citizen'], ['ct2', 'citizen', { isVerified: false }],
+    ['cl', 'cleanup_team', { barangayId: 'b1' }], ['victim', 'citizen'], ['ct2', 'citizen', { isVerified: false }],
     ['sa_off', 'superadmin', { isActive: false }],
     ['bg2', 'barangay', { barangayId: 'b2' }],
     ['cl2', 'cleanup_team', { barangayId: 'b1' }],
+    ['cl_b2', 'cleanup_team', { barangayId: 'b2' }],
     ['cl_off', 'cleanup_team', { barangayId: 'b1', isActive: false }],
     ['bg_off', 'barangay', { barangayId: 'b1', isActive: false }],
     ['ct_off', 'citizen', { isActive: false }],
@@ -44,6 +46,7 @@ await env.withSecurityRulesDisabled(async (ctx) => {
     ['vol2', 'citizen', { barangayId: 'b1' }],
     ['ad_pend', 'admin', { idVerification: 'pending', isVerified: false }],
     ['bg_pend', 'barangay', { barangayId: 'b1', idVerification: 'pending', isVerified: false }],
+    ['bg_pend2', 'barangay', { barangayId: 'b1', idVerification: 'pending', isVerified: false }],
     ['bg_rej', 'barangay', { barangayId: 'b1', idVerification: 'rejected', isVerified: false }],
     ['bg_ok', 'barangay', { barangayId: 'b1', idVerification: 'approved' }],
     ['sa_gone', 'superadmin', { deletedAt: new Date() }],
@@ -203,7 +206,19 @@ await check('an official records work on behalf of a crew (own barangay)', asser
 await check("an official can't edit another barangay's task", assertFails(updateDoc(doc(bg1, 'cleanupTasks', 't_b2'), { status: 'completed' })));
 await check('an official from another barangay cannot read it either', assertFails(getDoc(doc(bg2, 'cleanupTasks', 't1'))));
 await check('an official closes a report in their barangay (in progress -> completed)', assertSucceeds(updateDoc(doc(bg1, 'reports', 'r_b1'), { status: 'completed' })));
-await check('the Admin can assign a crew in any barangay', assertSucceeds(setDoc(doc(ad, 'cleanupTasks', 'adm1'), newTask('b2', 'ad'))));
+await check("the Admin assigns a report's own barangay crew", assertSucceeds(setDoc(doc(ad, 'cleanupTasks', 'adm1'), newTask('b1', 'ad'))));
+await check("the Admin can't file the task under another barangay", assertFails(setDoc(doc(ad, 'cleanupTasks', 'adm2'), newTask('b2', 'ad'))));
+await check("the Admin can't send another barangay's crew", assertFails(setDoc(doc(ad, 'cleanupTasks', 'adm3'), { ...newTask('b1', 'ad'), assignedTeamId: 'cl_b2' })));
+await check("an official can't send another barangay's crew", assertFails(setDoc(doc(bg1, 'cleanupTasks', 'new4'), { ...newTask('b1', 'bg'), assignedTeamId: 'cl_b2' })));
+await check("a task can't point at a report from another barangay", assertFails(setDoc(doc(bg1, 'cleanupTasks', 'new5'), { ...newTask('b1', 'bg'), reportId: 'r_b2' })));
+await check("a citizen can't be 'assigned' as a crew", assertFails(setDoc(doc(bg1, 'cleanupTasks', 'new6'), { ...newTask('b1', 'bg'), assignedTeamId: 'ct' })));
+await check('an official reassigns to another crew of the same barangay', assertSucceeds(updateDoc(doc(bg1, 'cleanupTasks', 't1'), { assignedTeamId: 'cl2' })));
+await check("...but never to another barangay's crew", assertFails(updateDoc(doc(bg1, 'cleanupTasks', 't1'), { assignedTeamId: 'cl_b2' })));
+await check("the Admin can't move a task to another barangay", assertFails(updateDoc(doc(ad, 'cleanupTasks', 't1'), { barangayId: 'b2' })));
+await check("the Admin can't move a report to another barangay", assertFails(updateDoc(doc(ad, 'reports', 'r_b1'), { barangayId: 'b2' })));
+await check("the Admin can't assign a report to another barangay", assertFails(updateDoc(doc(ad, 'reports', 'r_b1'), { assignedBarangayId: 'b2' })));
+await check("the Admin assigns a report within its barangay", assertSucceeds(updateDoc(doc(ad, 'reports', 'r_b1'), { assignedBarangayId: 'b1' })));
+await updateDoc(doc(bg1, 'cleanupTasks', 't1'), { assignedTeamId: 'cl' }).catch(() => undefined); // back to the original crew for later tests
 await check('a deactivated official loses their powers at once', assertFails(updateDoc(doc(as('bg_off'), 'reports', 'r_b1'), { status: 'verified' })));
 await check('a deactivated citizen cannot submit reports', assertFails(setDoc(doc(as('ct_off'), 'reports', 'r_off'), { userId: 'ct_off', location: { latitude: 1, longitude: 2 }, status: 'pending', severity: 'low' })));
 
@@ -241,7 +256,8 @@ await check("an official can't stamp another barangay's checkpoint", assertFails
 await check("an official can't change the schedule or assignments", assertFails(updateDoc(doc(bg1, 'checkpoints', 'cp1'), { days: ['Sun'] })));
 await check("an official can't create checkpoints", assertFails(setDoc(doc(bg1, 'checkpoints', 'cp_bad'), cpDoc('b1'))));
 await check("a citizen can't create checkpoints", assertFails(setDoc(doc(ct, 'checkpoints', 'cp_bad2'), cpDoc('b1'))));
-await check("a pending official can't stamp a checkpoint", assertFails(updateDoc(doc(as('bg_pend'), 'checkpoints', 'cp1'), stamp)));
+// bg_pend was approved by an earlier test, so this uses an official who is still pending.
+await check("a pending official can't stamp a checkpoint", assertFails(updateDoc(doc(as('bg_pend2'), 'checkpoints', 'cp1'), stamp)));
 await check("a citizen can't delete a checkpoint", assertFails(deleteDoc(doc(ct, 'checkpoints', 'cp1'))));
 await check('an official files an inspection against a checkpoint', assertSucceeds(setDoc(doc(bg1, 'fieldCheckpoints', 'fc1'), { userId: 'bg', barangayId: 'b1', checkpointId: 'cp1', checkpointName: 'Bridge 2', status: 'pending' })));
 await check('the Super Admin reads inspections (compliance)', assertSucceeds(getDoc(doc(sa, 'fieldCheckpoints', 'fc1'))));
@@ -265,6 +281,14 @@ await check("the barangay's official sees the truck", assertSucceeds(getDoc(doc(
 await check("another barangay's official doesn't", assertFails(getDoc(doc(bg2, 'crewTracking', 't1'))));
 await check('the Admin sees every truck on the way', assertSucceeds(getDocs(query(collection(ad, 'crewTracking'), where('status', '==', 'en_route')))));
 await check("an unrelated citizen can't see where the crew is", assertFails(getDoc(doc(ct, 'crewTracking', 't1'))));
+
+console.log('\n== Profiles: people edit their own details, not their barangay');
+await check('a citizen edits their own name', assertSucceeds(updateDoc(doc(ct, 'users', 'ct'), { firstName: 'New', lastName: 'Name', displayName: 'New Name' })));
+await check('a citizen saves their notification choices', assertSucceeds(updateDoc(doc(ct, 'users', 'ct'), { notificationPrefs: { messages: false } })));
+await check("an official can't move themselves to another barangay", assertFails(updateDoc(doc(bg1, 'users', 'bg'), { barangayId: 'b2' })));
+await check("a crew can't move themselves to another barangay", assertFails(updateDoc(doc(as('cl'), 'users', 'cl'), { barangayId: 'b2', barangay: 'B2' })));
+await check("nobody changes their own email in the profile", assertFails(updateDoc(doc(ct, 'users', 'ct'), { email: 'x@y.z' })));
+await check('the Super Admin can still move an official', assertSucceeds(updateDoc(doc(sa, 'users', 'bg2'), { barangayId: 'b2' })));
 
 console.log('\n== Barangays typed in by the Super Admin');
 const newBrgy = (id) => ({ id, name: 'Lahug', city: 'Cebu City', custom: true, isActive: true });

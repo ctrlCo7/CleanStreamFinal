@@ -82,10 +82,10 @@ export function SystemSettings() {
         </div>
       </header>
       <OpsErrors streams={['settings']} />
-      <p className="callout callout-warn" style={{ margin: '0 0 16px' }}>
-        The mobile app currently applies <strong>maintenance mode</strong> (both report screens stop accepting submissions)
-        and the <strong>custom waste model</strong>.
-        The other settings are saved here but aren't read by the app yet.
+      <p className="callout" style={{ margin: '0 0 16px', background: 'var(--brand-soft)', color: 'var(--brand-dark)' }}>
+        The mobile app applies these settings within seconds of saving: maintenance mode stops new reports, feature switches
+        hide those parts of the app, the AI settings change how reports are analyzed, and the notification switches control
+        alerts and phone reminders. Support contacts appear in everyone's Privacy &amp; security screen.
       </p>
 
       <div className="two-col">
@@ -138,7 +138,7 @@ export function SystemSettings() {
             <div className="field">
               <label htmlFor="s-review">Manual review below (%)</label>
               <input id="s-review" type="number" min={0} max={100} value={draft.aiReviewThreshold} onChange={(e) => set({ aiReviewThreshold: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} />
-              <p className="field-hint">Results less confident than this are flagged for an official to confirm.</p>
+              <p className="field-hint">Below this, the app asks the reporter what the waste is, and the official sees their answer.</p>
             </div>
           </div>
           <h3 className="subhead">Severity score thresholds</h3>

@@ -1,5 +1,6 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
+import { appSettings } from './appSettings';
 
 type NotificationsModule = typeof import('expo-notifications');
 
@@ -12,6 +13,8 @@ let mod: NotificationsModule | null | undefined;
  * development and release builds get the real module.
  */
 export function getNotifications(): NotificationsModule | null {
+  // The Super Admin turned phone notifications off for everyone.
+  if (!appSettings().notifications.enablePush) return null;
   if (mod !== undefined) return mod;
   if (Platform.OS === 'android' && Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
     console.warn('[Notifications] Not available in Expo Go on Android; use a development build to test alarms.');

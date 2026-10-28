@@ -7,7 +7,8 @@ import { useTheme } from '../../hooks/useTheme';
 import { useT } from '../../hooks/useT';
 import { ThemeColors } from '../../constants/theme';
 import { AIWasteType, RootStackParamList, SeverityLevel } from '../../types';
-import { LOW_CONFIDENCE_THRESHOLD, WASTE_TYPE_LABELS } from '../../services/wasteAnalysis';
+import { WASTE_TYPE_LABELS } from '../../services/wasteAnalysis';
+import { useAppSettings } from '../../services/appSettings';
 import { HOTSPOT_MIN_REPORTS } from '../../services/reportProximity';
 import { PHOTO_ISSUE_TEXT } from '../../services/waterwayAssessment';
 import { setCitizenWasteType } from '../../services/reportsService';
@@ -39,7 +40,9 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
   // Reporter's own answer to "what is this waste?" -- saved on the report so reviewers
   // see it, and kept apart from the AI's output so the two can be compared for training.
   const unavailable = ai?.analysisSource === 'unavailable';
-  const lowConf = !ai || unavailable || ai.confidence < LOW_CONFIDENCE_THRESHOLD || !ai.detectedObjects?.length;
+  // Below the Super Admin's review threshold, the reporter is asked what the waste is.
+  const { aiReviewThreshold } = useAppSettings();
+  const lowConf = !ai || unavailable || ai.confidence < aiReviewThreshold || !ai.detectedObjects?.length;
   const aiTopType = (ai?.wasteTypes?.[0]?.type as AIWasteType | undefined) ?? 'mixed_waste';
   const [choice, setChoice] = useState<AIWasteType | null>(report.citizenWasteType ?? null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -134,7 +137,8 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
         {unavailable && (
           <View style={[styles.notice, { backgroundColor: colors.amberBg, borderColor: colors.amber }]}>
             <Text style={[styles.noticeTitle, { color: colors.amberText }]}>
-              {t(ai.modelVersion === 'Skipped by reporter' ? 'result.skippedTitle' : 'result.unavailableTitle')}
+              {t(ai.modelVersion === 'Skipped by reporter' ? 'result.skippedTitle'
+                : ai.modelVersion === 'AI turned off by the administrator' ? 'result.disabledTitle' : 'result.unavailableTitle')}
             </Text>
             <Text style={[styles.noticeText, { color: colors.amberText }]}>{t('result.unavailableBody')}</Text>
           </View>

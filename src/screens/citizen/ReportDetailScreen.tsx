@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Image, Alert, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../hooks/useTheme';
+import { useAppSettings } from '../../services/appSettings';
 import { ThemeColors } from '../../constants/theme';
 import { CrewTracking, RootStackParamList, WasteReport } from '../../types';
 import { Badge } from '../../components/common/Badge';
@@ -25,6 +26,7 @@ const STATUS_STEPS: { key: string; label: string }[] = [
 export default function CitizenReportDetailScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const { features } = useAppSettings();
   const { reportId } = route.params;
   const { user } = useAppSelector((s) => s.auth);
   const [report, setReport] = useState<WasteReport | null>(null);
@@ -161,12 +163,14 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
           <TouchableOpacity style={styles.outlineBtn} onPress={() => navigation.navigate('Map', {})}>
             <Text style={styles.outlineBtnText}>🗺️ Map</Text>
           </TouchableOpacity>
+{features.messaging && (
           <TouchableOpacity style={styles.primaryBtn} onPress={handleChatAdmin} disabled={contactingAdmin}>
             {contactingAdmin
               ? <ActivityIndicator size="small" color="#fff" />
               : <Text style={styles.primaryBtnText}>💬 Chat admin</Text>
             }
           </TouchableOpacity>
+)}
         </View>
       </ScrollView>
     </SafeAreaView>

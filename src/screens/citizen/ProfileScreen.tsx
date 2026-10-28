@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert, Switch } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
@@ -9,6 +9,7 @@ import { useT } from '../../hooks/useT';
 import { LANG_NAMES, Lang } from '../../i18n/strings';
 import { BackIcon } from '../../components/common/TabIcons';
 import { useNavigation } from '@react-navigation/native';
+import { AppSettingsSheet, EditProfileSheet, NotificationSettingsSheet, PrivacySheet } from '../../components/profile/AccountSheets';
 
 export default function CitizenProfileScreen() {
   const dispatch = useAppDispatch();
@@ -16,6 +17,7 @@ export default function CitizenProfileScreen() {
   const { colors, isDark, setMode } = useTheme();
   const { t, lang } = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [sheet, setSheet] = useState<'edit' | 'notifications' | 'privacy' | 'app' | null>(null);
   const { user } = useAppSelector((s) => s.auth);
   const { userReports } = useAppSelector((s) => s.reports);
 
@@ -142,10 +144,10 @@ export default function CitizenProfileScreen() {
             </View>
           </View>
           {[
-            { icon: '🔔', label: 'Notification preferences' },
-            { icon: '🔒', label: 'Privacy & security' },
+            { icon: '🔔', label: 'Notification preferences', sheet: 'notifications' as const },
+            { icon: '🔒', label: 'Privacy & security', sheet: 'privacy' as const },
           ].map((row) => (
-            <TouchableOpacity key={row.label} style={styles.settingsRow} onPress={() => Alert.alert(row.label, 'Coming soon')}>
+            <TouchableOpacity key={row.label} style={styles.settingsRow} onPress={() => setSheet(row.sheet)}>
               <View style={[styles.infoIcon, { backgroundColor: colors.grayBg }]}>
                 <Text>{row.icon}</Text>
               </View>
@@ -157,7 +159,7 @@ export default function CitizenProfileScreen() {
 
         <TouchableOpacity
           style={[styles.editBtn, { backgroundColor: colors.tealLight }]}
-          onPress={() => Alert.alert('Edit profile', 'Coming soon')}
+          onPress={() => setSheet('edit')}
         >
           <Text style={[styles.editBtnText, { color: colors.tealDark }]}>✏️ Edit profile</Text>
         </TouchableOpacity>
@@ -166,6 +168,10 @@ export default function CitizenProfileScreen() {
           <Text style={styles.logoutBtnText}>Sign out</Text>
         </TouchableOpacity>
       </ScrollView>
+      <EditProfileSheet visible={sheet === 'edit'} onClose={() => setSheet(null)} />
+      <NotificationSettingsSheet visible={sheet === 'notifications'} onClose={() => setSheet(null)} />
+      <PrivacySheet visible={sheet === 'privacy'} onClose={() => setSheet(null)} />
+      <AppSettingsSheet visible={sheet === 'app'} onClose={() => setSheet(null)} />
     </SafeAreaView>
   );
 }

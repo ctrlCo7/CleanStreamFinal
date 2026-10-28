@@ -151,7 +151,7 @@ export const DEFAULT_SETTINGS: Settings = {
   supportEmail: 'support@cleanstream.ph',
   supportPhone: '+63 900 000 0000',
   aiModelVersion: 'v1.0',
-  aiReviewThreshold: 55,
+  aiReviewThreshold: 60,
   defaultSeverityThresholds: { critical: 90, high: 70, moderate: 40 },
   notificationSettings: { enablePush: true, reportUpdateAlerts: true, criticalAlerts: true, inspectionReminders: true },
   featureFlags: { aiAnalysis: true, cleanupEvents: true, messaging: true, mapView: true, announcements: true },

@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../hooks/useTheme';
+import { useAppSettings } from '../../services/appSettings';
 import { ThemeColors } from '../../constants/theme';
 import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
@@ -31,6 +32,7 @@ export default function BarangayScheduleScreen() {
   const navigation = useNavigation<Nav>();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const { features } = useAppSettings();
   const { user } = useAppSelector((s) => s.auth);
   const [events, setEvents] = useState<CleanupEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,9 +101,11 @@ export default function BarangayScheduleScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+{features.cleanupEvents && (
         <TouchableOpacity style={styles.newBtn} onPress={() => navigation.navigate('BarangayCreateEvent')} activeOpacity={0.85}>
           <Text style={styles.newBtnText}>+ New event</Text>
         </TouchableOpacity>
+)}
 
         {/* Calendar */}
         <View style={styles.calCard}>

@@ -11,7 +11,7 @@ import { Badge } from '../../components/common/Badge';
 import { BackIcon } from '../../components/common/TabIcons';
 import { useAppSelector } from '../../store/hooks';
 import { getReportById } from '../../services/reportsService';
-import { assignCrewToReport, CrewMember, getAllCrews, getCrewsForBarangay } from '../../services/crewService';
+import { assignCrewToReport, CrewMember, getCrewsForBarangay, reportBarangayId as barangayOfReport } from '../../services/crewService';
 import { formatDateKey, formatHHmm, isValidDateKey, toDateKey } from '../../utils/dates';
 import { formatPhone } from '../../utils/phone';
 
@@ -77,19 +77,20 @@ export default function AssignCrewScreen({ navigation, route }: Props) {
   }, [reportId, reloadKey]);
 
   const userRole = user?.role;
-  const userBarangayId = user?.barangayId ?? '';
+  // Officials and the Admin alike only see the crews of the report's own barangay: a
+  // cleanup is never handed to another barangay.
+  const crewBarangayId = report ? barangayOfReport(report) : undefined;
   useEffect(() => {
-    if (userRole !== 'barangay' && userRole !== 'admin') return;
+    if ((userRole !== 'barangay' && userRole !== 'admin') || !crewBarangayId) return;
     let cancelled = false;
     setCrewsLoading(true);
     setCrewsError('');
-    const load = userRole === 'admin' ? getAllCrews() : getCrewsForBarangay(userBarangayId);
-    load
+    getCrewsForBarangay(crewBarangayId)
       .then((list) => { if (!cancelled) setCrews(list); })
       .catch((err: Error) => { if (!cancelled) setCrewsError(err.message || 'Could not load the crews.'); })
       .finally(() => { if (!cancelled) setCrewsLoading(false); });
     return () => { cancelled = true; };
-  }, [userRole, userBarangayId, reloadKey]);
+  }, [userRole, crewBarangayId, reloadKey]);
 
   const barangayName = report?.location?.barangay || report?.barangay || user?.barangay || 'your barangay';
   const reportNumber = report?.reportNumber ?? report?.id.slice(0, 12) ?? '';
@@ -242,6 +243,7 @@ export default function AssignCrewScreen({ navigation, route }: Props) {
         </View>
 
         <Text style={styles.sectionTitle}>Choose a crew</Text>
+        <Text style={styles.hint}>Only {barangayName}'s own crews are listed. A report's cleanup stays in its barangay.</Text>
         {crewsLoading ? (
           <View style={styles.card}><ActivityIndicator size="small" color={colors.brgy} /></View>
         ) : crewsError ? (
@@ -254,7 +256,7 @@ export default function AssignCrewScreen({ navigation, route }: Props) {
         ) : crews.length === 0 ? (
           <View style={styles.card}>
             <Text style={styles.muted}>
-              {`No cleanup crews in ${isAdmin ? 'the city' : barangayName} yet. Ask the Super Admin to create a crew account. A crew without smartphones can still have an account; you record their work for them.`}
+              {`No cleanup crews in ${barangayName} yet. Ask the Super Admin to create a crew account for ${barangayName}. A crew without smartphones can still have an account; you record their work for them.`}
             </Text>
           </View>
         ) : (
@@ -274,7 +276,6 @@ export default function AssignCrewScreen({ navigation, route }: Props) {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.crewName}>{c.name}</Text>
                   <Text style={styles.muted}>{c.phone ? formatPhone(c.phone) : 'No number'}</Text>
-                  {isAdmin && !!c.barangay && <Text style={styles.hint}>{c.barangay}</Text>}
                 </View>
               </TouchableOpacity>
             );

@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../hooks/useTheme';
+import { useAppSettings } from '../../services/appSettings';
 import { ThemeColors } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -21,6 +22,7 @@ export default function AdminDashboardScreen() {
   const dispatch = useAppDispatch();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const { features } = useAppSettings();
   const { reports, loading } = useAppSelector((s) => s.reports);
 
   const load = useCallback(() => dispatch(fetchAllReports()), [dispatch]);
@@ -89,7 +91,9 @@ export default function AdminDashboardScreen() {
         </View>
 
         {/* Map */}
+{features.mapView && (
         <MapPreview pins={hotspots} onPress={() => navigation.navigate('Map', {})} tagText="Waste hotspots · Multiple zones" />
+)}
 
         {/* Legend */}
         <View style={styles.legend}>

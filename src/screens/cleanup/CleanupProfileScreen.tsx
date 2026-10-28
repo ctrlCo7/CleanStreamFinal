@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../hooks/useTheme';
@@ -6,12 +6,14 @@ import { ThemeColors } from '../../constants/theme';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { logout } from '../../store/authSlice';
 import { formatPhone } from '../../utils/phone';
+import { EditProfileSheet, NotificationSettingsSheet, PrivacySheet } from '../../components/profile/AccountSheets';
 
 export default function CleanupProfileScreen() {
   const dispatch = useAppDispatch();
   const { colors, isDark, setMode } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const user = useAppSelector((s) => s.auth.user);
+  const [sheet, setSheet] = useState<'edit' | 'notifications' | 'privacy' | null>(null);
 
   const displayName = user ? `${user.firstName} ${user.lastName}`.trim() : 'Cleanup crew';
   const initials = displayName.split(' ').filter(Boolean).map((n) => n[0]).join('').slice(0, 2).toUpperCase();
@@ -56,7 +58,7 @@ export default function CleanupProfileScreen() {
             </View>
           ))}
           <Text style={styles.note}>
-            Your phone number and barangay are set by the Super Admin. Ask them if something is wrong.
+            Your barangay is set by the Super Admin. You can update your name and number in Edit profile.
           </Text>
         </View>
 
@@ -70,12 +72,25 @@ export default function CleanupProfileScreen() {
               thumbColor="#fff"
             />
           </View>
+          {([
+            ['Edit profile', 'edit'],
+            ['Notification settings', 'notifications'],
+            ['Privacy & security', 'privacy'],
+          ] as const).map(([label, key]) => (
+            <TouchableOpacity key={key} style={styles.settingsRow} onPress={() => setSheet(key)} accessibilityRole="button">
+              <Text style={styles.settingsLabel}>{label}</Text>
+              <Text style={styles.settingsLabel}>›</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut} activeOpacity={0.8}>
           <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>
       </ScrollView>
+      <EditProfileSheet visible={sheet === 'edit'} onClose={() => setSheet(null)} />
+      <NotificationSettingsSheet visible={sheet === 'notifications'} onClose={() => setSheet(null)} />
+      <PrivacySheet visible={sheet === 'privacy'} onClose={() => setSheet(null)} />
     </SafeAreaView>
   );
 }

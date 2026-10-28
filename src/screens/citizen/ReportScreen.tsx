@@ -264,7 +264,7 @@ Is this where you are?`,
     if (aiIssue) {
       Alert.alert(
         t('report.submittedTitle'),
-        t(aiIssue === 'skipped' ? 'report.aiSkipped' : 'report.aiFailed'),
+        t(aiIssue === 'skipped' ? 'report.aiSkipped' : aiIssue === 'disabled' ? 'report.aiDisabled' : 'report.aiFailed'),
         [{ text: t('report.viewReport'), onPress: () => navigation.navigate('CitizenAIResult', { report: reportPayload }) }],
       );
     } else {

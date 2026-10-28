@@ -14,6 +14,7 @@ import { addTaskPhoto, createCleanupTask, uploadTaskPhoto } from './cleanupTaskS
 import { db } from './firebase';
 import { createNotification, sendReportNotification } from './notificationService';
 import { updateReportStatus } from './reportsService';
+import { assignmentProblem, reportBarangayId } from './assignmentRules';
 import { mergeSummaries, summarizeAnalysis } from './cleanupComparison';
 import { withTimeout } from '../utils/async';
 
@@ -46,11 +47,7 @@ export const getCrewsForBarangay = async (barangayId: string): Promise<CrewMembe
   return snap.docs.filter((d) => isUsable(d.data())).map((d) => toCrew(d.id, d.data()));
 };
 
-/** Every active cleanup crew (Admin only: officials can't read across barangays by design). */
-export const getAllCrews = async (): Promise<CrewMember[]> => {
-  const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'cleanup_team')));
-  return snap.docs.filter((d) => isUsable(d.data())).map((d) => toCrew(d.id, d.data()));
-};
+export { assignmentProblem, reportBarangayId } from './assignmentRules';
 
 /** Live view of one task (crew, official and admin all watch the same record). */
 export const subscribeToTask = (taskId: string, callback: (task: CleanupTask | null) => void, onError?: (error: Error) => void) =>
@@ -93,10 +90,10 @@ export interface AssignCrewInput {
 export const assignCrewToReport = async (i: AssignCrewInput): Promise<string> => {
   const { report, crew, assigner } = i;
   const assignerName = fullName(assigner);
-  // An official can only create tasks for their own barangay (enforced by the security rules too).
-  const barangayId = assigner.role === 'barangay'
-    ? assigner.barangayId ?? ''
-    : report.barangayId ?? report.location.barangayId ?? crew.barangayId ?? '';
+  const problem = assignmentProblem(report, crew, assigner);
+  if (problem) throw new Error(problem);
+  // The task always belongs to the report's barangay (the security rules check this too).
+  const barangayId = reportBarangayId(report) as string;
   const barangayName = report.barangay ?? report.location.barangay ?? crew.barangay ?? '';
   const where_ = report.location.address ?? barangayName;
 

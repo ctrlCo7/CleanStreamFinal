@@ -98,6 +98,7 @@ const en = {
   'report.submittedTitle': 'Report submitted',
   'report.aiSkipped': 'You skipped the AI analysis. A barangay official will assess the photo.',
   'report.aiFailed': "The AI couldn't analyze this photo. A barangay official will assess it.",
+  'report.aiDisabled': 'AI analysis is turned off right now. A barangay official will assess the photo.',
   'report.viewReport': 'View report',
 
   'ctx.in_water': 'In the water',
@@ -116,6 +117,7 @@ const en = {
   'result.analyzedOnDevice': 'Photo analyzed on this device',
   'result.skippedTitle': 'AI analysis skipped',
   'result.unavailableTitle': "AI couldn't run on this phone",
+  'result.disabledTitle': 'AI analysis is turned off',
   'result.unavailableBody': 'Nothing was detected automatically, so the severity below is a placeholder. A barangay official will review your photo. Telling us the waste type below helps them.',
   'result.photoQuality': 'Photo quality: {level}',
   'quality.fair': 'fair',
@@ -295,6 +297,7 @@ const fil: Partial<Record<StringKey, string>> = {
   'report.submittedTitle': 'Naipadala ang report',
   'report.aiSkipped': 'Nilaktawan mo ang pagsusuri ng AI. Susuriin ng opisyal ng barangay ang litrato.',
   'report.aiFailed': 'Hindi nasuri ng AI ang litratong ito. Susuriin ito ng opisyal ng barangay.',
+  'report.aiDisabled': 'Naka-off ang pagsusuri ng AI ngayon. Susuriin ng opisyal ng barangay ang litrato.',
   'report.viewReport': 'Tingnan ang report',
 
   'ctx.in_water': 'Nasa tubig',
@@ -313,6 +316,7 @@ const fil: Partial<Record<StringKey, string>> = {
   'result.analyzedOnDevice': 'Sinuri ang litrato sa teleponong ito',
   'result.skippedTitle': 'Nilaktawan ang pagsusuri ng AI',
   'result.unavailableTitle': 'Hindi gumana ang AI sa teleponong ito',
+  'result.disabledTitle': 'Naka-off ang pagsusuri ng AI',
   'result.unavailableBody': 'Walang natukoy nang awtomatiko, kaya pansamantala lang ang tindi sa ibaba. Susuriin ng opisyal ng barangay ang iyong litrato. Makakatulong kung sasabihin mo ang uri ng basura sa ibaba.',
   'result.photoQuality': 'Kalidad ng litrato: {level}',
   'quality.fair': 'katamtaman',
@@ -490,6 +494,7 @@ const ceb: Partial<Record<StringKey, string>> = {
   'report.submittedTitle': 'Naipadala ang report',
   'report.aiSkipped': 'Gilaktawan nimo ang pagsusi sa AI. Susihon sa opisyal sa barangay ang litrato.',
   'report.aiFailed': 'Wala masusi sa AI kining litrato. Susihon kini sa opisyal sa barangay.',
+  'report.aiDisabled': 'Naka-off ang pagsusi sa AI karon. Susihon sa opisyal sa barangay ang litrato.',
   'report.viewReport': 'Tan-awa ang report',
 
   'ctx.in_water': 'Naa sa tubig',
@@ -508,6 +513,7 @@ const ceb: Partial<Record<StringKey, string>> = {
   'result.analyzedOnDevice': 'Gisusi ang litrato niining telepono',
   'result.skippedTitle': 'Gilaktawan ang pagsusi sa AI',
   'result.unavailableTitle': 'Wala molihok ang AI niining telepono',
+  'result.disabledTitle': 'Naka-off ang pagsusi sa AI',
   'result.unavailableBody': 'Walay nailhan nga awtomatiko, mao nga temporaryo ra ang kagrabe sa ubos. Susihon sa opisyal sa barangay ang imong litrato. Makatabang kung isulti nimo ang klase sa basura sa ubos.',
   'result.photoQuality': 'Kalidad sa litrato: {level}',
   'quality.fair': 'kasarangan',

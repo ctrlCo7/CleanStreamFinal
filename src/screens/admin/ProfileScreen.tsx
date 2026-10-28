@@ -7,11 +7,13 @@ import { logout, setUser } from '../../store/authSlice';
 import { updateUserProfile } from '../../services/authService';
 import { formatPhone, normalizePhone } from '../../utils/phone';
 import { rowsToCsv, exportCsv } from '../../utils/csvExport';
+import { AppSettingsSheet, EditProfileSheet, NotificationSettingsSheet, PrivacySheet } from '../../components/profile/AccountSheets';
 
 export default function AdminProfileScreen() {
   const dispatch = useAppDispatch();
   const { colors, isDark, setMode } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [sheet, setSheet] = useState<'edit' | 'notifications' | 'privacy' | 'app' | null>(null);
   const { user } = useAppSelector((s) => s.auth);
   const { reports } = useAppSelector((s) => s.reports);
   const [exporting, setExporting] = useState(false);
@@ -182,9 +184,10 @@ export default function AdminProfileScreen() {
             />
           </View>
           {[
-            { label: 'Edit profile', onPress: () => Alert.alert('Edit profile', 'Coming soon') },
-            { label: 'Notification settings', onPress: () => Alert.alert('Notification settings', 'Coming soon') },
-            { label: 'System preferences', onPress: () => Alert.alert('System preferences', 'Coming soon') },
+            { label: 'Edit profile', onPress: () => setSheet('edit') },
+            { label: 'Notification settings', onPress: () => setSheet('notifications') },
+            { label: 'App settings', onPress: () => setSheet('app') },
+            { label: 'Privacy & security', onPress: () => setSheet('privacy') },
             { label: 'Export my data', onPress: () => exportMyData() },
           ].map((item, i, arr) => (
             <TouchableOpacity
@@ -204,6 +207,10 @@ export default function AdminProfileScreen() {
           <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>
       </ScrollView>
+      <EditProfileSheet visible={sheet === 'edit'} onClose={() => setSheet(null)} />
+      <NotificationSettingsSheet visible={sheet === 'notifications'} onClose={() => setSheet(null)} />
+      <PrivacySheet visible={sheet === 'privacy'} onClose={() => setSheet(null)} />
+      <AppSettingsSheet visible={sheet === 'app'} onClose={() => setSheet(null)} />
     </SafeAreaView>
   );
 }

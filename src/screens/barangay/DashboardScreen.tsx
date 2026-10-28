@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../hooks/useTheme';
+import { useAppSettings } from '../../services/appSettings';
 import { ThemeColors } from '../../constants/theme';
 import { Badge } from '../../components/common/Badge';
 import { MapPreview } from '../../components/common/MapPreview';
@@ -26,6 +27,7 @@ export default function BarangayDashboardScreen() {
   const tabNav = useNavigation<BottomTabNavigationProp<BarangayTabParamList>>();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const { features } = useAppSettings();
   const { user } = useAppSelector((s) => s.auth);
   const { reports: allReports } = useAppSelector((s) => s.reports);
 
@@ -142,7 +144,7 @@ export default function BarangayDashboardScreen() {
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {/* Latest instructions from Admin */}
-        {announcements.length > 0 && (
+        {features.announcements && announcements.length > 0 && (
           <View style={styles.announceCard}>
             <Text style={styles.announceHeader}>Latest from Admin</Text>
             {announcements.map((a) => (
@@ -173,11 +175,13 @@ export default function BarangayDashboardScreen() {
         </View>
 
         {/* Map */}
+{features.mapView && (
         <MapPreview
           pins={hotspots}
           onPress={() => navigation.navigate('Map', {})}
           tagText={`${myBarangay} Hotspots`}
         />
+)}
 
         {/* Active alerts */}
         {criticalCount > 0 && (
@@ -279,9 +283,11 @@ export default function BarangayDashboardScreen() {
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.brgyLight, borderColor: colors.brgyMid }]} onPress={() => navigation.navigate('BarangaySchedule', {})}>
             <Text style={[styles.actionBtnText, { color: colors.brgyDark }]}>View schedule</Text>
           </TouchableOpacity>
+{features.messaging && (
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.tealLight, borderColor: colors.tealMid }]} onPress={handleMessageAdmin} disabled={messagingAdmin}>
             <Text style={[styles.actionBtnText, { color: colors.tealDark }]}>{messagingAdmin ? 'Opening…' : 'Message admin'}</Text>
           </TouchableOpacity>
+)}
         </View>
         <View style={[styles.actionsRow, { marginTop: 6 }]}>
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.tealLight, borderColor: colors.tealMid }]} onPress={() => navigation.navigate('BarangayCrewTasks')}>
@@ -289,9 +295,11 @@ export default function BarangayDashboardScreen() {
               {needsYouCount > 0 ? `Crews & cleanup tasks (${needsYouCount} need you)` : 'Crews & cleanup tasks'}
             </Text>
           </TouchableOpacity>
+{features.cleanupEvents && (
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.brgyLight, borderColor: colors.brgyMid }]} onPress={() => navigation.navigate('BarangayCreateEvent')}>
             <Text style={[styles.actionBtnText, { color: colors.brgyDark }]}>Plan a volunteer cleanup</Text>
           </TouchableOpacity>
+)}
         </View>
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: colors.brgyLight, borderColor: colors.brgyMid, marginTop: 6 }]}

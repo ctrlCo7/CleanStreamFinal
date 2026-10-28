@@ -1,3 +1,5 @@
+import { appSettings } from './appSettings';
+import { isMuted, notificationPrefs } from './notificationPrefs';
 import {
   collection,
   doc,
@@ -41,6 +43,8 @@ export const sendReportNotification = async (
   reportNumber: string,
   severity?: SeverityLevel,
 ): Promise<void> => {
+  // The Super Admin can turn report status notifications off for everyone.
+  if (!appSettings().notifications.reportUpdateAlerts) return;
   const messages: Record<NotificationType, { title: string; body: string }> = {
     report_submitted: {
       title: 'Report Submitted',
@@ -190,7 +194,9 @@ export const subscribeToNotifications = (
     limit(limitCount),
   );
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification)));
+    // Kinds the person muted in Notification settings are left out of the list and badge.
+    const prefs = notificationPrefs();
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification)).filter((n) => !isMuted(prefs, n.type)));
   });
 };
 

@@ -102,7 +102,10 @@ service cloud.firestore {
       // (idVerification 'rejected' -> 'pending').
       allow update: if (isOwner(userId)
                         && !request.resource.data.diff(resource.data).affectedKeys()
-                            .hasAny(['role', 'isVerified', 'isActive', 'deletedAt', 'deletedBy', 'createdBy', 'idRejectionReason'])
+                            .hasAny(['role', 'isVerified', 'isActive', 'deletedAt', 'deletedBy', 'createdBy', 'idRejectionReason',
+                                     // An official's barangay decides which reports and crews they control,
+                                     // so only the Super Admin changes it.
+                                     'barangayId', 'barangay', 'email'])
                         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['idVerification'])
                             || (resource.data.get('idVerification', '') == 'rejected'
                                 && request.resource.data.idVerification == 'pending')))
@@ -154,8 +157,14 @@ service cloud.firestore {
                     && request.resource.data.userId == currentUid()
                     && request.resource.data.keys().hasAll(['userId', 'location', 'status', 'severity']);
 
-      // Status transitions — strict role-based write access
-      allow update: if isAuthenticated() && (
+      // Status transitions — strict role-based write access.
+      // For everyone, the Admin included: a report never moves to another barangay, and it can
+      // only be assigned to its own barangay.
+      allow update: if isAuthenticated()
+                    && request.resource.data.get('barangayId', null) == resource.data.get('barangayId', null)
+                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assignedBarangayId'])
+                        || request.resource.data.assignedBarangayId == resource.data.get('barangayId', null))
+                    && (
                       // Owner can only update notes/photos on pending reports
                       (isOwner(resource.data.userId)
                         && resource.data.status == 'pending'
@@ -167,7 +176,7 @@ service cloud.firestore {
                         && sameBarangay(resource.data.barangayId)
                         && request.resource.data.status in ['verified', 'assigned', 'in_progress', 'completed', 'rejected']) ||
 
-                      // Admin: unrestricted update
+                      // Admin: any other change (still within the report's barangay, see above)
                       isAdmin() ||
 
                       // AI service (server-side): update aiAnalysis field
@@ -233,16 +242,33 @@ service cloud.firestore {
                     (isCleanupTeam() && resource.data.assignedTeamId == currentUid())
                   );
 
+      // A cleanup stays inside the report's barangay: the task's barangay must be the report's,
+      // and the crew must be a cleanup crew of that same barangay. Nobody, not even the Admin,
+      // can hand it to another barangay's crew.
+      function crewOfBarangay(crewId, barangayId) {
+        let crew = get(/databases/$(database)/documents/users/$(crewId)).data;
+        return crew.role == 'cleanup_team' && crew.get('barangayId', '') == barangayId;
+      }
+      function reportBarangay(reportId) {
+        return get(/databases/$(database)/documents/reports/$(reportId)).data.get('barangayId', '');
+      }
+
       // Created by the Admin, or by an official for their own barangay, always as themselves.
       allow create: if isAuthenticated()
                     && request.resource.data.assignedByUserId == currentUid()
                     && (isAdmin()
-                        || (isBarangayOfficer() && request.resource.data.barangayId == getUserData().barangayId));
+                        || (isBarangayOfficer() && request.resource.data.barangayId == getUserData().barangayId))
+                    && request.resource.data.barangayId == reportBarangay(request.resource.data.reportId)
+                    && crewOfBarangay(request.resource.data.assignedTeamId, request.resource.data.barangayId);
 
       allow update: if isAuthenticated() && (
-                      isAdmin() ||
-                      // An official can manage (and record work on behalf of a crew for) their barangay's tasks
-                      (isBarangayOfficer() && sameBarangay(resource.data.barangayId)) ||
+                      // Admin / official: the task can't move to another barangay or report, and a
+                      // replacement crew must be from the same barangay.
+                      ((isAdmin() || (isBarangayOfficer() && sameBarangay(resource.data.barangayId)))
+                        && request.resource.data.barangayId == resource.data.barangayId
+                        && request.resource.data.reportId == resource.data.reportId
+                        && (request.resource.data.assignedTeamId == resource.data.assignedTeamId
+                            || crewOfBarangay(request.resource.data.assignedTeamId, resource.data.barangayId))) ||
                       // A crew leader can accept/decline, start, document and finish only their own task,
                       // and cannot hand it to someone else
                       (isCleanupTeam()

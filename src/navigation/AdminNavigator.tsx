@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useTheme } from '../hooks/useTheme';
+import { useAppSettings } from '../services/appSettings';
 import { AdminTabParamList } from '../types';
 
 import AdminDashboardScreen from '../screens/admin/DashboardScreen';
@@ -22,6 +23,8 @@ const Tab = createBottomTabNavigator<AdminTabParamList>();
 
 export default function AdminNavigator() {
   const { colors } = useTheme();
+  // The Super Admin can switch features off for everyone (System settings).
+  const { features } = useAppSettings();
   return (
     <Tab.Navigator
       screenOptions={{
@@ -72,6 +75,7 @@ export default function AdminNavigator() {
           ),
         }}
       />
+      {features.messaging && (
       <Tab.Screen
         name="AdminMessages"
         component={AdminMessagesScreen}
@@ -81,6 +85,7 @@ export default function AdminNavigator() {
           ),
         }}
       />
+      )}
       <Tab.Screen
         name="AdminProfile"
         component={AdminProfileScreen}

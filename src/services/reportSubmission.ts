@@ -8,6 +8,7 @@
 import { AIAnalysisResult, GeoLocation, WaterContext } from '../types';
 import { withTimeout } from '../utils/async';
 import { analyzeWastePhoto, unavailableAnalysis } from './aiService';
+import { appSettings } from './appSettings';
 import { checkNearbyReports, updateReportWithAI } from './reportsService';
 import { getNotificationRecipientsByRole, sendBulkNotification, sendReportNotification } from './notificationService';
 import { ProximityResult } from './reportProximity';
@@ -26,7 +27,7 @@ export interface AfterCreateInput {
 export interface AfterCreateResult {
   ai: AIAnalysisResult;
   /** Why there's no real AI result, if there isn't one. */
-  aiIssue: 'skipped' | 'failed' | null;
+  aiIssue: 'skipped' | 'failed' | 'disabled' | null;
   proximity: ProximityResult | null;
 }
 
@@ -42,7 +43,11 @@ export async function analyzeAndSaveReport(input: AfterCreateInput): Promise<Aft
 
   let ai: AIAnalysisResult;
   let aiIssue: AfterCreateResult['aiIssue'] = null;
-  try {
+  if (!appSettings().features.aiAnalysis) {
+    // The Super Admin turned AI analysis off: an official assesses the photo instead.
+    ai = { ...unavailableAnalysis(waterContext), modelVersion: 'AI turned off by the administrator' };
+    aiIssue = 'disabled';
+  } else try {
     // Outer hard deadline on top of the per-stage timeouts inside analyzeWastePhoto.
     const analysis = withTimeout(analyzeWastePhoto(photoUri, reportId, userId, waterContext, location), 50000, 'AI analysis');
     const raced = await (input.skip ? Promise.race([analysis, input.skip.then(() => null)]) : analysis);
@@ -65,7 +70,8 @@ export async function analyzeAndSaveReport(input: AfterCreateInput): Promise<Aft
   }
 
   // Barangay officials hear about critical/high reports in their barangay right away.
-  if ((ai.severityLevel === 'critical' || ai.severityLevel === 'high') && location.barangayId) {
+  if ((ai.severityLevel === 'critical' || ai.severityLevel === 'high') && location.barangayId
+    && appSettings().notifications.criticalAlerts) {
     getNotificationRecipientsByRole(['barangay'], location.barangayId)
       .then((ids) => ids.length === 0 ? undefined : sendBulkNotification(
         ids,

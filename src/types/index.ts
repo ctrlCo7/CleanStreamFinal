@@ -19,6 +19,8 @@ export interface User {
   jurisdiction?: string;
   // Contact number (normalised, e.g. +639171234567). Crews and officials are reached by phone.
   phone?: string;
+  // What this person chose to be notified about (Profile → Notification settings).
+  notificationPrefs?: import('../services/notificationPrefs').NotificationPrefs;
   // Set only for Admin / Barangay Official sign-ups, which must have their ID and face
   // checked by the Super Admin. 'pending' and 'rejected' accounts have no staff powers.
   idVerification?: IdVerificationStatus;

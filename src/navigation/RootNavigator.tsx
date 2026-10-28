@@ -5,6 +5,8 @@ import { onAuthChange } from '../services/authService';
 import { restoreSession, setUser } from '../store/authSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { loadRegisteredBarangays } from '../services/locationService';
+import { startAppSettings, stopAppSettings } from '../services/appSettings';
+import { setNotificationPrefs } from '../services/notificationPrefs';
 import { useTheme } from '../hooks/useTheme';
 import { RootStackParamList } from '../types';
 
@@ -67,6 +69,13 @@ export default function RootNavigator() {
   useEffect(() => {
     if (isAuthenticated) loadRegisteredBarangays();
   }, [isAuthenticated]);
+
+  // The Super Admin's System settings, and this person's own notification choices.
+  useEffect(() => {
+    if (isAuthenticated) startAppSettings();
+    else stopAppSettings();
+  }, [isAuthenticated]);
+  useEffect(() => { setNotificationPrefs(user?.notificationPrefs); }, [user?.notificationPrefs]);
 
   if (initializing) return <LoadingScreen />;
 

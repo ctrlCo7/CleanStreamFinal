@@ -84,7 +84,7 @@ export default function AdminAnalyticsScreen() {
           ['Resolved', resolved],
           ['Hazardous', hazardous],
           ['Avg AI confidence', avgConfidence],
-          ['Model version', analytics?.aiStats.modelVersion || 'CNN v2.4'],
+          ['Model version', analytics?.aiStats.modelVersion || 'On-device AI'],
           ...monthlyData.map((d) => [`Reports — ${d.label}`, d.value]),
           ...wasteSegments.map((w) => [`Waste type — ${w.label}`, `${w.percentage}%`]),
           ...barangays.map((b) => [`Barangay — ${b.name}`, `${b.pct}%`]),
@@ -156,7 +156,7 @@ export default function AdminAnalyticsScreen() {
             { k: 'Total CNN scans', v: `${analytics?.aiStats.totalScans ?? total}` },
             { k: 'Avg confidence', v: avgConfidence, color: colors.teal },
             { k: 'Hazardous flags', v: `${hazardous}`, color: colors.red },
-            { k: 'Model version', v: analytics?.aiStats.modelVersion || 'CNN v2.4' },
+            { k: 'Model version', v: analytics?.aiStats.modelVersion || 'On-device AI' },
           ].map((row) => (
             <View key={row.k} style={styles.aiRow}>
               <Text style={styles.aiKey}>{row.k}</Text>

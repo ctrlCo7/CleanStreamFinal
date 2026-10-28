@@ -8,6 +8,7 @@ import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { logout, setUser } from '../../store/authSlice';
 import { updateUserProfile } from '../../services/authService';
 import { formatPhone, normalizePhone } from '../../utils/phone';
+import { AppSettingsSheet, EditProfileSheet, NotificationSettingsSheet, PrivacySheet } from '../../components/profile/AccountSheets';
 
 interface FieldCheckpoint {
   id: string;
@@ -20,6 +21,7 @@ export default function BarangayProfileScreen() {
   const dispatch = useAppDispatch();
   const { colors, isDark, setMode } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [sheet, setSheet] = useState<'edit' | 'notifications' | 'privacy' | 'app' | null>(null);
   const { user } = useAppSelector((s) => s.auth);
   const [checkpoints, setCheckpoints] = useState<FieldCheckpoint[]>([]);
   const [editingPhone, setEditingPhone] = useState(false);
@@ -212,8 +214,9 @@ export default function BarangayProfileScreen() {
             />
           </View>
           {[
-            { label: 'Edit profile', onPress: () => Alert.alert('Edit profile', 'Coming soon') },
-            { label: 'Notification settings', onPress: () => Alert.alert('Notification settings', 'Coming soon') },
+            { label: 'Edit profile', onPress: () => setSheet('edit') },
+            { label: 'Notification settings', onPress: () => setSheet('notifications') },
+            { label: 'Privacy & security', onPress: () => setSheet('privacy') },
             { label: 'Report a problem', onPress: () => Alert.alert('Support', 'Contact CENRO admin') },
           ].map((item, i, arr) => (
             <TouchableOpacity
@@ -233,6 +236,10 @@ export default function BarangayProfileScreen() {
           <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>
       </ScrollView>
+      <EditProfileSheet visible={sheet === 'edit'} onClose={() => setSheet(null)} />
+      <NotificationSettingsSheet visible={sheet === 'notifications'} onClose={() => setSheet(null)} />
+      <PrivacySheet visible={sheet === 'privacy'} onClose={() => setSheet(null)} />
+      <AppSettingsSheet visible={sheet === 'app'} onClose={() => setSheet(null)} />
     </SafeAreaView>
   );
 }

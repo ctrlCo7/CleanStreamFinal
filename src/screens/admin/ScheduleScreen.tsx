@@ -10,17 +10,14 @@ import { RootStackParamList } from '../../types';
 import { BackIcon } from '../../components/common/TabIcons';
 import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
-import { updateReportStatus } from '../../services/reportsService';
-import { assignCrewToReport, CrewMember, getAllCrews } from '../../services/crewService';
+import { assignCrewToReport, CrewMember, getCrewsForBarangay, reportBarangayId } from '../../services/crewService';
 import { formatDateKey, formatHHmm, toDateKey } from '../../utils/dates';
 import { formatPhone } from '../../utils/phone';
 import { CEBU_BARANGAYS } from '../../services/locationService';
-import { getNotificationRecipientsByRole, sendBulkNotification, sendReportNotification } from '../../services/notificationService';
+import { getNotificationRecipientsByRole, sendBulkNotification } from '../../services/notificationService';
 import { formatVolume } from '../../utils/units';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AdminSchedule'>;
-
-const TEAMS = ['Team A — General cleanup', 'Team B — Hazmat specialists', 'Team C — Standard cleanup', 'Team D — Heavy machinery'];
 
 // Used when the Admin picks a real crew: this screen has no date or time fields of its own.
 const CREW_START = '08:00';
@@ -51,16 +48,9 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
   const severity = report?.severity || 'critical';
   const barangay = report?.location?.barangay || report?.barangay || 'Unknown';
 
-  // Default the barangay-unit selector to the report's own barangay when it matches
-  // the canonical list, so approving without touching the selector still assigns the
-  // correct real barangayId (previously this used a hardcoded display-only label that
-  // never matched a real barangay account, so assignments never actually reached anyone).
-  const defaultUnitIdx = Math.max(0, CEBU_BARANGAYS.findIndex((b) => b.name === barangay));
-
-  const [teamIdx, setTeamIdx] = useState(1);
-  const [unitIdx, setUnitIdx] = useState(defaultUnitIdx);
-  const [selectedTeam, setSelectedTeam] = useState(TEAMS[1]);
-  const [selectedUnit, setSelectedUnit] = useState(CEBU_BARANGAYS[defaultUnitIdx]);
+  // The cleanup stays in the report's own barangay: its unit and crews only, never another barangay's.
+  const unitId = report ? reportBarangayId(report) : undefined;
+  const selectedUnit = { id: unitId ?? '', name: CEBU_BARANGAYS.find((b) => b.id === unitId)?.name ?? barangay };
   const [approved, setApproved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [crews, setCrews] = useState<CrewMember[]>([]);
@@ -68,15 +58,16 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
   const [crewId, setCrewId] = useState('');
 
   useEffect(() => {
+    if (!unitId) { setCrewsLoading(false); return; }
     let cancelled = false;
-    getAllCrews()
+    getCrewsForBarangay(unitId)
       .then((list) => { if (!cancelled) setCrews(list); })
       .catch((e) => console.warn('[Schedule] Could not load crews (the team label still works):', e))
       .finally(() => { if (!cancelled) setCrewsLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [unitId]);
 
-  const unitCrews = crews.filter((c) => c.barangayId === selectedUnit.id);
+  const unitCrews = crews;
   const selectedCrew = unitCrews.find((c) => c.uid === crewId);
   const scheduledDate = tomorrowKey();
 
@@ -106,39 +97,13 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
             );
           })
           .catch((e) => console.warn('[Schedule] Barangay notification failed (non-fatal):', e));
-      } else if (report && user) {
-        const userName = `${user.firstName} ${user.lastName}`;
-        await updateReportStatus(report.id, 'assigned', user.uid, userName, {
-          assignedTeamName: selectedTeam,
-          assignedBarangayId: selectedUnit.id,
-          note: `Scheduled ${aiSchedule.date}. ${selectedTeam} + ${selectedUnit.name} BSP.`,
-        });
-
-        // Notify the citizen who filed the report, and the barangay official(s) for
-        // the assigned barangay -- previously neither ever heard about an approval.
-        sendReportNotification(report.userId, 'report_assigned', report.id, report.reportNumber ?? report.id)
-          .catch((e) => console.warn('[Schedule] Citizen notification failed (non-fatal):', e));
-
-        getNotificationRecipientsByRole(['barangay'], selectedUnit.id)
-          .then((barangayUserIds) => {
-            if (barangayUserIds.length === 0) return;
-            return sendBulkNotification(
-              barangayUserIds,
-              'Cleanup scheduled in your barangay',
-              `${selectedTeam} scheduled for ${aiSchedule.date} — ${severity} severity report in ${selectedUnit.name}.`,
-              'system',
-            );
-          })
-          .catch((e) => console.warn('[Schedule] Barangay notification failed (non-fatal):', e));
       }
       setApproved(true);
       setTimeout(() => {
         navigation.goBack();
         Alert.alert(
           'Schedule approved',
-          selectedCrew
-            ? `${selectedCrew.name} has been notified for ${formatDateKey(scheduledDate)}, ${formatHHmm(CREW_START)} to ${formatHHmm(CREW_END)}.`
-            : `Team notified for ${aiSchedule.date} at ${aiSchedule.time.split('–')[0].trim()}`,
+          `${selectedCrew?.name ?? 'The crew'} has been notified for ${formatDateKey(scheduledDate)}, ${formatHHmm(CREW_START)} to ${formatHHmm(CREW_END)}.`,
         );
       }, 1200);
     } catch (err) {
@@ -146,19 +111,6 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
     } finally {
       setSaving(false);
     }
-  };
-
-  const cycleTeam = () => {
-    const next = (teamIdx + 1) % TEAMS.length;
-    setTeamIdx(next);
-    setSelectedTeam(TEAMS[next]);
-  };
-
-  const cycleUnit = () => {
-    const next = (unitIdx + 1) % CEBU_BARANGAYS.length;
-    setUnitIdx(next);
-    setSelectedUnit(CEBU_BARANGAYS[next]);
-    setCrewId('');
   };
 
   return (
@@ -191,31 +143,23 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
           ))}
         </View>
 
-        {/* Assign team */}
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Assign team</Text>
-          <TouchableOpacity style={styles.selector} onPress={cycleTeam}>
-            <Text style={styles.selectorText}>{selectedTeam}</Text>
-            <Text style={styles.selectorArrow}>▾</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Assign barangay unit */}
         <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Assign barangay unit</Text>
-          <TouchableOpacity style={styles.selector} onPress={cycleUnit}>
+          <Text style={styles.fieldLabel}>Barangay unit</Text>
+          <View style={styles.selector}>
             <Text style={styles.selectorText}>{selectedUnit.name} BSP</Text>
-            <Text style={styles.selectorArrow}>▾</Text>
-          </TouchableOpacity>
+            <Text style={styles.selectorArrow}>🔒</Text>
+          </View>
+          <Text style={styles.crewHint}>Cleanups stay in the report's own barangay, so only {selectedUnit.name}'s unit and crews can take it.</Text>
         </View>
 
         {/* Real crew (optional) */}
         <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Assign a cleanup crew (optional)</Text>
+          <Text style={styles.fieldLabel}>Cleanup crew</Text>
           {crewsLoading ? (
             <ActivityIndicator size="small" color={colors.blue} />
           ) : unitCrews.length === 0 ? (
-            <Text style={styles.crewHint}>No crew accounts in {selectedUnit.name} yet. The team above will be used.</Text>
+            <Text style={styles.crewHint}>No crew accounts in {selectedUnit.name} yet. Ask the Super Admin to create one in the web portal (Accounts → New account → Cleanup team).</Text>
           ) : (
             unitCrews.map((c) => {
               const on = c.uid === crewId;
@@ -239,25 +183,29 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
           )}
           <Text style={styles.crewHint}>
             {selectedCrew
-              ? `${selectedCrew.name} will get a task for ${formatDateKey(scheduledDate)}, ${formatHHmm(CREW_START)} to ${formatHHmm(CREW_END)}. The team label above is not used.`
-              : 'No crew chosen: only the team label above is saved and the barangay is told.'}
+              ? `${selectedCrew.name} will get a task for ${formatDateKey(scheduledDate)}, ${formatHHmm(CREW_START)} to ${formatHHmm(CREW_END)}. Use “Choose date & time” for another day or more details.`
+              : 'Pick the crew that will do this cleanup.'}
           </Text>
         </View>
 
         {/* Action buttons */}
         <View style={styles.actionRow}>
           <TouchableOpacity
-            style={[styles.approveBtn, (approved || saving) && styles.approveBtnDisabled]}
+            style={[styles.approveBtn, (approved || saving || !selectedCrew) && styles.approveBtnDisabled]}
             onPress={handleApprove}
-            disabled={approved || saving}
+            disabled={approved || saving || !selectedCrew}
           >
             {saving
               ? <ActivityIndicator size="small" color="#fff" />
               : <Text style={styles.approveBtnText}>{approved ? '✓ Approved' : 'Approve'}</Text>
             }
           </TouchableOpacity>
-          <TouchableOpacity style={styles.modifyBtn} onPress={() => Alert.alert('Edit mode', 'Modify schedule')}>
-            <Text style={styles.modifyBtnText}>Modify</Text>
+          <TouchableOpacity
+            style={styles.modifyBtn}
+            onPress={() => report && navigation.navigate('BarangayAssignCrew', { reportId: report.id })}
+            disabled={!report || approved}
+          >
+            <Text style={styles.modifyBtnText}>Choose date & time</Text>
           </TouchableOpacity>
         </View>
 
@@ -268,9 +216,7 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
             </View>
             <Text style={styles.successTitle}>Schedule approved!</Text>
             <Text style={styles.successSub}>
-              {selectedCrew
-                ? `${selectedCrew.name} notified. ${formatDateKey(scheduledDate)}, ${formatHHmm(CREW_START)}.`
-                : `${selectedTeam} notified. ${aiSchedule.date}, ${aiSchedule.time.split('–')[0].trim()}.`}
+              {`${selectedCrew?.name ?? 'The crew'} notified. ${formatDateKey(scheduledDate)}, ${formatHHmm(CREW_START)}.`}
             </Text>
           </View>
         )}

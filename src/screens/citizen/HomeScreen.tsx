@@ -16,6 +16,7 @@ import { isRainySeason } from '../../services/waterwayAssessment';
 import { syncOfflineReports } from '../../services/offlineQueue';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useT } from '../../hooks/useT';
+import { useAppSettings } from '../../services/appSettings';
 import Svg, { Path, Circle } from 'react-native-svg';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -29,6 +30,7 @@ export default function CitizenHomeScreen() {
   const { userReports, loading } = useAppSelector((s) => s.reports);
   const [hasUnreadNotifs, setHasUnreadNotifs] = useState(false);
   const { t } = useT();
+  const { features } = useAppSettings();
   const queue = useOfflineQueue();
   const myQueued = queue.items.filter((i) => i.userId === user?.uid);
   const uploadNow = () => {
@@ -73,12 +75,14 @@ export default function CitizenHomeScreen() {
           <Text style={styles.greeting}>{greeting}, {user?.firstName || t('home.there')}</Text>
           <Text style={styles.headerSub}>{user?.barangay ? `Brgy. ${user.barangay} · Cebu City` : t('home.cityWaterways')}</Text>
         </View>
+        {features.mapView && (
         <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('Map', {})} accessibilityLabel="Open map">
           <Svg width={18} height={18} viewBox="0 0 16 16" fill="none">
             <Path d="M8 2a5 5 0 0 1 5 5c0 3.5-5 8-5 8S3 10 3 7a5 5 0 0 1 5-5z" stroke={colors.textSecondary} strokeWidth="1.6" strokeLinecap="round" />
             <Circle cx="8" cy="7" r="1.5" stroke={colors.textSecondary} strokeWidth="1.6" />
           </Svg>
         </TouchableOpacity>
+        )}
         <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('CitizenNotifications')} accessibilityLabel="Notifications">
           <BellIcon color={colors.textSecondary} size={18} />
           {hasUnreadNotifs && <View style={styles.notifDot} />}
@@ -146,6 +150,8 @@ export default function CitizenHomeScreen() {
           ))}
         </View>
 
+        {features.mapView && (
+          <>
         {/* Map */}
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>{t('home.map')}</Text>
@@ -160,7 +166,11 @@ export default function CitizenHomeScreen() {
             </View>
           ))}
         </View>
+          </>
+        )}
 
+        {features.cleanupEvents && (
+          <>
         {/* Community */}
         <TouchableOpacity style={styles.rowCard} onPress={() => navigation.navigate('CitizenEvents')} activeOpacity={0.85}>
           <View style={[styles.rowIcon, { backgroundColor: colors.greenBg }]}>
@@ -176,6 +186,8 @@ export default function CitizenHomeScreen() {
           </View>
           <Text style={styles.chevron}>›</Text>
         </TouchableOpacity>
+          </>
+        )}
 
         {/* Recent reports */}
         <View style={styles.sectionHead}>

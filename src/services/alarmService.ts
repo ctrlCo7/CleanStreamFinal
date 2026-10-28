@@ -16,6 +16,8 @@
  * replaces the one standing alarm rather than accumulating duplicates.
  */
 import { getNotifications } from './notificationsModule';
+import { appSettings } from './appSettings';
+import { isOn, notificationPrefs } from './notificationPrefs';
 import { collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -159,7 +161,8 @@ export const reconcileDailyCheckpointAlarm = async (config: CheckpointAlarmConfi
   const Notifications = getNotifications();
   if (!Notifications) return;
   await Notifications.cancelScheduledNotificationAsync(CHECKPOINT_NOTIFICATION_ID).catch(() => {});
-  if (!config) return;
+  // Off when the Super Admin turned inspection reminders off, or the official muted the alarm.
+  if (!config || !appSettings().notifications.inspectionReminders || !isOn(notificationPrefs(), 'dailyAlarm')) return;
 
   const granted = await requestAlarmPermissions();
   if (!granted) return;

@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View } from 'react-native';
 import { useTheme } from '../hooks/useTheme';
+import { useAppSettings } from '../services/appSettings';
 import { CitizenTabParamList } from '../types';
 import { useT } from '../hooks/useT';
 import { useOfflineSync } from '../hooks/useOfflineQueue';
@@ -26,6 +27,8 @@ const Tab = createBottomTabNavigator<CitizenTabParamList>();
 
 export default function CitizenNavigator() {
   const { colors } = useTheme();
+  // The Super Admin can switch features off for everyone (System settings).
+  const { features } = useAppSettings();
   const { t } = useT();
   const dispatch = useAppDispatch();
   const userId = useAppSelector((s) => s.auth.user?.uid);
@@ -76,6 +79,7 @@ export default function CitizenNavigator() {
           ),
         }}
       />
+      {features.mapView && (
       <Tab.Screen
         name="MapTab"
         component={MapTabPlaceholder}
@@ -91,6 +95,8 @@ export default function CitizenNavigator() {
           },
         })}
       />
+      )}
+      {features.messaging && (
       <Tab.Screen
         name="CitizenMessages"
         component={CitizenMessagesScreen}
@@ -100,6 +106,7 @@ export default function CitizenNavigator() {
           ),
         }}
       />
+      )}
       <Tab.Screen
         name="CitizenProfile"
         component={CitizenProfileScreen}

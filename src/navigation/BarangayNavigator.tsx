@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useTheme } from '../hooks/useTheme';
+import { useAppSettings } from '../services/appSettings';
 import { BarangayTabParamList } from '../types';
 
 import BarangayDashboardScreen from '../screens/barangay/DashboardScreen';
@@ -22,6 +23,8 @@ const Tab = createBottomTabNavigator<BarangayTabParamList>();
 
 export default function BarangayNavigator() {
   const { colors } = useTheme();
+  // The Super Admin can switch features off for everyone (System settings).
+  const { features } = useAppSettings();
   return (
     <Tab.Navigator
       screenOptions={{
@@ -72,6 +75,7 @@ export default function BarangayNavigator() {
           ),
         }}
       />
+      {features.messaging && (
       <Tab.Screen
         name="BarangayMessages"
         component={BarangayMessagesScreen}
@@ -81,6 +85,7 @@ export default function BarangayNavigator() {
           ),
         }}
       />
+      )}
       <Tab.Screen
         name="BarangayProfile"
         component={BarangayProfileScreen}
