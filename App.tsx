@@ -8,6 +8,9 @@ import { loadLanguage } from './src/store/languageSlice';
 import { useTheme } from './src/hooks/useTheme';
 import RootNavigator from './src/navigation/RootNavigator';
 import { AppErrorBoundary, installGlobalErrorHandler } from './src/components/common/AppErrorBoundary';
+// Registers the crew trip's background location task. It must load with the app, even when
+// Android starts CleanStream in the background with no screen open.
+import './src/services/crewTrackingService';
 
 installGlobalErrorHandler();
 

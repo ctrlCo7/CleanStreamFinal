@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
-import { AIAnalysisResult, CleanupTask, RootStackParamList } from '../../types';
+import { AIAnalysisResult, CleanupTask, CrewTracking, RootStackParamList } from '../../types';
 import { useAppSelector } from '../../store/hooks';
 import { BackIcon } from '../../components/common/TabIcons';
 import { Badge } from '../../components/common/Badge';
@@ -21,6 +21,8 @@ import { captureTaskPhoto } from '../../services/taskPhotoCapture';
 import { getReportById } from '../../services/reportsService';
 import { VERDICT_TEXT, compareCleanup } from '../../services/cleanupComparison';
 import { formatVolume } from '../../utils/units';
+import { endTrip, isTripActive, startTrip, subscribeTracking } from '../../services/crewTrackingService';
+import { CrewTrackingCard } from '../../components/map/CrewTrackingCard';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CleanupTaskDetail'>;
 type Phase = 'before' | 'after';
@@ -44,6 +46,8 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
   const [notes, setNotes] = useState('');
   const [viewing, setViewing] = useState<string | null>(null);
   const [reportAi, setReportAi] = useState<AIAnalysisResult | undefined>();
+  const [tracking, setTracking] = useState<CrewTracking | null>(null);
+  useEffect(() => subscribeTracking(taskId, setTracking), [taskId]);
 
   // The original report's analysis is the "before" when no before photo was analyzed.
   const reportId = task?.reportId;
@@ -171,7 +175,36 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
     });
   };
 
-  const start = () => run(() => startTask(task, user));
+  // Arriving or starting work ends the trip, so the crew's location stops being shared.
+  const start = () => run(async () => {
+    if (tracking?.status === 'en_route') await endTrip(task.id, 'arrived');
+    await startTask(task, user);
+  });
+
+  const tripLive = tracking?.status === 'en_route' && isTripActive(task.id);
+  const beginTrip = () => run(async () => {
+    const mode = await startTrip(task, user, {
+      onArrived: () => Alert.alert('You have arrived', 'Take a before photo, then tap Start work.'),
+      onError: (message) => Alert.alert('Location not shared', message),
+    });
+    if (mode === 'foreground') {
+      Alert.alert(
+        'Keep CleanStream open',
+        'Location is only shared while the app is open, because "Allow all the time" was not chosen. You can change this in Settings → Apps → CleanStream → Location.',
+      );
+    }
+  });
+  // Android shows its own "Allow all the time" screen; say why first, so the crew picks it.
+  const goOnMyWay = () => Alert.alert(
+    'Share your location on the way',
+    'The official and the person who reported this will see your truck on the map until you arrive.\n\n'
+      + 'On the next screen, choose "Allow all the time" so it keeps working when you switch apps or lock the phone. Sharing stops by itself when you arrive.',
+    [{ text: 'Cancel', style: 'cancel' }, { text: 'Continue', onPress: beginTrip }],
+  );
+  const stopSharing = () => Alert.alert('Stop sharing your location?', 'The official and the reporter will no longer see your truck on the map.', [
+    { text: 'Keep sharing', style: 'cancel' },
+    { text: 'Stop', style: 'destructive', onPress: () => { endTrip(task.id, 'ended'); } },
+  ]);
 
   const finish = () => {
     const parsed = parseKg();
@@ -363,11 +396,27 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
 
           {isLeader && task.status === 'accepted' && (
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Ready to begin?</Text>
+              <Text style={styles.sectionTitle}>{tripLive ? 'Heading to the site' : 'Ready to go?'}</Text>
+              {!tripLive && (
+                <>
+                  <Text style={styles.muted}>
+                    Tap “On my way” when you leave. The official and the person who reported it can follow your truck on the map until you arrive.
+                  </Text>
+                  <Btn label={tracking?.status === 'en_route' ? '🚚 Resume sharing my location' : '🚚 On my way'} onPress={goOnMyWay} />
+                </>
+              )}
+              {tripLive && (
+                <>
+                  <Text style={styles.muted}>Your location is live. It stops sharing by itself when you arrive.</Text>
+                  <Btn label="Stop sharing location" kind="secondary" onPress={stopSharing} />
+                </>
+              )}
               <Btn label="Add before photo" kind="secondary" onPress={() => addPhoto('before')} />
               <Btn label="Start work" onPress={start} />
             </View>
           )}
+
+          {task.status === 'accepted' && <CrewTrackingCard tracking={tracking} />}
 
           {(task.beforePhotoURLs.length > 0 || uploading === 'before' || isOpen) && (
             <Photos title="Before photos" urls={task.beforePhotoURLs} phase="before" />

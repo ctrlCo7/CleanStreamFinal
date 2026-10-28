@@ -363,6 +363,42 @@ export interface CleanupTask {
   completedAt?: string;
 }
 
+// ─── Live crew tracking ───────────────────────────────────────────────────────
+
+/**
+ * The crew's trip to a cleanup site, in `crewTracking/{taskId}`. Written only by the crew
+ * leader's phone while the trip is active; read by the official, the Admin and the
+ * resident who reported the waste (see crewTrackingService.ts and firestore.rules).
+ */
+export interface CrewTracking {
+  taskId: string;
+  reportId: string;
+  crewId: string;
+  crewName: string;
+  barangayId: string;
+  reporterUserId?: string;
+  status: 'en_route' | 'arrived' | 'ended';
+  latitude: number;
+  longitude: number;
+  /** Degrees, 0 = north. */
+  heading: number;
+  /** Metres per second, when the phone reports it. */
+  speed?: number;
+  accuracy?: number;
+  destination: { latitude: number; longitude: number };
+  /** Road route from where the trip (or the last re-route) started, simplified. */
+  route: Array<{ latitude: number; longitude: number }>;
+  routeSource: 'osrm' | 'straight';
+  routeDistanceM: number;
+  routeDurationS: number;
+  remainingM: number;
+  etaSeconds: number;
+  startedAt: number;
+  /** Milliseconds since epoch on the crew's phone, for "updated 5 s ago". */
+  updatedAtMs: number;
+  arrivedAt?: number;
+}
+
 // ─── Cleanup Events ───────────────────────────────────────────────────────────
 
 export type CleanupEventStatus = 'upcoming' | 'ongoing' | 'completed' | 'cancelled';

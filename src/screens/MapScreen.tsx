@@ -11,15 +11,22 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import MapView, { Marker, PROVIDER_GOOGLE, Callout } from 'react-native-maps';
+import MapView, { Marker, Callout } from 'react-native-maps';
 import { useTheme } from '../hooks/useTheme';
 import { ThemeColors } from '../constants/theme';
-import { RootStackParamList, WasteReport, SeverityLevel } from '../types';
+import { CrewTracking, RootStackParamList, WasteReport, SeverityLevel } from '../types';
 import { BackIcon } from '../components/common/TabIcons';
 import { useMapReports } from '../hooks/useMapReports';
 import { MapErrorBoundary } from '../components/common/MapErrorBoundary';
-import { MAP_READY_TIMEOUT_MS } from '../utils/mapProvider';
+import { useMapEngine } from '../hooks/useMapFallback';
+import { PetalPinsMap } from '../components/map/PetalMap';
 import { OsmMapView, OsmMarker, escapeHtml } from '../components/common/OsmMapView';
+import { nativeMapLook } from '../components/map/mapTheme';
+import { TeardropPin, TruckIcon } from '../components/map/MapIcons';
+import { subscribeActiveTrips } from '../services/crewTrackingService';
+import { formatEta } from '../services/routeMath';
+import { useGlide } from '../hooks/useGlide';
+import { useAppSelector } from '../store/hooks';
 import {
   getMarkerColor,
   SEVERITY_COLORS,
@@ -99,21 +106,16 @@ const SeverityMarker = memo(
           latitude: report.location.latitude,
           longitude: report.location.longitude,
         }}
+        // The pin's tip marks the exact spot.
+        anchor={{ x: 0.5, y: 1 }}
+        calloutAnchor={{ x: 0.5, y: 0 }}
         // tracksViewChanges=false is critical: prevents continuous native re-renders
         // Set to true only while animating/updating, otherwise performance tanks
         tracksViewChanges={false}
       >
-        {/* Custom circular pin -- critical/high severity gets a soft glow halo
-            behind it so the worst hotspots visually stand out on the map,
-            not just differ by color. */}
-        <View style={styles.markerWrap}>
-          {(report.severity === 'critical' || report.severity === 'high') && (
-            <View style={[styles.pinGlow, { backgroundColor: color }]} />
-          )}
-          <View style={[styles.pin, { backgroundColor: color }]}>
-            <View style={styles.pinInner} />
-          </View>
-        </View>
+        {/* Teardrop pin -- critical/high severity gets a soft glow halo so the worst
+            hotspots visually stand out on the map, not just differ by color. */}
+        <TeardropPin color={color} glow={report.severity === 'critical' || report.severity === 'high'} />
 
         {/* Info callout -- includes the report's photo so tapping a marker
             shows what was actually reported, not just text metadata. */}
@@ -189,31 +191,61 @@ const MapLegend = memo(({ styles }: { styles: ReturnType<typeof createStyles> })
   </View>
 ));
 
+// ─── Live trucks (officials and Admin) ────────────────────────────────────────
+
+/** A cleanup truck on its way, gliding between GPS updates and facing where it drives. */
+function LiveTruckMarker({ trip, onPress }: { trip: CrewTracking; onPress: (taskId: string) => void }) {
+  const target = useMemo(
+    () => ({ latitude: trip.latitude, longitude: trip.longitude, heading: trip.heading }),
+    [trip.latitude, trip.longitude, trip.heading],
+  );
+  const pos = useGlide(target);
+  // Let the truck drawing render once, then freeze it (Android snapshots marker views).
+  const [drawing, setDrawing] = useState(true);
+  useEffect(() => {
+    const id = setTimeout(() => setDrawing(false), 800);
+    return () => clearTimeout(id);
+  }, []);
+  if (!pos) return null;
+  return (
+    <Marker
+      coordinate={pos}
+      anchor={{ x: 0.5, y: 0.5 }}
+      flat
+      rotation={pos.heading}
+      tracksViewChanges={drawing}
+      zIndex={20}
+      title={trip.crewName}
+      description={`On the way · arriving in ${formatEta(trip.etaSeconds)}`}
+      onCalloutPress={() => onPress(trip.taskId)}
+    >
+      <TruckIcon size={40} />
+    </Marker>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function MapScreen({ navigation }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { reports, loading, counts, total } = useMapReports();
   const [filter, setFilter] = useState('All');
+  const viewer = useAppSelector((s) => s.auth.user);
+  const [trips, setTrips] = useState<CrewTracking[]>([]);
+  const mapRef = React.useRef<MapView>(null);
 
-  // Google Maps crashes during native init on devices without Google Play
-  // Services; useFallbackMap switches the whole map to the OSM/Leaflet
-  // implementation, either because the native view threw (caught by
-  // MapErrorBoundary) or because it never reported ready in time.
-  const [useFallbackMap, setUseFallbackMap] = useState(false);
-  const [mapReady, setMapReady] = useState(false);
-
+  // Officials and the Admin see cleanup trucks on the road, like a dispatcher.
   useEffect(() => {
-    if (useFallbackMap || mapReady || Platform.OS === 'web') return;
-    const timer = setTimeout(() => {
-      if (!mapReady) {
-        console.warn('[Map] Google Maps did not report ready in time, falling back to OSM map');
-        setUseFallbackMap(true);
-      }
-    }, MAP_READY_TIMEOUT_MS);
-    return () => clearTimeout(timer);
-  }, [mapReady, useFallbackMap]);
+    if (!viewer) return;
+    return subscribeActiveTrips({ role: viewer.role, barangayId: viewer.barangayId }, setTrips);
+  }, [viewer?.role, viewer?.barangayId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openTask = useCallback((taskId: string) => navigation.navigate('CleanupTaskDetail', { taskId } as never), [navigation]);
+
+  // Petal Maps on Huawei, Google Maps / Apple Maps elsewhere, OpenStreetMap if neither starts.
+  const { engine, onReady: onMapReadyEngine, onError: onMapError } = useMapEngine();
+  const useFallbackMap = engine === 'osm';
 
   // Filtered marker list — recomputed only when reports or filter change
   const filtered = useMemo(() => {
@@ -231,6 +263,26 @@ export default function MapScreen({ navigation }: Props) {
   );
 
   const handleFilter = useCallback((val: string) => setFilter(val), []);
+
+  // Petal Maps pins and trucks (Huawei). The pin's info window opens the report.
+  const petalPins = useMemo(
+    () => filtered.map((r) => ({
+      id: r.id,
+      latitude: r.location.latitude,
+      longitude: r.location.longitude,
+      severity: r.severity,
+      title: `${SEVERITY_LABELS[r.severity as SeverityLevel] ?? r.severity} · ${r.location.barangay ?? r.barangay ?? 'Unknown'}`,
+      snippet: `${r.aiAnalysis?.wasteTypes?.[0]?.label ?? 'Waste'} · Tap for details`,
+    })),
+    [filtered],
+  );
+  const petalTrucks = useMemo(
+    () => trips.map((t) => ({
+      id: t.taskId, latitude: t.latitude, longitude: t.longitude, heading: t.heading,
+      title: t.crewName, snippet: `On the way · arriving in ${formatEta(t.etaSeconds)}`, onPress: () => openTask(t.taskId),
+    })),
+    [trips, openTask],
+  );
 
   const osmMarkers: OsmMarker[] = useMemo(
     () =>
@@ -289,21 +341,31 @@ export default function MapScreen({ navigation }: Props) {
               Open CleanStream on iOS or Android (Expo Go or a dev build) to view the live waste map.
             </Text>
           </View>
+        ) : engine === 'petal' ? (
+          <PetalPinsMap
+            region={CEBU}
+            pins={petalPins}
+            trucks={petalTrucks}
+            dark={isDark}
+            onPinPress={handleNavigate}
+            onReady={onMapReadyEngine}
+            onError={onMapError}
+            style={styles.map}
+          />
         ) : useFallbackMap ? (
           <OsmMapView region={CEBU} markers={osmMarkers} onMarkerPress={handleNavigate} style={styles.map} />
         ) : (
-          <MapErrorBoundary onError={() => setUseFallbackMap(true)}>
+          <MapErrorBoundary onError={onMapError}>
             <MapView
-              // Expo Go on iOS has no Google Maps SDK baked in (only Android's does) --
-              // forcing PROVIDER_GOOGLE there renders a blank map. Let iOS use the
-              // default Apple Maps provider; Android keeps Google Maps.
-              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+              ref={mapRef}
+              // Google Maps with CleanStream's style on Android, matching Apple Maps on iOS.
+              {...nativeMapLook(isDark)}
               style={styles.map}
               initialRegion={CEBU}
               showsUserLocation
               showsMyLocationButton={false}
               moveOnMarkerPress={false}
-              onMapReady={() => setMapReady(true)}
+              onMapReady={onMapReadyEngine}
             >
               {filtered.map((report) => (
                 <SeverityMarker
@@ -313,6 +375,7 @@ export default function MapScreen({ navigation }: Props) {
                   styles={styles}
                 />
               ))}
+              {trips.map((trip) => <LiveTruckMarker key={trip.taskId} trip={trip} onPress={openTask} />)}
             </MapView>
           </MapErrorBoundary>
         )}
@@ -328,11 +391,25 @@ export default function MapScreen({ navigation }: Props) {
         {/* Legend */}
         <MapLegend styles={styles} />
 
-        {/* Live badge */}
+        {/* Live badge, with trucks on the road for officials and the Admin */}
         <View style={styles.liveBadge}>
           <View style={styles.liveDot} />
-          <Text style={styles.liveText}>Live</Text>
+          <Text style={styles.liveText}>
+            {trips.length > 0 && engine !== 'osm' ? `Live · 🚚 ${trips.length} on the way` : 'Live'}
+          </Text>
         </View>
+
+        {/* Back to Cebu City (Google/Apple maps; the OpenStreetMap view has its own zoom buttons) */}
+        {engine === 'native' && Platform.OS !== 'web' && (
+          <TouchableOpacity
+            style={styles.recenterBtn}
+            onPress={() => mapRef.current?.animateToRegion(CEBU, 600)}
+            accessibilityRole="button"
+            accessibilityLabel="Show all of Cebu City"
+          >
+            <Text style={styles.recenterIcon}>⌖</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* ── Bottom summary bar ── */}
@@ -493,6 +570,12 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     shadowOpacity: 0.1, shadowRadius: 6, elevation: 3,
   },
   liveDot:  { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#22C55E' },
+  recenterBtn: {
+    position: 'absolute', right: 12, bottom: 16, width: 46, height: 46, borderRadius: 23,
+    backgroundColor: 'rgba(255,255,255,0.97)', alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 8, elevation: 5,
+  },
+  recenterIcon: { fontSize: 24, color: '#0F6E56', marginTop: -2 },
   // Same fixed-light-overlay reasoning as the legend above.
   liveText: { fontSize: 11, fontWeight: '600', color: '#1A1A18' },
 

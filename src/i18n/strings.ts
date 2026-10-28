@@ -194,6 +194,16 @@ const en = {
 
   'profile.language': 'Language',
   'profile.languageHint': 'For the resident screens',
+
+  'track.onTheWay': 'Cleanup crew on the way',
+  'track.arrivingIn': 'Arriving in',
+  'track.away': '{distance} away',
+  'track.live': 'Live',
+  'track.updated': 'Updated {s} s ago',
+  'track.stale': 'Signal lost · last seen {time} ago',
+  'track.arrived': 'The cleanup crew has arrived at the site',
+  'track.recenter': 'Recenter',
+  'track.straightNote': 'No road route available, so a straight line to the site is shown.',
 };
 
 export type StringKey = keyof typeof en;
@@ -381,6 +391,16 @@ const fil: Partial<Record<StringKey, string>> = {
 
   'profile.language': 'Wika',
   'profile.languageHint': 'Para sa mga screen ng residente',
+
+  'track.onTheWay': 'Papunta na ang mga tagalinis',
+  'track.arrivingIn': 'Darating sa',
+  'track.away': '{distance} ang layo',
+  'track.live': 'Live',
+  'track.updated': 'Na-update {s} segundo ang nakalipas',
+  'track.stale': 'Nawala ang signal · huling nakita {time} ang nakalipas',
+  'track.arrived': 'Dumating na ang mga tagalinis sa lugar',
+  'track.recenter': 'Ibalik sa gitna',
+  'track.straightNote': 'Walang makuhang ruta sa kalsada, kaya tuwid na linya papunta sa lugar ang ipinapakita.',
 };
 
 const ceb: Partial<Record<StringKey, string>> = {
@@ -566,6 +586,16 @@ const ceb: Partial<Record<StringKey, string>> = {
 
   'profile.language': 'Pinulongan',
   'profile.languageHint': 'Para sa mga screen sa residente',
+
+  'track.onTheWay': 'Padulong na ang mga tiglimpyo',
+  'track.arrivingIn': 'Moabot sulod sa',
+  'track.away': '{distance} ang gilay-on',
+  'track.live': 'Live',
+  'track.updated': 'Na-update {s} segundo ang milabay',
+  'track.stale': 'Nawala ang signal · katapusang nakita {time} ang milabay',
+  'track.arrived': 'Niabot na ang mga tiglimpyo sa lugar',
+  'track.recenter': 'Ibalik sa tunga',
+  'track.straightNote': 'Walay makuha nga ruta sa dalan, mao nga tul-id nga linya paingon sa lugar ang gipakita.',
 };
 
 export const STRINGS: Record<Lang, Partial<Record<StringKey, string>>> = { en, fil, ceb };

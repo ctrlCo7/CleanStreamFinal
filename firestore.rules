@@ -258,6 +258,31 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ─── Live crew tracking (one document per task, while the crew drives there) ─
+    // Written only by the crew leader the task is assigned to, and only with the task's own
+    // barangay/report/reporter (so it can't be shown to the wrong people). Readable by that
+    // crew, the barangay's officials, the Admin/Super Admin and the resident who reported it.
+    match /crewTracking/{taskId} {
+      function trackedTask() {
+        return get(/databases/$(database)/documents/cleanupTasks/$(taskId)).data;
+      }
+      allow read: if isAuthenticated() && (
+                    resource.data.crewId == currentUid()
+                    || isAdmin() || isSuperAdmin()
+                    || (isBarangayOfficer() && sameBarangay(resource.data.barangayId))
+                    || resource.data.reporterUserId == currentUid()
+                  );
+      allow create, update: if isCleanupTeam()
+                    && trackedTask().assignedTeamId == currentUid()
+                    && request.resource.data.crewId == currentUid()
+                    && request.resource.data.taskId == taskId
+                    && request.resource.data.barangayId == trackedTask().barangayId
+                    && request.resource.data.reportId == trackedTask().reportId
+                    && request.resource.data.get('reporterUserId', '') == trackedTask().get('reporterUserId', '')
+                    && request.resource.data.status in ['en_route', 'arrived', 'ended'];
+      allow delete: if isAdmin();
+    }
+
     // ─── Cleanup Events ────────────────────────────────────────────────────────
     match /cleanupEvents/{eventId} {
       allow read: if isAuthenticated();

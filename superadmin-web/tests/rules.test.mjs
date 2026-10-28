@@ -1,7 +1,7 @@
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, getDocs, serverTimestamp, query, where } from 'firebase/firestore';
 
 // Run via `npm run test:rules` (starts the Firestore emulator; needs Java installed).
 const RULES = fileURLToPath(new URL('../../firestore.rules', import.meta.url));
@@ -251,6 +251,20 @@ await check('every signed-in user can read settings', assertSucceeds(getDoc(doc(
 await check("a citizen can't change settings", assertFails(setDoc(doc(ct, 'systemSettings', 'app'), { maintenanceMode: false }, { merge: true })));
 await check("a deactivated Super Admin can't change settings", assertFails(setDoc(doc(as('sa_off'), 'systemSettings', 'app'), { maintenanceMode: false }, { merge: true })));
 await check('the Super Admin deletes a checkpoint', assertSucceeds(deleteDoc(doc(sa, 'checkpoints', 'cp_b2'))));
+
+console.log('\n== Live crew tracking');
+const trip = (over = {}) => ({ taskId: 't1', reportId: 'r_b1', crewId: 'cl', barangayId: 'b1', status: 'en_route',
+  latitude: 10.3, longitude: 123.9, heading: 90, destination: { latitude: 10.31, longitude: 123.89 }, route: [], updatedAtMs: 1, ...over });
+await check('the assigned crew leader starts sharing their trip', assertSucceeds(setDoc(doc(as('cl'), 'crewTracking', 't1'), trip())));
+await check('...and updates their position', assertSucceeds(updateDoc(doc(as('cl'), 'crewTracking', 't1'), { latitude: 10.301, updatedAtMs: 2 })));
+await check("another crew can't post a trip for someone else's task", assertFails(setDoc(doc(as('cl2'), 'crewTracking', 't1'), trip({ crewId: 'cl2' }))));
+await check("a crew can't point the trip at another barangay", assertFails(setDoc(doc(as('cl'), 'crewTracking', 't1'), trip({ barangayId: 'b2' }))));
+await check("a crew can't add a stranger as the 'reporter'", assertFails(setDoc(doc(as('cl'), 'crewTracking', 't1'), trip({ reporterUserId: 'victim' }))));
+await check("an official can't fake a crew's position", assertFails(updateDoc(doc(bg1, 'crewTracking', 't1'), { latitude: 0 })));
+await check("the barangay's official sees the truck", assertSucceeds(getDoc(doc(bg1, 'crewTracking', 't1'))));
+await check("another barangay's official doesn't", assertFails(getDoc(doc(bg2, 'crewTracking', 't1'))));
+await check('the Admin sees every truck on the way', assertSucceeds(getDocs(query(collection(ad, 'crewTracking'), where('status', '==', 'en_route')))));
+await check("an unrelated citizen can't see where the crew is", assertFails(getDoc(doc(ct, 'crewTracking', 't1'))));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup();

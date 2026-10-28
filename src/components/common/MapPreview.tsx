@@ -1,10 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker } from 'react-native-maps';
 import { useTheme } from '../../hooks/useTheme';
 import { MapErrorBoundary } from './MapErrorBoundary';
 import { OsmMapView, OsmMarker } from './OsmMapView';
-import { MAP_READY_TIMEOUT_MS } from '../../utils/mapProvider';
+import { useMapEngine } from '../../hooks/useMapFallback';
+import { PetalPinsMap } from '../map/PetalMap';
+import { nativeMapLook } from '../map/mapTheme';
+import { TeardropPin } from '../map/MapIcons';
 
 
 
@@ -46,16 +49,9 @@ export function MapPreview({
   };
   const resolvedAccent = accentColor ?? colors.tealDark;
 
-  const [useFallbackMap, setUseFallbackMap] = useState(false);
-  const [mapReady, setMapReady] = useState(false);
-
-  useEffect(() => {
-    if (useFallbackMap || mapReady || Platform.OS === 'web') return;
-    const timer = setTimeout(() => {
-      if (!mapReady) setUseFallbackMap(true);
-    }, MAP_READY_TIMEOUT_MS);
-    return () => clearTimeout(timer);
-  }, [mapReady, useFallbackMap]);
+  // Petal Maps on Huawei, Google Maps / Apple Maps elsewhere, OpenStreetMap if neither starts.
+  const { engine, onReady, onError } = useMapEngine();
+  const useFallbackMap = engine === 'osm';
 
   const osmMarkers: OsmMarker[] = useMemo(
     () =>
@@ -73,7 +69,17 @@ export function MapPreview({
     <TouchableOpacity onPress={onPress} activeOpacity={0.9}>
       <View style={[styles.container, { height, backgroundColor: isDark ? colors.grayMid : '#D4EFE4' }]}>
         {Platform.OS !== 'web' && (
-          useFallbackMap ? (
+          engine === 'petal' ? (
+            <PetalPinsMap
+              region={CEBU_REGION}
+              pins={pins}
+              dark={isDark}
+              interactive={false}
+              onReady={onReady}
+              onError={onError}
+              style={StyleSheet.absoluteFill}
+            />
+          ) : useFallbackMap ? (
             <OsmMapView
               region={CEBU_REGION}
               markers={osmMarkers}
@@ -81,27 +87,27 @@ export function MapPreview({
               style={StyleSheet.absoluteFill}
             />
           ) : (
-            <MapErrorBoundary onError={() => setUseFallbackMap(true)}>
+            <MapErrorBoundary onError={onError}>
               <MapView
                 style={StyleSheet.absoluteFill}
-                // Expo Go on iOS has no Google Maps SDK baked in -- forcing
-                // PROVIDER_GOOGLE there renders blank. Android keeps Google Maps.
-                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                // Google Maps with CleanStream's style on Android, matching Apple Maps on iOS.
+                {...nativeMapLook(isDark)}
                 initialRegion={CEBU_REGION}
                 scrollEnabled={false}
                 zoomEnabled={false}
                 pitchEnabled={false}
                 rotateEnabled={false}
-                mapType="standard"
-                userInterfaceStyle={isDark ? 'dark' : 'light'}
-                onMapReady={() => setMapReady(true)}
+                onMapReady={onReady}
               >
                 {pins.map((pin) => (
                   <Marker
                     key={pin.id}
                     coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
-                    pinColor={pinColors[pin.severity]}
-                  />
+                    anchor={{ x: 0.5, y: 1 }}
+                    tracksViewChanges={false}
+                  >
+                    <TeardropPin color={pinColors[pin.severity]} glow={pin.severity === 'critical'} />
+                  </Marker>
                 ))}
               </MapView>
             </MapErrorBoundary>

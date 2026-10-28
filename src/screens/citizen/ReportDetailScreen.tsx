@@ -3,12 +3,14 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Ima
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
-import { RootStackParamList, WasteReport } from '../../types';
+import { CrewTracking, RootStackParamList, WasteReport } from '../../types';
 import { Badge } from '../../components/common/Badge';
 import { BackIcon } from '../../components/common/TabIcons';
 import { getReportById } from '../../services/reportsService';
 import { getOrCreateAdminConversation } from '../../services/messagingService';
 import { useAppSelector } from '../../store/hooks';
+import { subscribeTrackingForReport } from '../../services/crewTrackingService';
+import { CrewTrackingCard } from '../../components/map/CrewTrackingCard';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CitizenDetail'>;
 
@@ -27,6 +29,13 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
   const { user } = useAppSelector((s) => s.auth);
   const [report, setReport] = useState<WasteReport | null>(null);
   const [contactingAdmin, setContactingAdmin] = useState(false);
+  const [tracking, setTracking] = useState<CrewTracking | null>(null);
+
+  // Like a delivery app: the resident follows the cleanup truck while it drives to their report.
+  useEffect(() => {
+    if (!user?.uid) return;
+    return subscribeTrackingForReport(reportId, user.uid, setTracking);
+  }, [reportId, user?.uid]);
 
   useEffect(() => {
     getReportById(reportId).then(setReport);
@@ -89,6 +98,9 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
           <Text style={styles.title}>{report.location?.barangay || 'Unknown location'}</Text>
           <Badge variant={report.severity} />
         </View>
+
+        {/* Live cleanup truck, while it is on the way */}
+        {report.status !== 'completed' && <CrewTrackingCard tracking={tracking} />}
 
         {/* Details table */}
         <View style={styles.detailTable}>

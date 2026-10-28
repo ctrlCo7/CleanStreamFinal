@@ -11,3 +11,7 @@ export const LIKELY_NO_GOOGLE_SERVICES = Platform.OS === 'android' && /huawei|ho
 // Google services can take several seconds on first map init, so they get a generous
 // window; that's what stops a working Google Maps from being swapped for the fallback.
 export const MAP_READY_TIMEOUT_MS = LIKELY_NO_GOOGLE_SERVICES ? 3000 : 15000;
+
+// Huawei phones get Petal Maps (HUAWEI Map Kit). Honor phones made after Honor left Huawei
+// (2021) ship with Google services again, so they stay on Google Maps.
+export const PREFER_PETAL_MAPS = Platform.OS === 'android' && /huawei/.test(maker);

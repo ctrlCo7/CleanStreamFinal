@@ -14,7 +14,8 @@
       },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "CleanStream uses your location to show nearby waste reports on the map and to tag new reports accurately.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "CleanStream shares a cleanup crew leader’s location with the barangay and the resident who reported the waste while the crew drives to a cleanup site, even when the app is closed. Sharing stops on arrival."
       }
     },
     "android": {
@@ -37,7 +38,10 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.SCHEDULE_EXACT_ALARM",
-        "android.permission.USE_EXACT_ALARM"
+        "android.permission.USE_EXACT_ALARM",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {
@@ -62,7 +66,11 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "CleanStream uses your location to show nearby waste reports on the map and to tag new reports accurately."
+          "locationWhenInUsePermission": "CleanStream uses your location to show nearby waste reports on the map and to tag new reports accurately.",
+          "locationAlwaysAndWhenInUsePermission": "CleanStream shares a cleanup crew leader’s location with the barangay and the resident who reported the waste while the crew drives to a cleanup site, even when the app is closed. Sharing stops on arrival.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "isIosBackgroundLocationEnabled": true
         }
       ],
       [
@@ -80,12 +88,14 @@
           "color": "#2E86DE",
           "sounds": []
         }
-      ]
+      ],
+      "./plugins/withHuaweiMaps"
     ],
     "extra": {
       "eas": {
         "projectId": "2279a8e0-22c2-4892-b6ed-a152eec4ff8a"
-      }
+      },
+      "huaweiMapApiKey": ""
     }
   }
 }
