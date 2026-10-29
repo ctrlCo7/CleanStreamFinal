@@ -20,14 +20,14 @@ export const mapHead = (dark: boolean) => `
 <link rel="stylesheet" href="${MAPLIBRE}.css" />
 <script src="${MAPLIBRE}.js"></script>
 <style>
-  html, body, #map { height: 100%; margin: 0; padding: 0; background: ${dark ? '#1b1f1e' : '#eef2ef'}; }
+  html, body, #map { height: 100%; margin: 0; padding: 0; background: ${dark ? '#1a2120' : '#f5f6f2'}; }
   .maplibregl-ctrl-attrib { font-size: 9px; }
   .maplibregl-ctrl-group { border-radius: 10px !important; box-shadow: 0 2px 8px rgba(0,0,0,0.22) !important; }
   .maplibregl-ctrl-group button { width: 34px; height: 34px; }
   .maplibregl-popup-content { border-radius: 12px; padding: 10px; font-family: -apple-system, Roboto, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.2); }
   .maplibregl-popup-content img { width: 100%; border-radius: 8px; margin-bottom: 6px; display: block; }
   .cs-popup-tap { color: #1D9E75; font-size: 11px; font-weight: 700; margin-top: 6px; display: block; }
-  .cs-truck { width: 44px; height: 44px; }
+  .cs-truck { width: 48px; height: 48px; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.25)); }
   ${TEARDROP_CSS}
 </style>`;
 
@@ -70,7 +70,37 @@ export const mapInitJs = (opts: { dark: boolean; latitude: number; longitude: nu
   });
 
   window.csPost = function (msg) { if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(msg); };
+
+  // The same look as the Google style (mapTheme.ts): no shop/business icons, vivid
+  // waterways, soft parks, quiet buildings. Layers a style lacks are simply skipped.
+  var CS_LOOK = ${JSON.stringify(opts.dark ? OSM_LOOK.dark : OSM_LOOK.light)};
+  window.csOnStyle(function () {
+    if (usingFallback) return;
+    var layers = (map.getStyle() && map.getStyle().layers) || [];
+    layers.forEach(function (l) {
+      var sl = l['source-layer'] || '';
+      try {
+        if (sl === 'poi') map.setLayoutProperty(l.id, 'visibility', 'none');
+        else if (l.type === 'background') map.setPaintProperty(l.id, 'background-color', CS_LOOK.land);
+        else if (sl === 'water' && l.type === 'fill') map.setPaintProperty(l.id, 'fill-color', CS_LOOK.water);
+        else if (sl === 'waterway' && l.type === 'line') map.setPaintProperty(l.id, 'line-color', CS_LOOK.waterway);
+        else if ((sl === 'water_name' || sl === 'waterway') && l.type === 'symbol') {
+          map.setPaintProperty(l.id, 'text-color', CS_LOOK.waterText);
+          map.setPaintProperty(l.id, 'text-halo-color', CS_LOOK.waterHalo);
+        }
+        else if (sl === 'park' && l.type === 'fill') map.setPaintProperty(l.id, 'fill-color', CS_LOOK.park);
+        else if (sl === 'building' && l.type === 'fill') map.setPaintProperty(l.id, 'fill-color', CS_LOOK.building);
+        else if (sl === 'building' && l.type === 'fill-extrusion') map.setPaintProperty(l.id, 'fill-extrusion-color', CS_LOOK.building);
+      } catch (e) { /* this style draws the layer differently: leave it as is */ }
+    });
+  });
 `;
+
+/** Colours for the OpenFreeMap style, matching the Google style in mapTheme.ts. */
+export const OSM_LOOK = {
+  light: { land: '#f5f6f2', water: '#86cbe9', waterway: '#5bb7dd', waterText: '#14607d', waterHalo: '#e2f4fb', park: '#cfe9cb', building: '#e6e8e3' },
+  dark: { land: '#1a2120', water: '#0d4a5f', waterway: '#1b6a85', waterText: '#7fcbe3', waterHalo: '#0d4a5f', park: '#1d3027', building: '#232b29' },
+};
 
 /**
  * Glides a MapLibre marker to a new position and turns it the short way round, like a

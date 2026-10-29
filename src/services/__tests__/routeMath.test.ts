@@ -87,5 +87,7 @@ describe('OpenFreeMap page script', () => {
     const { teardropPinHtml, TRUCK_SVG } = await import('../../components/map/mapIconsHtml');
     expect(teardropPinHtml('#EF4444', true, '🗑️')).not.toContain("'");
     expect(TRUCK_SVG).not.toContain('`');
+    expect(TRUCK_SVG).not.toContain("'");
+    expect(TRUCK_SVG).toContain('csTruckBody');
   });
 });

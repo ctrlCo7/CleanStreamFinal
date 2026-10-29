@@ -3,6 +3,7 @@ export const MAP_COLORS = {
   route: '#1D9E75',
   routeCasing: '#0F6E56',
   routeStraight: '#8a958f',
-  truck: '#0F6E56',
+  truck: '#1D9E75',
+  truckDark: '#0B5A46',
   destination: '#EF4444',
 };

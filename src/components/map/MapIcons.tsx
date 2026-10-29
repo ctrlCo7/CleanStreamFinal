@@ -1,25 +1,19 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import { SvgXml } from 'react-native-svg';
 import { MAP_COLORS } from './mapColors';
+import { truckSvg } from './mapIconsHtml';
 
-export { TEARDROP_CSS, TRUCK_SVG, teardropPinHtml } from './mapIconsHtml';
+export { TEARDROP_CSS, TRUCK_SVG, teardropPinHtml, truckSvg } from './mapIconsHtml';
 
 /**
- * A garbage truck seen from above, nose pointing up (north), so rotating it by the
- * heading makes it face the way it's driving, like the car in a ride-hailing app.
- * TRUCK_SVG is the same drawing as HTML, for the OpenStreetMap (WebView) map.
+ * The garbage truck marker, nose pointing up (north), so rotating it by the heading makes
+ * it face the way it's driving, like the car in a ride-hailing app. Same drawing as the
+ * WebView maps use (truckSvg).
  */
-export function TruckIcon({ size = 44, color = MAP_COLORS.truck }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 44 44">
-      <Circle cx="22" cy="22" r="20" fill={color} opacity={0.18} />
-      <Rect x="14" y="6" width="16" height="11" rx="4" fill={color} stroke="#fff" strokeWidth="2" />
-      <Rect x="16.5" y="8" width="11" height="4" rx="1.5" fill="#bdf0dd" />
-      <Rect x="13" y="16" width="18" height="22" rx="3" fill="#1D9E75" stroke="#fff" strokeWidth="2" />
-      <Path d="M17 21h10M17 26h10M17 31h10" stroke="#ffffff" strokeOpacity={0.7} strokeWidth="1.6" strokeLinecap="round" />
-    </Svg>
-  );
+export function TruckIcon({ size = 48, color = MAP_COLORS.truck }: { size?: number; color?: string }) {
+  const xml = useMemo(() => truckSvg(color), [color]);
+  return <SvgXml xml={xml} width={size} height={size} />;
 }
 
 
