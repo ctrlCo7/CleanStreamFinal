@@ -18,16 +18,17 @@ const QUICK_REPLIES = ['When will it be cleaned?', 'Is it safe nearby?', 'Thank 
 export default function CitizenChatScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { conversationId, participantName } = route.params;
+  const { conversationId, participantName, receiverId: receiverParam } = route.params;
   const { user } = useAppSelector((s) => s.auth);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const scrollRef = useRef<ScrollView>(null);
 
-  // Derive the other participant's ID from conversationId (format: uid1_uid2)
-  const receiverId = conversationId.includes('_')
+  // A barangay inbox passes its key; otherwise derive the other participant's ID from
+  // conversationId (format: uid1_uid2).
+  const receiverId = receiverParam ?? (conversationId.includes('_')
     ? conversationId.split('_').find((p) => p !== user?.uid) ?? ''
-    : '';
+    : '');
 
   useEffect(() => {
     if (!conversationId) return;

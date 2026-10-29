@@ -19,17 +19,20 @@ const QUICK_REPLIES = ['Noted. Will comply.', 'On our way', 'Site secured', 'Nee
 export default function BarangayChatScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { conversationId, participantName, reportTag } = route.params;
+  const { conversationId, participantName, reportTag, receiverId: receiverParam, inboxKey } = route.params;
   const { user } = useAppSelector((s) => s.auth);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
-  // Derive the other participant's ID from conversationId (format: uid1_uid2)
-  const receiverId = conversationId.includes('_')
+  // A barangay-inbox chat passes the citizen's ID; otherwise derive the other participant's
+  // ID from conversationId (format: uid1_uid2).
+  const receiverId = receiverParam ?? (conversationId.includes('_')
     ? conversationId.split('_').find((p) => p !== user?.uid) ?? ''
-    : '';
+    : '');
+  // Inbox chats keep the barangay's unread count under the inbox key, not the official's ID.
+  const readKey = inboxKey ?? user?.uid;
 
   useEffect(() => {
     if (!conversationId) return;
@@ -42,10 +45,10 @@ export default function BarangayChatScreen({ navigation, route }: Props) {
 
   // Mark as read on open
   useEffect(() => {
-    if (conversationId && user?.uid) {
-      markMessagesRead(conversationId, user.uid).catch(() => null);
+    if (conversationId && readKey) {
+      markMessagesRead(conversationId, readKey).catch(() => null);
     }
-  }, [conversationId, user?.uid]);
+  }, [conversationId, readKey]);
 
   const send = useCallback(async (text?: string) => {
     const content = (text || input).trim();

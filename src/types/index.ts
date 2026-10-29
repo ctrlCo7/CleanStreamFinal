@@ -670,6 +670,10 @@ export interface Conversation {
   unreadCounts: Record<string, number>;
   reportRef?: string;
   reportTag?: string;
+  /** Set on a citizen's chat with a barangay's shared inbox (any of its officials can answer). */
+  barangayId?: string;
+  barangayName?: string;
+  citizenId?: string;
 }
 
 // ─── Legacy schedule types (kept for screen compatibility) ────────────────────
@@ -742,7 +746,7 @@ export type RootStackParamList = {
   CitizenReport: undefined;
   CitizenAIResult: { report: WasteReport };
   CitizenDetail: { reportId: string };
-  CitizenChat: { conversationId: string; participantName: string };
+  CitizenChat: { conversationId: string; participantName: string; receiverId?: string };
   CitizenNotifications: undefined;
   AdminSchedule: { reportId?: string };
   AdminAlerts: undefined;
@@ -750,7 +754,7 @@ export type RootStackParamList = {
   BarangaySchedule: { reportId?: string };
   BarangayVerify: undefined;
   BarangayVerifyDetail: { reportId: string };
-  BarangayChat: { conversationId: string; participantName: string; reportTag?: string };
+  BarangayChat: { conversationId: string; participantName: string; reportTag?: string; receiverId?: string; inboxKey?: string };
   BarangayAlarms: undefined;
   AdminCheckpointAlarms: undefined;
 };

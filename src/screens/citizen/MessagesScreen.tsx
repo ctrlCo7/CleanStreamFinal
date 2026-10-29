@@ -4,7 +4,9 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
-import { subscribeToConversations, getOrCreateAdminConversation, sendMessage } from '../../services/messagingService';
+import { subscribeToConversations, getOrCreateAdminConversation, sendMessage, barangayInboxKey } from '../../services/messagingService';
+import { BarangayPickerSheet } from '../../components/common/BarangayPickerSheet';
+import { useMessageBarangay } from '../../hooks/useMessageBarangay';
 import { useAppSelector } from '../../store/hooks';
 import { Conversation, RootStackParamList } from '../../types';
 
@@ -24,6 +26,8 @@ export default function CitizenMessagesScreen() {
   const { user } = useAppSelector((s) => s.auth);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [contactingAdmin, setContactingAdmin] = useState(false);
+  const [pickingBarangay, setPickingBarangay] = useState(false);
+  const { open: messageBarangay, opening: openingBarangay } = useMessageBarangay();
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -36,7 +40,9 @@ export default function CitizenMessagesScreen() {
   const openChat = (conv: Conversation) => {
     const otherName = Object.entries(conv.participantNames)
       .find(([id]) => id !== user?.uid)?.[1] || 'Support';
-    navigation.navigate('CitizenChat', { conversationId: conv.id, participantName: otherName });
+    navigation.navigate('CitizenChat', conv.barangayId
+      ? { conversationId: conv.id, participantName: otherName, receiverId: barangayInboxKey(conv.barangayId) }
+      : { conversationId: conv.id, participantName: otherName });
   };
 
   const getInitials = (name: string) => name.split(' ').map((w) => w[0]).slice(0, 2).join('');
@@ -76,6 +82,18 @@ export default function CitizenMessagesScreen() {
             </View>
           )}
         </View>
+
+        {/* Any barangay in Cebu City, e.g. where the reported waterway is. */}
+        <TouchableOpacity style={styles.brgyBtn} onPress={() => setPickingBarangay(true)} disabled={openingBarangay} activeOpacity={0.85}>
+          <View style={[styles.avatar, { backgroundColor: colors.tealLight }]}>
+            <Text style={{ fontSize: 18 }}>🏛️</Text>
+          </View>
+          <View style={styles.convBody}>
+            <Text style={styles.brgyBtnTitle}>{openingBarangay ? 'Opening…' : 'Message a barangay'}</Text>
+            <Text style={styles.convPreview} numberOfLines={2}>Choose any barangay in Cebu City, like where you saw or reported waste in a waterway.</Text>
+          </View>
+          <Text style={styles.brgyChevron}>›</Text>
+        </TouchableOpacity>
 
         {conversations.length === 0 && (
           <TouchableOpacity style={styles.convItem} onPress={() => messageAdmin()} disabled={contactingAdmin} activeOpacity={0.85}>
@@ -141,6 +159,15 @@ export default function CitizenMessagesScreen() {
           </View>
         </View>
       </ScrollView>
+
+      <BarangayPickerSheet
+        visible={pickingBarangay}
+        title="Message a barangay"
+        subtitle="Officials of the barangay you choose will see your message."
+        homeId={user?.barangayId}
+        onClose={() => setPickingBarangay(false)}
+        onPick={(b) => { setPickingBarangay(false); messageBarangay(b); }}
+      />
     </SafeAreaView>
   );
 }
@@ -175,6 +202,12 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   convMeta: { alignItems: 'flex-end', gap: 5 },
   convTime: { fontSize: 10, color: Colors.textHint },
   unreadDot: { width: 9, height: 9, borderRadius: 4.5, backgroundColor: Colors.teal },
+  brgyBtn: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11,
+    borderWidth: 1, borderColor: Colors.tealMid,
+  },
+  brgyBtnTitle: { fontSize: 14, fontWeight: '700', color: Colors.tealDark },
+  brgyChevron: { fontSize: 22, color: Colors.tealDark },
   quickPanel: { backgroundColor: Colors.grayBg, borderRadius: 12, padding: 11 },
   quickPanelTitle: { fontSize: 11, fontWeight: '500', color: Colors.textSecondary, marginBottom: 7 },
   quickChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Image, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Image, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../hooks/useTheme';
 import { useAppSettings } from '../../services/appSettings';
@@ -8,7 +8,9 @@ import { CrewTracking, RootStackParamList, WasteReport } from '../../types';
 import { Badge } from '../../components/common/Badge';
 import { BackIcon } from '../../components/common/TabIcons';
 import { getReportById } from '../../services/reportsService';
-import { getOrCreateAdminConversation } from '../../services/messagingService';
+import { useMessageBarangay } from '../../hooks/useMessageBarangay';
+import { BarangayPickerSheet } from '../../components/common/BarangayPickerSheet';
+import { reportBarangayId } from '../../services/assignmentRules';
 import { useAppSelector } from '../../store/hooks';
 import { subscribeTrackingForReport } from '../../services/crewTrackingService';
 import { CrewTrackingCard } from '../../components/map/CrewTrackingCard';
@@ -30,7 +32,8 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
   const { reportId } = route.params;
   const { user } = useAppSelector((s) => s.auth);
   const [report, setReport] = useState<WasteReport | null>(null);
-  const [contactingAdmin, setContactingAdmin] = useState(false);
+  const { open: messageBarangay, opening: contactingBarangay } = useMessageBarangay();
+  const [pickingBarangay, setPickingBarangay] = useState(false);
   const [tracking, setTracking] = useState<CrewTracking | null>(null);
 
   // Like a delivery app: the resident follows the cleanup truck while it drives to their report.
@@ -48,21 +51,12 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
         : 'Could not load this report. Please try again.'));
   }, [reportId]);
 
-  const handleChatAdmin = async () => {
-    if (!user?.uid || contactingAdmin) return;
-    setContactingAdmin(true);
-    try {
-      const result = await getOrCreateAdminConversation(user.uid, `${user.firstName} ${user.lastName}`, 'citizen');
-      if (!result) {
-        Alert.alert('No admin available', 'No admin account was found to message right now.');
-        return;
-      }
-      navigation.navigate('CitizenChat', { conversationId: result.conversationId, participantName: result.adminName });
-    } catch {
-      Alert.alert('Couldn’t open chat', 'Please try again.');
-    } finally {
-      setContactingAdmin(false);
-    }
+  // The barangay where this report's waterway is: its officials handle the report.
+  const handleMessageBarangay = () => {
+    const id = report ? reportBarangayId(report) : undefined;
+    const name = report?.location?.barangay || report?.barangay;
+    if (id && name) messageBarangay({ id, name }, report?.reportNumber);
+    else setPickingBarangay(true);
   };
 
   if (!report) {
@@ -169,15 +163,23 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
             <Text style={styles.outlineBtnText}>🗺️ Map</Text>
           </TouchableOpacity>
 {features.messaging && (
-          <TouchableOpacity style={styles.primaryBtn} onPress={handleChatAdmin} disabled={contactingAdmin}>
-            {contactingAdmin
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleMessageBarangay} disabled={contactingBarangay}>
+            {contactingBarangay
               ? <ActivityIndicator size="small" color="#fff" />
-              : <Text style={styles.primaryBtnText}>💬 Chat admin</Text>
+              : <Text style={styles.primaryBtnText} numberOfLines={1}>💬 Message {report.location?.barangay || report.barangay ? `Brgy. ${report.location?.barangay || report.barangay}` : 'the barangay'}</Text>
             }
           </TouchableOpacity>
 )}
         </View>
       </ScrollView>
+
+      <BarangayPickerSheet
+        visible={pickingBarangay}
+        title="Which barangay?"
+        subtitle="This report has no barangay. Choose the one where the waterway is."
+        onClose={() => setPickingBarangay(false)}
+        onPick={(b) => { setPickingBarangay(false); messageBarangay(b, report?.reportNumber); }}
+      />
     </SafeAreaView>
   );
 }

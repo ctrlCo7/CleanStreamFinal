@@ -418,17 +418,35 @@ service cloud.firestore {
 
     // ─── Conversations ──────────────────────────────────────────────────────────
     match /conversations/{conversationId} {
+      // A citizen's chat with a barangay's shared inbox carries barangayId: every official
+      // of that barangay can read and answer it.
+      function inboxOfficial(conv) {
+        return conv.get('barangayId', null) != null && isBarangayOfficer() && inMyBarangay(conv.barangayId);
+      }
+      function conversation() {
+        return get(/databases/$(database)/documents/conversations/$(conversationId)).data;
+      }
+
       allow read, write: if isAuthenticated()
                          && currentUid() in resource.data.participantIds;
+      allow read: if inboxOfficial(resource.data);
+      // Officials only touch the preview and the unread counts.
+      allow update: if inboxOfficial(resource.data)
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['lastMessage', 'lastMessageTime', 'unreadCounts']);
+      // Anyone may open an inbox chat with any barangay, but only as themselves.
       allow create: if isAuthenticated()
-                    && currentUid() in request.resource.data.participantIds;
+                    && currentUid() in request.resource.data.participantIds
+                    && (request.resource.data.get('barangayId', null) == null
+                        || (request.resource.data.get('citizenId', '') == currentUid()
+                            && request.resource.data.participantIds == [currentUid()]));
 
       match /messages/{messageId} {
         allow read: if isAuthenticated()
-                    && currentUid() in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+                    && (currentUid() in conversation().participantIds || inboxOfficial(conversation()));
         allow create: if isAuthenticated()
                       && request.resource.data.senderId == currentUid()
-                      && currentUid() in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+                      && (currentUid() in conversation().participantIds || inboxOfficial(conversation()));
         allow update: if isAuthenticated()
                       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
         allow delete: if false;

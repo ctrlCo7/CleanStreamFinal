@@ -22,6 +22,7 @@ import { loadLocalModel } from '../../services/aiService';
 import { createReport } from '../../services/reportsService';
 import { GeoLocation } from '../../types';
 import { LocationSearchModal } from '../../components/common/LocationSearchModal';
+import { BarangayChoice, BarangayPickerSheet } from '../../components/common/BarangayPickerSheet';
 import { BackIcon, CameraIcon, CheckIcon } from '../../components/common/TabIcons';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
 
@@ -55,6 +56,14 @@ export default function CitizenReportScreen() {
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gotFixRef = useRef(false);
   const pickedManuallyRef = useRef(false);
+  // The barangay the reporter chose for this report (e.g. the waterway is just across the
+  // boundary). GPS keeps refining the position, but the report goes to this barangay.
+  const chosenBarangayRef = useRef<BarangayChoice | null>(null);
+  const [pickingBarangay, setPickingBarangay] = useState(false);
+  const withChosenBarangay = (loc: GeoLocation): GeoLocation => {
+    const b = chosenBarangayRef.current;
+    return b ? { ...loc, barangay: b.name, barangayId: b.id } : loc;
+  };
   const confirmPromptedRef = useRef(false);
 
   const stopWatching = () => {
@@ -96,7 +105,7 @@ export default function CitizenReportScreen() {
       stopWatchRef.current = await watchLocation((loc) => {
         gotFixRef.current = true;
         if (pickedManuallyRef.current) return;
-        setLocation(loc);
+        setLocation(withChosenBarangay(loc));
         setGeoStatus('found');
         // First real fix: ask the user to confirm it before anything else, and only
         // offer the manual search if they say it's not where they are.
@@ -273,6 +282,7 @@ Is this where you are?`,
   };
 
   const refreshLocation = () => {
+    chosenBarangayRef.current = null;
     setLocation(null);
     startWatching();
   };
@@ -290,6 +300,16 @@ Is this where you are?`,
       address: `${b.name} (approximate - GPS unavailable)`,
     });
     setGeoStatus('manual');
+  };
+
+  // Send the report to another barangay. With a real position it only changes the barangay;
+  // without one, the barangay's centre point stands in for the location.
+  const chooseReportBarangay = (b: BarangayChoice) => {
+    chosenBarangayRef.current = b;
+    const known = CEBU_BARANGAYS.find((c) => c.id === b.id);
+    if (location && geoStatus !== 'manual') setLocation(withChosenBarangay(location));
+    else if (known) { pickedManuallyRef.current = true; applyBarangay(known); }
+    else if (location) setLocation(withChosenBarangay(location));
   };
 
   const applyGpsFailureFallback = () => {
@@ -422,10 +442,16 @@ Is this where you are?`,
               <Path d="M2 13V7l6-5 6 5v6" stroke={colors.teal} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               <Path d="M6 13v-3h4v3" stroke={colors.teal} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </Svg>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.geoLabel}>{t('report.barangay')}</Text>
               <Text style={styles.geoValue}>{location?.barangay || (geoStatus === 'error' ? 'Choose below' : 'Detecting...')}</Text>
+              {!!location?.barangay && (
+                <Text style={styles.geoHint}>Officials of Brgy. {location.barangay} will handle this report.</Text>
+              )}
             </View>
+            <TouchableOpacity style={styles.changeBtn} onPress={() => setPickingBarangay(true)} accessibilityLabel="Choose the barangay for this report">
+              <Text style={styles.changeBtnText}>Change</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.geoItem}>
@@ -516,9 +542,20 @@ Is this where you are?`,
         onClose={() => setShowSearch(false)}
         onSelect={(loc) => {
           pickedManuallyRef.current = true;
-          setLocation(loc);
+          setLocation(withChosenBarangay(loc));
           setGeoStatus('manual');
         }}
+      />
+      <BarangayPickerSheet
+        visible={pickingBarangay}
+        title="Which barangay is the waterway in?"
+        subtitle="The report goes to the barangay you choose, and its officials handle the cleanup."
+        selectedId={location?.barangayId}
+        homeId={user?.barangayId}
+        // Without a GPS position, only barangays with a known centre point can stand in for it.
+        choices={location && geoStatus !== 'manual' ? undefined : CEBU_BARANGAYS.map((b) => ({ id: b.id, name: b.name }))}
+        onClose={() => setPickingBarangay(false)}
+        onPick={(b) => { setPickingBarangay(false); chooseReportBarangay(b); }}
       />
     </SafeAreaView>
   );
@@ -526,6 +563,9 @@ Is this where you are?`,
 
 const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
+  geoHint: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  changeBtn: { marginLeft: 'auto', alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, backgroundColor: Colors.tealLight },
+  changeBtnText: { fontSize: 12, fontWeight: '700', color: Colors.tealDark },
   header: {
     backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

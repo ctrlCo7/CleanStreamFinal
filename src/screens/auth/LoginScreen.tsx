@@ -92,24 +92,8 @@ export default function LoginScreen({ navigation }: Props) {
       return;
     }
 
-    if (login.fulfilled.match(result)) {
-      const user = result.payload;
-
-      switch (user.role) {
-        case 'admin':
-          navigation.replace('AdminTabs');
-          break;
-
-        case 'barangay':
-          navigation.replace('BarangayTabs');
-          break;
-
-        case 'citizen':
-        default:
-          navigation.replace('CitizenTabs');
-          break;
-      }
-    }
+    // On success there's nothing to do here: RootNavigator swaps to the right home screen
+    // (or the ID-verification screens) as soon as the signed-in user is in the store.
   };
 
   return (

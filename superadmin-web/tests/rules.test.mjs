@@ -333,6 +333,26 @@ await check('everyone signed in can read it (the app matches reports to it)', as
 await check("a citizen can't add barangays", assertFails(setDoc(doc(ct, 'barangays', 'fake'), newBrgy('fake'))));
 await check("a deactivated Super Admin can't add barangays", assertFails(setDoc(doc(as('sa_off'), 'barangays', 'x'), newBrgy('x'))));
 
+console.log('\n== Citizens message any barangay (shared inbox)');
+const inboxConv = (citizen, barangayId, extra = {}) => ({
+  participantIds: [citizen], participantNames: { [citizen]: 'C', ['brgy_' + barangayId]: 'Brgy' },
+  barangayId, barangayName: barangayId, citizenId: citizen, lastMessage: '', unreadCounts: {}, ...extra,
+});
+await check('a citizen opens a chat with another barangay', assertSucceeds(setDoc(doc(as('vol1'), 'conversations', 'inbox1'), inboxConv('vol1', 'b2'))));
+await check("a citizen can't open one in someone else's name", assertFails(setDoc(doc(as('vol1'), 'conversations', 'inbox2'), inboxConv('victim', 'b2', { participantIds: ['vol1'] }))));
+await check("a citizen can't pull an official into the inbox chat", assertFails(setDoc(doc(as('vol1'), 'conversations', 'inbox3'), inboxConv('vol1', 'b2', { participantIds: ['vol1', 'bg2'] }))));
+await check('the citizen writes to the barangay', assertSucceeds(addDoc(collection(as('vol1'), 'conversations', 'inbox1', 'messages'), { senderId: 'vol1', receiverId: 'brgy_b2', content: 'Hi', read: false })));
+await check("that barangay's official sees the inbox", assertSucceeds(getDocs(query(collection(as('bg2'), 'conversations'), where('barangayId', '==', 'b2')))));
+await check("that barangay's official reads the messages", assertSucceeds(getDocs(collection(as('bg2'), 'conversations', 'inbox1', 'messages'))));
+await check("that barangay's official replies", assertSucceeds(addDoc(collection(as('bg2'), 'conversations', 'inbox1', 'messages'), { senderId: 'bg2', receiverId: 'vol1', content: 'Noted', read: false })));
+await check('...and updates the preview and unread count', assertSucceeds(updateDoc(doc(as('bg2'), 'conversations', 'inbox1'), { lastMessage: 'Noted', 'unreadCounts.vol1': 1 })));
+await check("...but can't change who is in the chat", assertFails(updateDoc(doc(as('bg2'), 'conversations', 'inbox1'), { participantIds: ['bg2'] })));
+await check("another barangay's official can't read it", assertFails(getDoc(doc(as('bg'), 'conversations', 'inbox1'))));
+await check("another barangay's official can't list that inbox", assertFails(getDocs(query(collection(as('bg'), 'conversations'), where('barangayId', '==', 'b2')))));
+await check("another barangay's official can't read its messages", assertFails(getDocs(collection(as('bg'), 'conversations', 'inbox1', 'messages'))));
+await check("another citizen can't read it", assertFails(getDoc(doc(as('vol2'), 'conversations', 'inbox1'))));
+await check('person-to-person chats still work', assertSucceeds(setDoc(doc(as('vol2'), 'conversations', 'p2p'), { participantIds: ['vol2', 'ad'], lastMessage: '' })));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup();
 process.exit(fail ? 1 : 0);

@@ -7,7 +7,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
 import { useAppSelector } from '../../store/hooks';
-import { subscribeToConversations } from '../../services/messagingService';
+import { barangayInboxKey, subscribeToBarangayInbox, subscribeToConversations } from '../../services/messagingService';
 import { Conversation } from '../../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -17,15 +17,27 @@ export default function BarangayMessagesScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const { user } = useAppSelector((s) => s.auth);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [personal, setPersonal] = useState<Conversation[]>([]);
+  const [inbox, setInbox] = useState<Conversation[]>([]);
 
   useEffect(() => {
     if (!user?.uid) return;
-    const unsub = subscribeToConversations(user.uid, setConversations);
+    const unsub = subscribeToConversations(user.uid, setPersonal);
     return unsub;
   }, [user?.uid]);
 
-  const totalUnread = conversations.filter((c) => (c.unreadCounts?.[user?.uid ?? ''] || 0) > 0).length;
+  // Citizens' messages to this barangay (any of its officials can answer).
+  const myBarangayId = user?.barangayId;
+  useEffect(() => {
+    if (!myBarangayId) return;
+    return subscribeToBarangayInbox(myBarangayId, setInbox);
+  }, [myBarangayId]);
+
+  const inboxKey = myBarangayId ? barangayInboxKey(myBarangayId) : '';
+  const isInbox = (c: Conversation) => !!c.barangayId;
+  const readKeyOf = (c: Conversation) => (isInbox(c) ? inboxKey : user?.uid ?? '');
+  const conversations = [...inbox.filter((c) => c.lastMessage), ...personal];
+  const totalUnread = conversations.filter((c) => (c.unreadCounts?.[readKeyOf(c)] || 0) > 0).length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -48,14 +60,18 @@ export default function BarangayMessagesScreen() {
         )}
 
         {conversations.map((conv) => {
-          const otherName = Object.entries(conv.participantNames)
-            .find(([id]) => id !== user?.uid)?.[1] || 'Admin';
-          const isUnread = (conv.unreadCounts?.[user?.uid ?? ''] || 0) > 0;
+          const inboxChat = isInbox(conv);
+          const otherName = inboxChat
+            ? conv.participantNames?.[conv.citizenId ?? ''] || 'Resident'
+            : Object.entries(conv.participantNames).find(([id]) => id !== user?.uid)?.[1] || 'Admin';
+          const isUnread = (conv.unreadCounts?.[readKeyOf(conv)] || 0) > 0;
           return (
             <TouchableOpacity
               key={conv.id}
               style={[styles.convItem, isUnread && styles.convUnread]}
-              onPress={() => navigation.navigate('BarangayChat', { conversationId: conv.id, participantName: otherName })}
+              onPress={() => navigation.navigate('BarangayChat', inboxChat
+                ? { conversationId: conv.id, participantName: otherName, receiverId: conv.citizenId, inboxKey, reportTag: conv.reportTag }
+                : { conversationId: conv.id, participantName: otherName })}
               activeOpacity={0.85}
             >
               <View style={[styles.avatar, { backgroundColor: colors.brgyLight }]}>
@@ -64,6 +80,11 @@ export default function BarangayMessagesScreen() {
               <View style={styles.convBody}>
                 <Text style={styles.convName}>{otherName}</Text>
                 <Text style={styles.convPreview} numberOfLines={1}>{conv.lastMessage}</Text>
+                {inboxChat && (
+                  <View style={styles.convTag}>
+                    <Text style={styles.convTagText}>Resident · Barangay inbox{conv.reportTag ? ` · ${conv.reportTag}` : ''}</Text>
+                  </View>
+                )}
               </View>
               <View style={styles.convMeta}>
                 <Text style={styles.convTime}>—</Text>

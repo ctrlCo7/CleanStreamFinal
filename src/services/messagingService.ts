@@ -3,6 +3,7 @@ import {
   addDoc,
   updateDoc,
   doc,
+  getDoc,
   getDocs,
   query,
   where,
@@ -129,6 +130,53 @@ export const getOrCreateAdminConversation = async (
   const conversationId = await getOrCreateConversation(userId, userName, role, adminDoc.id, adminName, 'admin');
   return { conversationId, adminName, adminUid: adminDoc.id };
 };
+
+// ─── Barangay inboxes ─────────────────────────────────────────────────────────
+// A citizen can message any barangay (for example about a waterway they reported there).
+// The chat goes to the barangay's shared inbox: every official of that barangay sees it
+// and can answer, and the citizen never needs an official's personal account.
+
+/** Who a message to a barangay is addressed to, and where its unread count is kept. */
+export const barangayInboxKey = (barangayId: string) => `brgy_${barangayId}`;
+
+export const barangayConversationId = (barangayId: string, citizenId: string) => `brgyinbox-${barangayId}-${citizenId}`;
+
+export const getOrCreateBarangayConversation = async (
+  citizen: { uid: string; name: string; role: string },
+  barangay: { id: string; name: string },
+  reportTag?: string,
+): Promise<string> => {
+  const conversationId = barangayConversationId(barangay.id, citizen.uid);
+  const ref = doc(db, 'conversations', conversationId);
+  // The rules refuse reading a conversation that doesn't exist yet, so a refusal means "new".
+  const exists = await getDoc(ref).then((s) => s.exists()).catch(() => false);
+  if (exists) {
+    if (reportTag) await updateDoc(ref, { reportTag });
+    return conversationId;
+  }
+  const key = barangayInboxKey(barangay.id);
+  await setDoc(ref, {
+    participantIds: [citizen.uid],
+    participantNames: { [citizen.uid]: citizen.name, [key]: `Brgy. ${barangay.name}` },
+    participantRoles: { [citizen.uid]: citizen.role, [key]: 'barangay' },
+    barangayId: barangay.id,
+    barangayName: barangay.name,
+    citizenId: citizen.uid,
+    reportRef: null,
+    reportTag: reportTag || null,
+    lastMessage: '',
+    lastMessageTime: serverTimestamp(),
+    unreadCounts: { [citizen.uid]: 0, [key]: 0 },
+  });
+  return conversationId;
+};
+
+/** A barangay's shared inbox, newest first (sorted here, so no composite index is needed). */
+export const subscribeToBarangayInbox = (barangayId: string, callback: (convs: Conversation[]) => void) =>
+  onSnapshot(query(collection(db, 'conversations'), where('barangayId', '==', barangayId)), (snap) => {
+    const seconds = (c: Conversation) => (c.lastMessageTime as unknown as { seconds?: number } | null)?.seconds ?? 0;
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Conversation)).sort((a, b) => seconds(b) - seconds(a)));
+  }, () => callback([]));
 
 export const markMessagesRead = async (
   conversationId: string,
