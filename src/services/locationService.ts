@@ -6,12 +6,15 @@ import { db } from './firebase';
 
 export const slugifyBarangay = (name: string): string =>
   name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // drop accents: "Santo Niño" -> "santo-nino"
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
 
-export interface CebuBarangay { id: string; name: string; lat: number; lng: number }
+/** `aliases`: other spellings the phone's address lookup or a person may use. */
+export interface CebuBarangay { id: string; name: string; lat: number; lng: number; aliases?: string[] }
 
 // Canonical barangay list -- the single source of truth for barangay names/IDs across
 // signup (barangay picker), GPS-based nearest-barangay fallback, and reverse geocoding.
@@ -19,16 +22,86 @@ export interface CebuBarangay { id: string; name: string; lat: number; lng: numb
 // and a barangay official's assigned barangay in sync, since both derive from this list's
 // `id` -- that ID is what Firestore queries (subscribeToBarangayReports) actually filter on.
 export const CEBU_BARANGAYS: CebuBarangay[] = [
-  { id: 'punta-princesa', name: 'Punta Princesa', lat: 10.3157, lng: 123.8854 },
-  { id: 'guadalupe', name: 'Guadalupe', lat: 10.3180, lng: 123.8920 },
-  { id: 'labangon', name: 'Labangon', lat: 10.3090, lng: 123.8780 },
-  { id: 'mambaling', name: 'Mambaling', lat: 10.3050, lng: 123.8700 },
-  { id: 'kinasang-an', name: 'Kinasang-an', lat: 10.3220, lng: 123.8990 },
-  { id: 'kamputhaw', name: 'Kamputhaw', lat: 10.3350, lng: 123.9050 },
-  { id: 'kamagayan', name: 'Kamagayan', lat: 10.3040, lng: 123.8990 },
-  { id: 'tinago', name: 'Tinago', lat: 10.2970, lng: 123.9010 },
-  { id: 'basak-san-nicolas', name: 'Basak San Nicolas', lat: 10.2950, lng: 123.8880 },
-  { id: 'tejero', name: 'Tejero', lat: 10.3120, lng: 123.8820 },
+  { id: 'adlaon', name: 'Adlaon', lat: 10.4369, lng: 123.8680 },
+  { id: 'agsungot', name: 'Agsungot', lat: 10.4349, lng: 123.9102 },
+  { id: 'apas', name: 'Apas', lat: 10.3375, lng: 123.9056 },
+  { id: 'babag', name: 'Babag', lat: 10.3740, lng: 123.8503 },
+  { id: 'bacayan', name: 'Bacayan', lat: 10.3855, lng: 123.9199 },
+  { id: 'banilad', name: 'Banilad', lat: 10.3465, lng: 123.9111 },
+  { id: 'basak-pardo', name: 'Basak Pardo', lat: 10.2865, lng: 123.8646 },
+  { id: 'basak-san-nicolas', name: 'Basak San Nicolas', lat: 10.2865, lng: 123.8703 },
+  { id: 'binaliw', name: 'Binaliw', lat: 10.4228, lng: 123.9161 },
+  { id: 'bonbon', name: 'Bonbon', lat: 10.3666, lng: 123.8277 },
+  { id: 'budla-an', name: 'Budla-an', lat: 10.3793, lng: 123.8859, aliases: ['Budlaan'] },
+  { id: 'buhisan', name: 'Buhisan', lat: 10.3088, lng: 123.8535 },
+  { id: 'bulacao', name: 'Bulacao', lat: 10.2755, lng: 123.8514 },
+  { id: 'buot', name: 'Buot', lat: 10.3480, lng: 123.8081, aliases: ['Buot-Taup', 'Buot-Taup Pardo'] },
+  { id: 'busay', name: 'Busay', lat: 10.3608, lng: 123.8847 },
+  { id: 'calamba', name: 'Calamba', lat: 10.3016, lng: 123.8845 },
+  { id: 'cambinocot', name: 'Cambinocot', lat: 10.4631, lng: 123.8975 },
+  { id: 'capitol-site', name: 'Capitol Site', lat: 10.3247, lng: 123.8902 },
+  { id: 'carreta', name: 'Carreta', lat: 10.3082, lng: 123.9149 },
+  { id: 'cogon-pardo', name: 'Cogon Pardo', lat: 10.2774, lng: 123.8621 },
+  { id: 'cogon-ramos', name: 'Cogon Ramos', lat: 10.3049, lng: 123.8984 },
+  { id: 'day-as', name: 'Day-as', lat: 10.3015, lng: 123.9023, aliases: ['Dayas'] },
+  { id: 'duljo-fatima', name: 'Duljo Fatima', lat: 10.2917, lng: 123.8849, aliases: ['Duljo'] },
+  { id: 'ermita', name: 'Ermita', lat: 10.2917, lng: 123.8974 },
+  { id: 'guadalupe', name: 'Guadalupe', lat: 10.3229, lng: 123.8839 },
+  { id: 'guba', name: 'Guba', lat: 10.4282, lng: 123.8899 },
+  { id: 'hipodromo', name: 'Hipodromo', lat: 10.3141, lng: 123.9070 },
+  { id: 'inayawan', name: 'Inayawan', lat: 10.2702, lng: 123.8564 },
+  { id: 'kalubihan', name: 'Kalubihan', lat: 10.2977, lng: 123.8991 },
+  { id: 'kalunasan', name: 'Kalunasan', lat: 10.3389, lng: 123.8796 },
+  { id: 'kamagayan', name: 'Kamagayan', lat: 10.2998, lng: 123.8995 },
+  { id: 'kamputhaw', name: 'Kamputhaw', lat: 10.3182, lng: 123.8972, aliases: ['Camputhaw'] },
+  { id: 'kasambagan', name: 'Kasambagan', lat: 10.3251, lng: 123.9113 },
+  { id: 'kinasang-an', name: 'Kinasang-an Pardo', lat: 10.2823, lng: 123.8591, aliases: ['Kinasang-an', 'Kinasangan'] },
+  { id: 'labangon', name: 'Labangon', lat: 10.2994, lng: 123.8791 },
+  { id: 'lahug', name: 'Lahug', lat: 10.3309, lng: 123.8981 },
+  { id: 'lorega-san-miguel', name: 'Lorega San Miguel', lat: 10.3066, lng: 123.9042, aliases: ['Lorega'] },
+  { id: 'lusaran', name: 'Lusaran', lat: 10.4902, lng: 123.8919 },
+  { id: 'luz', name: 'Luz', lat: 10.3211, lng: 123.9078 },
+  { id: 'mabini', name: 'Mabini', lat: 10.4527, lng: 123.9190 },
+  { id: 'mabolo', name: 'Mabolo', lat: 10.3143, lng: 123.9147 },
+  { id: 'malubog', name: 'Malubog', lat: 10.3804, lng: 123.8693 },
+  { id: 'mambaling', name: 'Mambaling', lat: 10.2911, lng: 123.8773 },
+  { id: 'pahina-central', name: 'Pahina Central', lat: 10.2966, lng: 123.8924 },
+  { id: 'pahina-san-nicolas', name: 'Pahina San Nicolas', lat: 10.2940, lng: 123.8928 },
+  { id: 'pamutan', name: 'Pamutan', lat: 10.3334, lng: 123.8355 },
+  { id: 'pardo', name: 'Pardo', lat: 10.2794, lng: 123.8554, aliases: ['Poblacion Pardo', 'Pardo (Pob.)'] },
+  { id: 'pari-an', name: 'Pari-an', lat: 10.2989, lng: 123.9027, aliases: ['Parian'] },
+  { id: 'paril', name: 'Paril', lat: 10.4750, lng: 123.9159 },
+  { id: 'pasil', name: 'Pasil', lat: 10.2902, lng: 123.8947 },
+  { id: 'pit-os', name: 'Pit-os', lat: 10.3964, lng: 123.9217, aliases: ['Pitos'] },
+  { id: 'pulangbato', name: 'Pulangbato', lat: 10.3979, lng: 123.9063 },
+  { id: 'pung-ol-sibugay', name: 'Pung-ol Sibugay', lat: 10.3970, lng: 123.8495 },
+  { id: 'punta-princesa', name: 'Punta Princesa', lat: 10.2949, lng: 123.8702 },
+  { id: 'quiot-pardo', name: 'Quiot Pardo', lat: 10.2890, lng: 123.8586, aliases: ['Quiot'] },
+  { id: 'sambag-i', name: 'Sambag I', lat: 10.3008, lng: 123.8920 },
+  { id: 'sambag-ii', name: 'Sambag II', lat: 10.3059, lng: 123.8911 },
+  { id: 'san-antonio', name: 'San Antonio', lat: 10.3019, lng: 123.8983 },
+  { id: 'san-jose', name: 'San Jose', lat: 10.3791, lng: 123.9164 },
+  { id: 'san-nicolas-proper', name: 'San Nicolas Proper', lat: 10.2949, lng: 123.8905, aliases: ['San Nicolas'] },
+  { id: 'san-roque', name: 'San Roque', lat: 10.2939, lng: 123.9060 },
+  { id: 'santa-cruz', name: 'Santa Cruz', lat: 10.3061, lng: 123.8959 },
+  { id: 'santo-nino', name: 'Santo Niño', lat: 10.2951, lng: 123.9028, aliases: ['Señor Santo Niño', 'Santo Nino', 'Sto. Niño'] },
+  { id: 'sapangdaku', name: 'Sapangdaku', lat: 10.3350, lng: 123.8727 },
+  { id: 'sawang-calero', name: 'Sawang Calero', lat: 10.2912, lng: 123.8908 },
+  { id: 'sinsin', name: 'Sinsin', lat: 10.3449, lng: 123.7810, aliases: ['Sin-sin'] },
+  { id: 'sirao', name: 'Sirao', lat: 10.4141, lng: 123.8722 },
+  { id: 'suba', name: 'Suba', lat: 10.2900, lng: 123.8938 },
+  { id: 'sudlon-i', name: 'Sudlon I', lat: 10.3636, lng: 123.7863 },
+  { id: 'sudlon-ii', name: 'Sudlon II', lat: 10.3796, lng: 123.7847 },
+  { id: 't-padilla', name: 'T. Padilla', lat: 10.3018, lng: 123.9043, aliases: ['T Padilla', 'Tomas Padilla'] },
+  { id: 'tabunan', name: 'Tabunan', lat: 10.4397, lng: 123.8214 },
+  { id: 'tagba-o', name: 'Tagba-o', lat: 10.4425, lng: 123.8399, aliases: ['Tagbao'] },
+  { id: 'talamban', name: 'Talamban', lat: 10.3694, lng: 123.9169 },
+  { id: 'taptap', name: 'Taptap', lat: 10.4299, lng: 123.8480 },
+  { id: 'tejero', name: 'Tejero', lat: 10.3020, lng: 123.9074 },
+  { id: 'tinago', name: 'Tinago', lat: 10.2986, lng: 123.9081 },
+  { id: 'tisa', name: 'Tisa', lat: 10.3021, lng: 123.8690 },
+  { id: 'to-ong', name: 'To-ong', lat: 10.3100, lng: 123.8362, aliases: ['Toong'] },
+  { id: 'zapatera', name: 'Zapatera', lat: 10.3064, lng: 123.9013 },
 ];
 
 /** Matches a (possibly device-reverse-geocoded) barangay name against the canonical
@@ -40,7 +113,8 @@ export const findBarangayByName = (name: string | undefined | null): { id: strin
   if (!name) return undefined;
   const normalized = name.trim().toLowerCase().replace(/^(brgy\.?|barangay)\s+/, '');
   const slug = slugifyBarangay(normalized);
-  return CEBU_BARANGAYS.find((b) => b.name.toLowerCase() === normalized)
+  return CEBU_BARANGAYS.find((b) => b.name.toLowerCase() === normalized || b.id === slug
+      || b.aliases?.some((a) => a.toLowerCase() === normalized))
     ?? registeredBarangays.find((b) => b.name.toLowerCase() === normalized || b.id === slug);
 };
 

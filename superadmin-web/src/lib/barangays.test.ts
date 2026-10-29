@@ -12,9 +12,10 @@ describe('resolveBarangay', () => {
     expect(resolveBarangay('basak san nicolas')).toMatchObject({ id: 'basak-san-nicolas', isNew: false });
   });
   it('turns an unlisted name into a new barangay with the same id the app uses', () => {
-    expect(resolveBarangay('Lahug')).toEqual({ ok: true, id: 'lahug', name: 'Lahug', isNew: true });
-    expect(resolveBarangay('  Sto.   Niño ')).toMatchObject({ ok: true, name: 'Sto. Niño', isNew: true });
-    expect(resolveBarangay('Pasil')).toMatchObject({ id: 'pasil' });
+    // Mohon is in Talisay, not Cebu City, so it isn't on the built-in list.
+    expect(resolveBarangay('Mohon')).toEqual({ ok: true, id: 'mohon', name: 'Mohon', isNew: true });
+    expect(resolveBarangay('  Barrio   Niño ')).toMatchObject({ ok: true, id: 'barrio-nino', name: 'Barrio Niño', isNew: true });
+    expect(resolveBarangay('Pasil')).toMatchObject({ id: 'pasil', isNew: false });
   });
   it('rejects empty, too short or odd input', () => {
     expect(resolveBarangay('   ').ok).toBe(false);
@@ -22,11 +23,19 @@ describe('resolveBarangay', () => {
     expect(resolveBarangay('<script>').ok).toBe(false);
     expect(resolveBarangay('a'.repeat(61)).ok).toBe(false);
   });
+  it('knows all 80 barangays of Cebu City, and their other spellings', () => {
+    expect(listBarangays()).toHaveLength(80);
+    expect(new Set(listBarangays().map((b) => b.id)).size).toBe(80);
+    expect(resolveBarangay('Lahug')).toMatchObject({ id: 'lahug', isNew: false });
+    expect(resolveBarangay('Camputhaw')).toMatchObject({ id: 'kamputhaw', name: 'Kamputhaw', isNew: false });
+    expect(resolveBarangay('Sto. Niño')).toMatchObject({ id: 'santo-nino', name: 'Santo Niño', isNew: false });
+    expect(resolveBarangay('Kinasang-an')).toMatchObject({ id: 'kinasang-an', isNew: false });
+  });
   it('treats a registered barangay as known', () => {
-    setRegisteredBarangays([{ id: 'lahug', name: 'Lahug', custom: true }]);
-    expect(resolveBarangay('lahug')).toMatchObject({ id: 'lahug', isNew: false });
-    expect(barangayById('lahug')?.name).toBe('Lahug');
-    expect(listBarangays().at(-1)?.id).toBe('lahug');
+    setRegisteredBarangays([{ id: 'mohon', name: 'Mohon', custom: true }]);
+    expect(resolveBarangay('mohon')).toMatchObject({ id: 'mohon', isNew: false });
+    expect(barangayById('mohon')?.name).toBe('Mohon');
+    expect(listBarangays().at(-1)?.id).toBe('mohon');
   });
   it('never lets a registered entry shadow a built-in one', () => {
     setRegisteredBarangays([{ id: 'guadalupe', name: 'Fake', custom: true }]);
@@ -38,6 +47,7 @@ describe('helpers', () => {
   it('slugifies like the mobile app', () => {
     expect(slugifyBarangay('Kinasang-an')).toBe('kinasang-an');
     expect(slugifyBarangay(' Basak San Nicolas ')).toBe('basak-san-nicolas');
+    expect(slugifyBarangay('Santo Niño')).toBe('santo-nino');
   });
   it('cleans typed names', () => {
     expect(cleanBarangayName(' brgy   Lahug ')).toBe('Lahug');

@@ -476,19 +476,11 @@ Is this where you are?`,
               <Text style={styles.fallbackHint}>
                 GPS couldn't get a fix (common indoors or without mobile data). Choose your barangay, or move outdoors and refresh.
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                {CEBU_BARANGAYS.map((b) => (
-                  <TouchableOpacity
-                    key={b.id}
-                    style={[styles.chip, location?.barangayId === b.id && geoStatus === 'manual' && styles.chipActive]}
-                    onPress={() => { pickedManuallyRef.current = true; applyBarangay(b); }}
-                  >
-                    <Text style={[styles.chipText, location?.barangayId === b.id && geoStatus === 'manual' && styles.chipTextActive]}>
-                      {b.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              <TouchableOpacity style={styles.chooseBrgyBtn} onPress={() => setPickingBarangay(true)} activeOpacity={0.85}>
+                <Text style={styles.chooseBrgyText}>
+                  {location?.barangay && geoStatus === 'manual' ? `📍 Brgy. ${location.barangay} · Change` : '📍 Choose barangay'}
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -564,6 +556,8 @@ Is this where you are?`,
 const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.grayBg },
   geoHint: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  chooseBrgyBtn: { marginTop: 8, alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, backgroundColor: Colors.tealLight, borderWidth: 1, borderColor: Colors.tealMid },
+  chooseBrgyText: { fontSize: 13, fontWeight: '700', color: Colors.tealDark },
   changeBtn: { marginLeft: 'auto', alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, backgroundColor: Colors.tealLight },
   changeBtnText: { fontSize: 12, fontWeight: '700', color: Colors.tealDark },
   header: {

@@ -15,6 +15,7 @@ import { clearError, register, setUser } from '../../store/authSlice';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { RootStackParamList, UserRole } from '../../types';
 import { CEBU_BARANGAYS } from '../../services/locationService';
+import { BarangayPickerSheet } from '../../components/common/BarangayPickerSheet';
 import { requiresIdentityCheck } from '../../services/authService';
 import { idTypeLabel } from '../../services/identityChecks';
 import { normalizePhone } from '../../utils/phone';
@@ -42,6 +43,7 @@ export default function SignupScreen({ navigation }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [barangayId, setBarangayId] = useState('');
+  const [pickingBarangay, setPickingBarangay] = useState(false);
   const [employeeId, setEmployeeId] = useState('');
   const [phone, setPhone] = useState('');
   const [agency, setAgency] = useState('');
@@ -156,22 +158,23 @@ export default function SignupScreen({ navigation }: Props) {
         {role !== 'cleanup_team' && (
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Barangay</Text>
-            <View style={styles.barangayWrap}>
-              {CEBU_BARANGAYS.map((b) => (
-                <TouchableOpacity
-                  key={b.id}
-                  style={[styles.barangayChip, barangayId === b.id && styles.barangayChipActive]}
-                  onPress={() => setBarangayId(b.id)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={[styles.barangayChipText, barangayId === b.id && styles.barangayChipTextActive]}>
-                    {b.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <TouchableOpacity style={[styles.input, styles.selectBox]} onPress={() => setPickingBarangay(true)} activeOpacity={0.85}>
+              <Text style={[styles.selectText, !selectedBarangay && { color: colors.textHint }]}>
+                {selectedBarangay ? `Brgy. ${selectedBarangay.name}` : 'Choose your barangay'}
+              </Text>
+              <Text style={styles.selectChevron}>▾</Text>
+            </TouchableOpacity>
           </View>
         )}
+        <BarangayPickerSheet
+          visible={pickingBarangay}
+          title="Your barangay"
+          subtitle="All 80 barangays of Cebu City"
+          selectedId={barangayId}
+          choices={CEBU_BARANGAYS}
+          onClose={() => setPickingBarangay(false)}
+          onPick={(b) => { setBarangayId(b.id); setPickingBarangay(false); }}
+        />
 
         {role === 'barangay' && (
           <View style={styles.field}>
@@ -265,6 +268,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
     fontSize: 13, color: Colors.textPrimary,
   },
   barangayWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  selectBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  selectText: { fontSize: 14, color: Colors.textPrimary },
+  selectChevron: { fontSize: 14, color: Colors.textMuted },
   barangayChip: {
     borderRadius: 20, borderWidth: 0.5, borderColor: Colors.borderMid,
     paddingHorizontal: 12, paddingVertical: 7, backgroundColor: Colors.white,
