@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { MAP_COLORS } from './mapColors';
@@ -16,6 +16,22 @@ export function TruckIcon({ size = 48, color = MAP_COLORS.truck }: { size?: numb
   return <SvgXml xml={xml} width={size} height={size} />;
 }
 
+
+/**
+ * For <Marker tracksViewChanges={...}>. Android draws a custom marker into a picture once and
+ * reuses it; with tracksViewChanges={false} from the start, many phones take that picture
+ * before the pin's colour is drawn and show a blank pin. So keep it live for a moment after
+ * it appears or `look` changes, then freeze it.
+ */
+export function useMarkerDrawing(look: string): boolean {
+  const [drawing, setDrawing] = useState(true);
+  useEffect(() => {
+    setDrawing(true);
+    const id = setTimeout(() => setDrawing(false), 800);
+    return () => clearTimeout(id);
+  }, [look]);
+  return drawing;
+}
 
 /**
  * Teardrop map pin. The tip is the exact location, so use it with

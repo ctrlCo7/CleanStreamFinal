@@ -21,7 +21,7 @@ import { MapErrorBoundary } from '../components/common/MapErrorBoundary';
 import { useMapEngine } from '../hooks/useMapFallback';
 import { OsmMapView, OsmMarker, escapeHtml } from '../components/common/OsmMapView';
 import { nativeMapLook } from '../components/map/mapTheme';
-import { TeardropPin, TruckIcon } from '../components/map/MapIcons';
+import { TeardropPin, TruckIcon, useMarkerDrawing } from '../components/map/MapIcons';
 import { subscribeActiveTrips } from '../services/crewTrackingService';
 import { formatEta } from '../services/routeMath';
 import { useGlide } from '../hooks/useGlide';
@@ -92,6 +92,7 @@ const SeverityMarker = memo(
     const bgColor  = SEVERITY_BG[report.severity as SeverityLevel] ?? '#F9F9F9';
     const emoji    = SEVERITY_EMOJIS[report.severity as SeverityLevel] ?? '⚪';
     const sevLabel = SEVERITY_LABELS[report.severity as SeverityLevel] ?? report.severity;
+    const drawing  = useMarkerDrawing(color);
 
     const barangay   = report.location.barangay ?? report.barangay ?? 'Unknown';
     const wasteLabel = report.aiAnalysis?.wasteTypes?.[0]?.label ?? 'Waste detected';
@@ -108,9 +109,9 @@ const SeverityMarker = memo(
         // The pin's tip marks the exact spot.
         anchor={{ x: 0.5, y: 1 }}
         calloutAnchor={{ x: 0.5, y: 0 }}
-        // tracksViewChanges=false is critical: prevents continuous native re-renders
-        // Set to true only while animating/updating, otherwise performance tanks
-        tracksViewChanges={false}
+        // Live only while the pin is first drawn, then frozen: continuous native
+        // re-renders would make the map slow.
+        tracksViewChanges={drawing}
       >
         {/* Teardrop pin -- critical/high severity gets a soft glow halo so the worst
             hotspots visually stand out on the map, not just differ by color. */}

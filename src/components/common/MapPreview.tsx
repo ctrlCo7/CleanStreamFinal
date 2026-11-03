@@ -6,7 +6,8 @@ import { MapErrorBoundary } from './MapErrorBoundary';
 import { OsmMapView, OsmMarker } from './OsmMapView';
 import { useMapEngine } from '../../hooks/useMapFallback';
 import { nativeMapLook } from '../map/mapTheme';
-import { TeardropPin } from '../map/MapIcons';
+import { TeardropPin, useMarkerDrawing } from '../map/MapIcons';
+import { getMarkerColor } from '../../utils/mapUtils';
 
 
 
@@ -15,6 +16,21 @@ interface HotspotPin {
   latitude: number;
   longitude: number;
   severity: 'critical' | 'high' | 'moderate' | 'low';
+}
+
+/** Same colours as the full map and its legend; unknown severities still get a colour. */
+function PreviewPin({ pin }: { pin: HotspotPin }) {
+  const color = getMarkerColor(pin.severity);
+  const drawing = useMarkerDrawing(color);
+  return (
+    <Marker
+      coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
+      anchor={{ x: 0.5, y: 1 }}
+      tracksViewChanges={drawing}
+    >
+      <TeardropPin color={color} glow={pin.severity === 'critical'} />
+    </Marker>
+  );
 }
 
 interface MapPreviewProps {
@@ -40,12 +56,6 @@ export function MapPreview({
   accentColor,
 }: MapPreviewProps) {
   const { colors, isDark } = useTheme();
-  const pinColors = {
-    critical: colors.critical,
-    high: colors.red,
-    moderate: colors.amber,
-    low: colors.teal,
-  };
   const resolvedAccent = accentColor ?? colors.tealDark;
 
   // Google Maps / Apple Maps, or OpenFreeMap on Huawei phones and when the native map can't start.
@@ -58,9 +68,8 @@ export function MapPreview({
         id: pin.id,
         latitude: pin.latitude,
         longitude: pin.longitude,
-        color: pinColors[pin.severity],
+        color: getMarkerColor(pin.severity),
       })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [pins],
   );
 
@@ -88,16 +97,7 @@ export function MapPreview({
                 rotateEnabled={false}
                 onMapReady={onReady}
               >
-                {pins.map((pin) => (
-                  <Marker
-                    key={pin.id}
-                    coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
-                    anchor={{ x: 0.5, y: 1 }}
-                    tracksViewChanges={false}
-                  >
-                    <TeardropPin color={pinColors[pin.severity]} glow={pin.severity === 'critical'} />
-                  </Marker>
-                ))}
+                {pins.map((pin) => <PreviewPin key={pin.id} pin={pin} />)}
               </MapView>
             </MapErrorBoundary>
           )

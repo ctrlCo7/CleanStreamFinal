@@ -109,7 +109,13 @@ const buildHtml = (region: OsmMapRegion, interactive: boolean, dark: boolean): s
   };
 
   window.csNavigate = function (id) { csPost('pin:' + id); };
+  // Ask the app for the pins and trucks now that the functions above exist.
+  csPost('ready');
 </script></body></html>`;
+
+// JSON for injected JavaScript. Line/paragraph separators (which can come in with report
+// text) are valid in JSON but break the whole script in older Android WebViews.
+const toJs = (value: unknown) => JSON.stringify(value).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
 /**
  * Map for phones without Google services (most Huawei phones) and the fallback when Google
@@ -127,19 +133,29 @@ export function OsmMapView({
   const html = useMemo(() => buildHtml(firstRegion, interactive, isDark), [firstRegion, interactive, isDark]);
   useEffect(() => setLoaded(false), [html]);
 
+  const sendMarkers = () =>
+    ref.current?.injectJavaScript(`window.csSetMarkers && window.csSetMarkers(${toJs(markersPayload(markers))}); true;`);
+  const sendTrucks = () =>
+    ref.current?.injectJavaScript(`window.csSetTrucks && window.csSetTrucks(${toJs(trucks)}); true;`);
+
   useEffect(() => {
-    if (!loaded) return;
-    ref.current?.injectJavaScript(`window.csSetMarkers && window.csSetMarkers(${JSON.stringify(markersPayload(markers))}); true;`);
+    if (loaded) sendMarkers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markers, loaded]);
 
   useEffect(() => {
-    if (!loaded) return;
-    ref.current?.injectJavaScript(`window.csSetTrucks && window.csSetTrucks(${JSON.stringify(trucks)}); true;`);
+    if (loaded) sendTrucks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trucks, loaded]);
 
   const handleMessage = (event: WebViewMessageEvent) => {
     const msg = event.nativeEvent.data;
-    if (msg.startsWith('pin:')) onMarkerPress?.(msg.slice(4));
+    // The page is set up: send what it has (it may have missed earlier sends).
+    if (msg === 'ready') {
+      setLoaded(true);
+      sendMarkers();
+      sendTrucks();
+    } else if (msg.startsWith('pin:')) onMarkerPress?.(msg.slice(4));
     else if (msg.startsWith('truck:')) onTruckPress?.(msg.slice(6));
   };
 
