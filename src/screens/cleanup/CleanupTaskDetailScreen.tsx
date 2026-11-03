@@ -22,6 +22,7 @@ import { getReportById } from '../../services/reportsService';
 import { VERDICT_TEXT, compareCleanup } from '../../services/cleanupComparison';
 import { formatVolume } from '../../utils/units';
 import { endTrip, isTripActive, startTrip, subscribeTracking } from '../../services/crewTrackingService';
+import { lacksPlayServices } from '../../services/devicePosition';
 import { CrewTrackingCard } from '../../components/map/CrewTrackingCard';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CleanupTaskDetail'>;
@@ -190,7 +191,9 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
     if (mode === 'foreground') {
       Alert.alert(
         'Keep CleanStream open',
-        'Location is only shared while the app is open, because "Allow all the time" was not chosen. You can change this in Settings → Apps → CleanStream → Location.',
+        lacksPlayServices()
+          ? 'Location is only shared while the app is open, because this phone does not have Google Play services.'
+          : 'Location is only shared while the app is open, because "Allow all the time" was not chosen. You can change this in Settings → Apps → CleanStream → Location.',
       );
     }
   });

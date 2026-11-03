@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import { GeoLocation } from '../types';
 import { withTimeout } from '../utils/async';
+import { getCurrentPosition, watchPosition } from './devicePosition';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -297,7 +298,7 @@ const enrichPosition = async (
 const getPositionWithFallback = async (): Promise<Location.LocationObject> => {
   try {
     return await withTimeout(
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+      getCurrentPosition({ accuracy: Location.Accuracy.High }),
       30000,
     );
   } catch {
@@ -306,7 +307,7 @@ const getPositionWithFallback = async (): Promise<Location.LocationObject> => {
 
   try {
     return await withTimeout(
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      getCurrentPosition({ accuracy: Location.Accuracy.Balanced }),
       10000,
     );
   } catch {
@@ -344,7 +345,7 @@ export const watchLocation = async (
 
   let lastGeocoded: { latitude: number; longitude: number; place: Place | null } | null = null;
 
-  const subscription = await Location.watchPositionAsync(
+  const subscription = await watchPosition(
     { accuracy: Location.Accuracy.High, timeInterval: 4000, distanceInterval: 5 },
     async (pos) => {
       const { latitude, longitude } = pos.coords;

@@ -16,6 +16,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { getNotifications } from './notificationsModule';
+import { getCurrentPosition, lacksPlayServices, watchPosition } from './devicePosition';
 import * as TaskManager from 'expo-task-manager';
 import { collection, doc, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -271,7 +272,7 @@ export async function startTrip(task: CleanupTask, crew: User, cb: TripCallbacks
     canBackground = false;
   }
 
-  const here = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+  const here = await getCurrentPosition({ accuracy: Location.Accuracy.High });
   const start: LatLng = { latitude: here.coords.latitude, longitude: here.coords.longitude };
   const destination: LatLng = { latitude: task.location.latitude, longitude: task.location.longitude };
   const route = await fetchRoute(start, destination);
@@ -325,7 +326,11 @@ export async function startTrip(task: CleanupTask, crew: User, cb: TripCallbacks
       killServiceOnDestroy: false,
     },
   };
-  if (canBackground) {
+  // Background updates need Google Play services; without them they never arrive.
+  if (canBackground && lacksPlayServices()) {
+    trip.background = false;
+    await saveTrip();
+  } else if (canBackground) {
     try {
       await Location.startLocationUpdatesAsync(TRIP_TASK, options);
       return 'background';
@@ -335,7 +340,7 @@ export async function startTrip(task: CleanupTask, crew: User, cb: TripCallbacks
       await saveTrip();
     }
   }
-  foregroundSub = await Location.watchPositionAsync(
+  foregroundSub = await watchPosition(
     { accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 8 },
     (loc) => { handleLocation(loc); },
   );
