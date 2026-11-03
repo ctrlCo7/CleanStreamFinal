@@ -113,19 +113,24 @@ export const subscribeToConversations = (
   });
 };
 
-// Finds (or creates) the conversation between a user and any admin account,
-// since callers like "Message admin" only know the target role, not a specific uid.
+// Finds (or creates) the conversation between a user and their barangay's Captain (stored
+// role 'admin'), since callers like "Message your Captain" only know the barangay, not a uid.
+// Returns null when the barangay has no Captain yet.
 export const getOrCreateAdminConversation = async (
   userId: string,
   userName: string,
   role: string,
+  barangayId: string | undefined,
 ): Promise<{ conversationId: string; adminName: string; adminUid: string } | null> => {
-  const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'admin'), limit(1)));
+  if (!barangayId) return null;
+  const snap = await getDocs(query(
+    collection(db, 'users'), where('role', '==', 'admin'), where('barangayId', '==', barangayId), limit(1),
+  ));
   if (snap.empty) return null;
 
   const adminDoc = snap.docs[0];
   const admin = adminDoc.data() as { firstName?: string; lastName?: string };
-  const adminName = `${admin.firstName ?? ''} ${admin.lastName ?? ''}`.trim() || 'Admin';
+  const adminName = `${admin.firstName ?? ''} ${admin.lastName ?? ''}`.trim() || 'Barangay Captain';
 
   const conversationId = await getOrCreateConversation(userId, userName, role, adminDoc.id, adminName, 'admin');
   return { conversationId, adminName, adminUid: adminDoc.id };

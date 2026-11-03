@@ -73,7 +73,7 @@ export default function AdminDashboardScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScreenHeader
-        title={`${greetingFor()}, ${user?.firstName || 'Admin'}`}
+        title={`${greetingFor()}, ${user?.firstName || 'Captain'}`}
         subtitle="Administrator · Cebu City"
         right={(
           <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('AdminAlerts')} accessibilityLabel="Alerts">

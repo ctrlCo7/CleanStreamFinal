@@ -41,7 +41,7 @@ const toConfig = (barangayId: string, data: Record<string, unknown>): Checkpoint
   hour: typeof data.hour === 'number' ? data.hour : 7,
   minute: typeof data.minute === 'number' ? data.minute : 0,
   updatedBy: (data.updatedBy as string) ?? '',
-  updatedByName: (data.updatedByName as string) ?? 'Admin',
+  updatedByName: (data.updatedByName as string) ?? 'Barangay Captain',
   updatedAt: (data.updatedAt as { toDate?: () => Date })?.toDate?.().toISOString() ?? new Date().toISOString(),
 });
 

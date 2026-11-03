@@ -50,8 +50,11 @@ export default function AdminCheckpointAlarmsScreen() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    // The Barangay Captain only sets their own barangay's alarm.
+    const mine = user?.barangayId;
     const unsubBarangays = subscribeToBarangays((list) => {
-      setBarangays(list);
+      const own = list.filter((b) => b.id === mine);
+      setBarangays(own.length || !mine ? own : [{ id: mine, name: user?.barangay ?? mine } as Barangay]);
       setLoading(false);
     });
     const unsubConfigs = subscribeToAllCheckpointAlarms((list) => {
@@ -60,7 +63,7 @@ export default function AdminCheckpointAlarmsScreen() {
       setConfigs(byId);
     });
     return () => { unsubBarangays(); unsubConfigs(); };
-  }, []);
+  }, [user?.barangayId, user?.barangay]);
 
   const startEditing = (barangay: Barangay) => {
     const existing = configs[barangay.id];
@@ -111,8 +114,8 @@ export default function AdminCheckpointAlarmsScreen() {
         <View style={styles.introCard}>
           <BellIcon color={colors.blue} size={18} />
           <Text style={styles.introText}>
-            Set the daily time each barangay's officials get a checkpoint reminder to check their
-            waterway. Barangay officials can see this time but can't change it themselves.
+            Set the daily time your barangay's officials get a checkpoint reminder to check their
+            waterway. Officials can see this time but can't change it themselves.
           </Text>
         </View>
 
@@ -120,7 +123,7 @@ export default function AdminCheckpointAlarmsScreen() {
 
         {!loading && barangays.length === 0 && (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No barangays found.</Text>
+            <Text style={styles.emptyText}>Your account has no barangay. Ask the Super Admin to set it.</Text>
           </View>
         )}
 

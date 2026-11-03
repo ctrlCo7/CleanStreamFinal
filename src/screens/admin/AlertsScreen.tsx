@@ -117,7 +117,8 @@ export default function AdminAlertsScreen() {
         authorId: user.uid,
         authorName: `${user.firstName} ${user.lastName}`,
         targetRoles: ['barangay'],
-        targetBarangayIds: [],
+        // Only this Captain's own barangay's officials.
+        targetBarangayIds: user.barangayId ? [user.barangayId] : [],
         priority: urgent ? 'urgent' : 'normal',
         type: 'general',
         attachmentURLs: [],
@@ -129,7 +130,7 @@ export default function AdminAlertsScreen() {
       setInstructionBody('');
       setUrgent(false);
       setComposerOpen(false);
-      Alert.alert('Instruction sent', 'Barangay officials will see this on their dashboard.');
+      Alert.alert('Instruction sent', 'Your barangay’s officials will see this on their dashboard.');
     } catch {
       Alert.alert('Error', 'Failed to post instruction. Please try again.');
     } finally {

@@ -35,8 +35,14 @@ service cloud.firestore {
       return getUserData().get('idVerification', 'approved') == 'approved';
     }
 
+    // The Barangay Captain: the head of one barangay, over its officials (stored role 'admin').
+    // Everything a Captain may do is limited to their own barangay.
     function isAdmin() {
       return hasRole('admin') && idCleared();
+    }
+
+    function isCaptainOf(barangayId) {
+      return isAdmin() && inMyBarangay(barangayId);
     }
 
     // The Super Admin (web portal only) is the sole manager of accounts: creating,
@@ -201,45 +207,49 @@ service cloud.firestore {
     match /barangays/{barangayId} {
       allow read: if isAuthenticated();
       // The Super Admin adds barangays that aren't on the built-in list when creating accounts.
-      allow create: if isAdmin() || (isSuperAdmin() && request.resource.data.id == barangayId);
-      allow update: if isAdmin() || isSuperAdmin()
+      allow create: if isSuperAdmin() && request.resource.data.id == barangayId;
+      allow update: if isCaptainOf(barangayId) || isSuperAdmin()
                     || (isBarangayOfficer() && sameBarangay(barangayId)
                         && !request.resource.data.diff(resource.data).affectedKeys()
                             .hasAny(['isActive', 'captainName']));
-      allow delete: if isAdmin();
+      allow delete: if isSuperAdmin();
     }
 
     // ─── Field Checkpoints (barangay officer patrol/inspection reports) ─────────
     match /fieldCheckpoints/{checkpointId} {
-      // Owner reads their own submissions; admin reviews/verifies across all barangays;
-      // the Super Admin reads them for inspection-compliance figures.
-      allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin() || isSuperAdmin());
+      // Owner reads their own submissions; the Captain reviews/verifies their barangay's;
+      // the Super Admin reads them all for inspection-compliance figures.
+      allow read: if isAuthenticated()
+                  && (isOwner(resource.data.userId) || isCaptainOf(resource.data.barangayId) || isSuperAdmin());
       allow create: if isBarangayOfficer() && request.resource.data.userId == currentUid();
-      // Only admin can verify, and only the verification fields may change
-      allow update: if isAdmin() || isSuperAdmin()
+      // Only the Captain or Super Admin can verify, and only the verification fields may change
+      allow update: if (isCaptainOf(resource.data.barangayId) || isSuperAdmin())
                     && request.resource.data.diff(resource.data).affectedKeys()
                         .hasOnly(['status', 'verifiedBy', 'verifiedByName', 'verifiedAt']);
-      allow delete: if isAdmin();
+      allow delete: if isCaptainOf(resource.data.barangayId);
     }
 
     // ─── Checkpoints (named waterway monitoring points) ───────────────────────
-    // Set up by the Super Admin (or Admin): location, assigned officials and inspection days.
+    // Set up by the Super Admin (or a Captain for their barangay): location, assigned officials and inspection days.
     // An official can only stamp "last inspected" on a checkpoint in their own barangay.
     match /checkpoints/{checkpointId} {
       allow read: if isAuthenticated();
-      allow create, delete: if isSuperAdmin() || isAdmin();
-      allow update: if isSuperAdmin() || isAdmin()
+      allow create: if isSuperAdmin() || isCaptainOf(request.resource.data.barangayId);
+      allow delete: if isSuperAdmin() || isCaptainOf(resource.data.barangayId);
+      allow update: if isSuperAdmin()
+                    || (isCaptainOf(resource.data.barangayId)
+                        && request.resource.data.barangayId == resource.data.barangayId)
                     || (isBarangayOfficer()
                         && sameBarangay(resource.data.barangayId)
                         && request.resource.data.diff(resource.data).affectedKeys()
                             .hasOnly(['lastInspectedAt', 'lastInspectedBy', 'lastInspectedByName', 'lastCondition']));
     }
 
-    // ─── Checkpoint Alarms (admin sets each barangay's daily check time; ───────
-    // ─── barangay officers can only read their own barangay's config) ─────────
+    // ─── Checkpoint Alarms (each Captain sets their barangay's daily check time; ─
+    // ─── officials can read it but not change it) ─────────────────────────────
     match /checkpointAlarms/{barangayId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isCaptainOf(barangayId);
     }
 
     // ─── Cleanup Tasks ──────────────────────────────────────────────────────────
@@ -318,18 +328,18 @@ service cloud.firestore {
                     && request.resource.data.reportId == trackedTask().reportId
                     && request.resource.data.get('reporterUserId', '') == trackedTask().get('reporterUserId', '')
                     && request.resource.data.status in ['en_route', 'arrived', 'ended'];
-      allow delete: if isAdmin();
+      allow delete: if isCaptainOf(resource.data.barangayId);
     }
 
     // ─── Cleanup Events ────────────────────────────────────────────────────────
     match /cleanupEvents/{eventId} {
       allow read: if isAuthenticated();
-      // Created by the Admin, or by an official for their own barangay, always as themselves.
+      // Created by the Captain or an official, for their own barangay, always as themselves.
       allow create: if isAuthenticated()
                     && request.resource.data.organizedBy == currentUid()
-                    && (isAdmin()
+                    && (isCaptainOf(request.resource.data.barangayId)
                         || (isBarangayOfficer() && request.resource.data.barangayId == getUserData().barangayId));
-      allow update: if isAdmin() || isSuperAdmin()
+      allow update: if isCaptainOf(resource.data.barangayId) || isSuperAdmin()
                     || (isBarangayOfficer() && sameBarangay(resource.data.barangayId))
                     // Anyone signed in can add or remove only THEMSELVES from the volunteer list, and the
                     // count must equal the list, so it can't be inflated.
@@ -344,7 +354,7 @@ service cloud.firestore {
                           (resource.data.participantIds.toSet().difference(request.resource.data.participantIds.toSet()).hasOnly([currentUid()])
                             && request.resource.data.participantIds.toSet().difference(resource.data.participantIds.toSet()).size() == 0)
                         ));
-      allow delete: if isAdmin();
+      allow delete: if isCaptainOf(resource.data.barangayId) || isSuperAdmin();
 
       // Participants subcollection: residents join/leave themselves; only officials mark attendance
       match /participants/{userId} {
@@ -354,10 +364,11 @@ service cloud.firestore {
                       && request.resource.data.attendanceStatus == 'registered';
         allow update: if (isOwner(userId)
                           && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['attendanceStatus']))
-                      || isAdmin()
-                      || (isBarangayOfficer()
+                      || ((isAdmin() || isBarangayOfficer())
                           && get(/databases/$(database)/documents/cleanupEvents/$(eventId)).data.barangayId == getUserData().barangayId);
-        allow delete: if isOwner(userId) || isAdmin();
+        allow delete: if isOwner(userId)
+                      || (isAdmin()
+                          && get(/databases/$(database)/documents/cleanupEvents/$(eventId)).data.barangayId == getUserData().barangayId);
       }
     }
 
@@ -369,25 +380,30 @@ service cloud.firestore {
       allow update: if isOwner(resource.data.userId)
                     && request.resource.data.diff(resource.data).affectedKeys()
                         .hasOnly(['read', 'readAt']);
-      allow delete: if isOwner(resource.data.userId) || isAdmin();
+      allow delete: if isOwner(resource.data.userId);
     }
 
     // ─── Announcements ──────────────────────────────────────────────────────────
     match /announcements/{announcementId} {
       allow read: if isAuthenticated() && resource.data.isActive == true;
-      allow create: if isAdmin();
-      allow update: if isAdmin() || isSuperAdmin()
+      // A Captain posts only to their own barangay's officials.
+      allow create: if isAdmin()
+                    && request.resource.data.authorId == currentUid()
+                    && request.resource.data.targetBarangayIds == [getUserData().barangayId];
+      allow update: if isSuperAdmin()
+                    || (isAdmin() && resource.data.authorId == currentUid()
+                        && request.resource.data.targetBarangayIds == resource.data.targetBarangayIds)
                     || (isBarangayOfficer()
                         && resource.data.authorId == currentUid()
                         && !request.resource.data.diff(resource.data).affectedKeys()
                             .hasAny(['authorId', 'targetRoles', 'isPinned']));
-      allow delete: if isAdmin();
+      allow delete: if isSuperAdmin() || (isAdmin() && resource.data.authorId == currentUid());
     }
 
     // ─── Activity Logs ──────────────────────────────────────────────────────────
     match /activityLogs/{logId} {
-      // Only admins can read all logs; users see own logs
-      allow read: if isAdmin()
+      // Users see their own logs; the Super Admin reads them all
+      allow read: if isSuperAdmin()
                   || (isAuthenticated() && resource.data.userId == currentUid());
       // All authenticated users can write their own activity
       allow create: if isAuthenticated() && request.resource.data.userId == currentUid();
@@ -397,28 +413,28 @@ service cloud.firestore {
 
     // ─── Analytics ─────────────────────────────────────────────────────────────
     match /analytics/{snapshotId} {
-      allow read: if isAdminOrBarangay();
-      allow write: if isAdmin();
+      allow read: if isAdminOrBarangay() || isSuperAdmin();
+      allow write: if isSuperAdmin();
     }
 
     // ─── Feedback ──────────────────────────────────────────────────────────────
     match /feedback/{feedbackId} {
-      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow read: if isOwner(resource.data.userId) || isSuperAdmin();
       allow create: if isAuthenticated()
                     && request.resource.data.userId == currentUid()
                     && request.resource.data.rating >= 1
                     && request.resource.data.rating <= 5;
-      allow update: if isAdmin() || isSuperAdmin()
+      allow update: if isSuperAdmin()
                     && request.resource.data.diff(resource.data).affectedKeys()
                         .hasOnly(['status', 'adminResponse', 'updatedAt']);
-      allow delete: if isAdmin();
+      allow delete: if isSuperAdmin();
     }
 
     // ─── System Settings ────────────────────────────────────────────────────────
     match /systemSettings/{doc} {
       // All authenticated users can read settings (for maintenance mode, feature flags)
       allow read: if isAuthenticated();
-      allow write: if isAdmin() || isSuperAdmin();
+      allow write: if isSuperAdmin();
     }
 
     // ─── Conversations ──────────────────────────────────────────────────────────

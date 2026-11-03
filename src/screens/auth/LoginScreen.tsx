@@ -34,7 +34,7 @@ function buildRoles(colors: ThemeColors) {
     },
     {
       id: 'admin' as UserRole,
-      label: 'Admin',
+      label: 'Captain',
       bg: colors.blueBg,
       textColor: colors.blueText,
       icon: (

@@ -18,7 +18,7 @@ describe('assignmentProblem', () => {
     expect(assignmentProblem(report('guadalupe'), crew(undefined), admin)).toBeTruthy();
   });
   it("doesn't let another barangay's official assign it", () => {
-    expect(assignmentProblem(report('guadalupe'), crew('guadalupe'), official('tinago'))).toMatch(/Only Guadalupe's officials or the Admin/);
+    expect(assignmentProblem(report('guadalupe'), crew('guadalupe'), official('tinago'))).toMatch(/Only Guadalupe's officials or Barangay Captain/);
   });
   it('refuses citizens, crews and reports without a barangay', () => {
     expect(assignmentProblem(report('guadalupe'), crew('guadalupe'), { role: 'citizen' })).toBeTruthy();

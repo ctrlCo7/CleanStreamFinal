@@ -141,7 +141,7 @@ export default function AssignCrewScreen({ navigation, route }: Props) {
 
   const allowed = isAdmin || (user?.role === 'barangay' && !!user.barangayId && user.barangayId === reportBarangayId);
   if (!user || !allowed) {
-    return message('Not your barangay', 'Only the barangay official of this report, or the Admin, can assign a crew.');
+    return message('Not your barangay', 'Only this report’s barangay officials or Barangay Captain can assign a crew.');
   }
   if (report.status === 'pending') return message('Verify the report first', 'Verify the report first, then you can assign a cleanup crew.');
   if (report.status !== 'verified' && report.status !== 'assigned') {

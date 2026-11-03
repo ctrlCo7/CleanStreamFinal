@@ -199,7 +199,7 @@ export default function BarangayProfileScreen() {
               </TouchableOpacity>
             </View>
           )}
-          <Text style={styles.phoneHelp}>Crews and the Admin use this number to reach you.</Text>
+          <Text style={styles.phoneHelp}>Crews and your Barangay Captain use this number to reach you.</Text>
         </View>
 
         {/* Settings */}

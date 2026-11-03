@@ -41,7 +41,7 @@ export default function VerificationPendingScreen({ navigation }: Props) {
   if (!user) return null;
   const rejected = user.idVerification === 'rejected';
   const missing = user.idVerification === 'pending' && evidenceSent === false;
-  const roleLabel = user.role === 'admin' ? 'Admin' : 'Barangay Official';
+  const roleLabel = user.role === 'admin' ? 'Barangay Captain' : 'Barangay Official';
 
   const resubmit = () => navigation.navigate('IdentityVerification', { mode: 'resubmit', firstName: user.firstName, lastName: user.lastName });
 

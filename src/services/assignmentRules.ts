@@ -22,11 +22,11 @@ export function assignmentProblem(
 ): string | null {
   const barangayId = reportBarangayId(report);
   const where_ = report.barangay || report.location?.barangay || 'this barangay';
-  if (!barangayId) return 'This report has no barangay, so it can\'t be assigned. Ask the Admin to check its location.';
+  if (!barangayId) return 'This report has no barangay, so it can\'t be assigned. Ask the Super Admin to check its location.';
   if (assigner.role === 'barangay' && assigner.barangayId !== barangayId) {
-    return `This report is in ${where_}. Only ${where_}'s officials or the Admin can assign its cleanup.`;
+    return `This report is in ${where_}. Only ${where_}'s officials or Barangay Captain can assign its cleanup.`;
   }
-  if (assigner.role !== 'barangay' && assigner.role !== 'admin') return 'Only barangay officials and the Admin can assign cleanups.';
+  if (assigner.role !== 'barangay' && assigner.role !== 'admin') return 'Only barangay officials and the Barangay Captain can assign cleanups.';
   if (crew.barangayId !== barangayId) {
     return `${crew.name} is a crew of ${crew.barangay || 'another barangay'}. Only ${where_}'s own crews can clean up reports in ${where_}.`;
   }

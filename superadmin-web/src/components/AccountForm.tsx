@@ -132,7 +132,7 @@ export function AccountForm(props: CreateProps | EditProps) {
             <div className="span-2">
               {field('phone', requiresPhone(role) ? 'Contact number' : 'Contact number (optional)',
                 <input {...aria('phone')} type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0917 123 4567" autoComplete="off" />,
-                role === 'cleanup_team' ? 'Officials and the Admin call this number to reach the crew.' : 'Lets crews and the Admin reach this person.')}
+                role === 'cleanup_team' ? 'Officials and the Barangay Captain call this number to reach the crew.' : 'Lets crews and the Barangay Captain reach this person.')}
             </div>
           )}
 

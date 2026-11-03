@@ -51,9 +51,9 @@ export default function CitizenMessagesScreen() {
     if (!user?.uid || contactingAdmin) return;
     setContactingAdmin(true);
     try {
-      const result = await getOrCreateAdminConversation(user.uid, `${user.firstName} ${user.lastName}`, 'citizen');
+      const result = await getOrCreateAdminConversation(user.uid, `${user.firstName} ${user.lastName}`, 'citizen', user.barangayId);
       if (!result) {
-        Alert.alert('No admin available', 'No admin account was found to message right now.');
+        Alert.alert('No Barangay Captain yet', 'Your barangay has no Barangay Captain account yet. You can still message your barangay’s officials.');
         return;
       }
       if (prefill) {
@@ -101,7 +101,7 @@ export default function CitizenMessagesScreen() {
               <Text style={[styles.avatarText, { color: colors.tealDark }]}>AD</Text>
             </View>
             <View style={styles.convBody}>
-              <Text style={styles.convName}>Message admin support</Text>
+              <Text style={styles.convName}>Message your Barangay Captain</Text>
               <Text style={styles.convPreview} numberOfLines={1}>
                 {contactingAdmin ? 'Opening…' : 'Start a conversation with the CleanStream admin team'}
               </Text>
@@ -144,7 +144,7 @@ export default function CitizenMessagesScreen() {
 
         {/* Quick messages panel */}
         <View style={styles.quickPanel}>
-          <Text style={styles.quickPanelTitle}>Quick message to admin</Text>
+          <Text style={styles.quickPanelTitle}>Quick message to your Barangay Captain</Text>
           <View style={styles.quickChips}>
             {QUICK_MESSAGES.map((msg) => (
               <TouchableOpacity

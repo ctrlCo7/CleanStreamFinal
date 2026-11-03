@@ -26,7 +26,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 function buildRoles(colors: ThemeColors) {
   return [
     { id: 'citizen' as UserRole, label: 'Citizen', bg: colors.tealLight, textColor: colors.tealDark },
-    { id: 'admin' as UserRole, label: 'Admin', bg: colors.blueBg, textColor: colors.blueText },
+    { id: 'admin' as UserRole, label: 'Barangay Captain', bg: colors.blueBg, textColor: colors.blueText },
     { id: 'barangay' as UserRole, label: 'Barangay', bg: colors.purpleBg, textColor: colors.purpleText },
   ];
 }
@@ -81,7 +81,7 @@ export default function SignupScreen({ navigation }: Props) {
     }
     const normalizedPhone = normalizePhone(phone);
     if (needsId && !normalizedPhone) {
-      Alert.alert('Contact number required', 'Enter a Philippine mobile or landline number, e.g. 0917 123 4567. Crews and the Admin use it to reach you.');
+      Alert.alert('Contact number required', 'Enter a Philippine mobile or landline number, e.g. 0917 123 4567. Crews and your Barangay Captain use it to reach you.');
       return;
     }
     if (needsId && !evidence) {
@@ -207,7 +207,7 @@ export default function SignupScreen({ navigation }: Props) {
           <View style={styles.idBox}>
             <Text style={styles.idTitle}>Identity verification</Text>
             <Text style={styles.idText}>
-              To protect the system, {role === 'admin' ? 'Admin' : 'Barangay Official'} accounts must be verified. You’ll photograph a valid government ID and take three quick selfies. The Super Admin checks that the face on the ID is yours before your account is approved.
+              To protect the system, {role === 'admin' ? 'Barangay Captain' : 'Barangay Official'} accounts must be verified. You’ll photograph a valid government ID and take three quick selfies. The Super Admin checks that the face on the ID is yours before your account is approved.
             </Text>
             {evidence ? (
               <Text style={styles.idDone}>✓ {idTypeLabel(evidence.idType)} and selfies captured</Text>

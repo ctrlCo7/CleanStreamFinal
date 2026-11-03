@@ -122,6 +122,16 @@ await check('citizen cannot read the log', assertFails(getDocs(collection(ct, 'a
 
 console.log('\n== Existing features still work (regression)');
 await check('admin can still set checkpoint alarms', assertSucceeds(setDoc(doc(ad, 'checkpointAlarms', 'b1'), { barangayId: 'b1', hour: 8, minute: 0 })));
+
+console.log('\n== Barangay Captain (stored role admin): only their own barangay');
+await check("a Captain can't set another barangay's alarm", assertFails(setDoc(doc(ad, 'checkpointAlarms', 'b2'), { barangayId: 'b2', hour: 8, minute: 0 })));
+await check("a Captain can't change system settings", assertFails(setDoc(doc(ad, 'systemSettings', 'app'), { maintenanceMode: true }, { merge: true })));
+await check("a Captain can't add or remove barangays", assertFails(setDoc(doc(ad, 'barangays', 'b9'), { id: 'b9', name: 'New' })));
+await check('a Captain posts an instruction to their own barangay', assertSucceeds(addDoc(collection(ad, 'announcements'), { authorId: 'ad', targetBarangayIds: ['b1'], targetRoles: ['barangay'], isActive: true })));
+await check("a Captain can't post to every barangay", assertFails(addDoc(collection(ad, 'announcements'), { authorId: 'ad', targetBarangayIds: [], targetRoles: ['barangay'], isActive: true })));
+await check("a Captain can't post to another barangay", assertFails(addDoc(collection(ad, 'announcements'), { authorId: 'ad', targetBarangayIds: ['b2'], targetRoles: ['barangay'], isActive: true })));
+await check("a Captain can't create a cleanup event for another barangay", assertFails(addDoc(collection(ad, 'cleanupEvents'), { organizedBy: 'ad', barangayId: 'b2' })));
+await check('a Captain creates a cleanup event for their barangay', assertSucceeds(addDoc(collection(ad, 'cleanupEvents'), { organizedBy: 'ad', barangayId: 'b1' })));
 await check('any signed-in user can read alarms', assertSucceeds(getDoc(doc(ct, 'checkpointAlarms', 'b1'))));
 await check('citizen can still submit a report', assertSucceeds(setDoc(doc(ct, 'reports', 'r1'), { userId: 'ct', location: { latitude: 1, longitude: 2 }, status: 'pending', severity: 'low' })));
 await check("a citizen reads their barangay's report", assertSucceeds(getDoc(doc(as('vol1'), 'reports', 'r_b1'))));
@@ -284,6 +294,8 @@ const stamp = { lastInspectedAt: serverTimestamp(), lastInspectedBy: 'bg', lastI
 await check('the Super Admin adds a checkpoint', assertSucceeds(setDoc(doc(sa, 'checkpoints', 'cp1'), cpDoc('b1'))));
 await check('the Super Admin adds one in another barangay', assertSucceeds(setDoc(doc(sa, 'checkpoints', 'cp_b2'), cpDoc('b2'))));
 await check('the Admin can manage checkpoints too', assertSucceeds(updateDoc(doc(ad, 'checkpoints', 'cp1'), { time: '08:00' })));
+await check("a Captain can't manage another barangay's checkpoint", assertFails(updateDoc(doc(ad, 'checkpoints', 'cp_b2'), { time: '08:00' })));
+await check("a Captain can't move a checkpoint to another barangay", assertFails(updateDoc(doc(ad, 'checkpoints', 'cp1'), { barangayId: 'b2' })));
 await check('an official reads checkpoints', assertSucceeds(getDoc(doc(bg1, 'checkpoints', 'cp1'))));
 await check('an official stamps their own barangay checkpoint as inspected', assertSucceeds(updateDoc(doc(bg1, 'checkpoints', 'cp1'), stamp)));
 await check("an official can't stamp another barangay's checkpoint", assertFails(updateDoc(doc(bg1, 'checkpoints', 'cp_b2'), stamp)));

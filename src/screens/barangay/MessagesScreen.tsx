@@ -63,7 +63,7 @@ export default function BarangayMessagesScreen() {
           const inboxChat = isInbox(conv);
           const otherName = inboxChat
             ? conv.participantNames?.[conv.citizenId ?? ''] || 'Resident'
-            : Object.entries(conv.participantNames).find(([id]) => id !== user?.uid)?.[1] || 'Admin';
+            : Object.entries(conv.participantNames).find(([id]) => id !== user?.uid)?.[1] || 'Barangay Captain';
           const isUnread = (conv.unreadCounts?.[readKeyOf(conv)] || 0) > 0;
           return (
             <TouchableOpacity

@@ -82,7 +82,7 @@ export default function BarangayDashboardScreen() {
     return unsub;
   }, []);
 
-  // Admin instructions/announcements targeted at this barangay official (or all barangays)
+  // The Barangay Captain's instructions to this barangay's officials (older ones may target all barangays)
   useEffect(() => {
     const unsub = subscribeToAnnouncements('barangay', (all) => {
       const relevant = myBarangayId
@@ -118,9 +118,9 @@ export default function BarangayDashboardScreen() {
     if (!user?.uid || messagingAdmin) return;
     setMessagingAdmin(true);
     try {
-      const result = await getOrCreateAdminConversation(user.uid, `${user.firstName} ${user.lastName}`, 'barangay');
+      const result = await getOrCreateAdminConversation(user.uid, `${user.firstName} ${user.lastName}`, 'barangay', user.barangayId);
       if (!result) {
-        Alert.alert('No admin available', 'No admin account was found to message right now.');
+        Alert.alert('No Barangay Captain yet', 'Your barangay has no Barangay Captain account yet. Ask the Super Admin to add one.');
         return;
       }
       navigation.navigate('BarangayChat', { conversationId: result.conversationId, participantName: result.adminName });
@@ -231,7 +231,7 @@ export default function BarangayDashboardScreen() {
             { icon: '📅', label: 'Schedule', sub: 'Cleanups and events', tint: colors.brgyDark, tintBg: colors.brgyLight, onPress: () => navigation.navigate('BarangaySchedule', {}) },
             { icon: '⏰', label: 'Daily alarm', sub: 'Waterway check reminder', tint: colors.brgyDark, tintBg: colors.brgyLight, onPress: () => navigation.navigate('BarangayAlarms') },
             ...(features.cleanupEvents ? [{ icon: '🤝', label: 'Plan a volunteer cleanup', sub: 'Invite residents', tint: colors.greenText, tintBg: colors.greenBg, onPress: () => navigation.navigate('BarangayCreateEvent') }] : []),
-            ...(features.messaging ? [{ icon: '💬', label: messagingAdmin ? 'Opening…' : 'Message the Admin', sub: 'Ask or report a problem', tint: colors.blueText, tintBg: colors.blueBg, onPress: handleMessageAdmin, disabled: messagingAdmin }] : []),
+            ...(features.messaging ? [{ icon: '💬', label: messagingAdmin ? 'Opening…' : 'Message your Captain', sub: 'Ask or report a problem', tint: colors.blueText, tintBg: colors.blueBg, onPress: handleMessageAdmin, disabled: messagingAdmin }] : []),
           ]}
         />
 
@@ -246,7 +246,7 @@ export default function BarangayDashboardScreen() {
         {/* Latest instructions from the Admin */}
         {features.announcements && announcements.length > 0 && (
           <>
-            <SectionHead title="From the Admin" />
+            <SectionHead title="From your Barangay Captain" />
             <Card style={styles.listCard}>
               {announcements.map((a, i) => (
                 <ListRow

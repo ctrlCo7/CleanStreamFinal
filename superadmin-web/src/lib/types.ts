@@ -6,7 +6,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   citizen: 'Citizen',
   barangay: 'Barangay official',
   cleanup_team: 'Cleanup team',
-  admin: 'Admin',
+  admin: 'Barangay Captain',
   superadmin: 'Super Admin',
 };
 

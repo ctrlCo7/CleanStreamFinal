@@ -26,7 +26,7 @@ export default function AdminProfileScreen() {
   const resolved = reports.filter((r) => r.status === 'completed').length;
   const resolutionRate = totalManaged > 0 ? Math.round((resolved / totalManaged) * 100) : 0;
 
-  const displayName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
+  const displayName = user ? `${user.firstName} ${user.lastName}` : 'Barangay Captain';
   const initials = displayName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
   const agency = user?.agency || '—';
   const employeeId = user?.employeeId || '—';
@@ -169,7 +169,7 @@ export default function AdminProfileScreen() {
               </TouchableOpacity>
             </View>
           )}
-          <Text style={styles.phoneHelp}>Crews and the Admin use this number to reach you.</Text>
+          <Text style={styles.phoneHelp}>Crews and your barangay's officials use this number to reach you.</Text>
         </View>
 
         {/* Settings */}
