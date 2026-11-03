@@ -67,10 +67,10 @@ export const MIN_PASSWORD_LENGTH = 8;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Every role belongs to a barangay except none: the Admin and Super Admin only see their
- * own barangay's reports too (firestore.rules), so they need one as well.
+ * Every role belongs to a barangay except the Super Admin, who oversees all of Cebu City.
+ * The Admin only sees their own barangay's reports (firestore.rules), so they need one.
  */
-export const needsBarangay = (role: Role): boolean => ROLES.includes(role);
+export const needsBarangay = (role: Role): boolean => ROLES.includes(role) && role !== 'superadmin';
 
 /** Roles that are contacted by phone (crews and officials). Citizens' numbers aren't collected. */
 export const usesPhone = (role: Role): boolean => role !== 'citizen';

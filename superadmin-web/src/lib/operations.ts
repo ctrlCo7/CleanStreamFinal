@@ -1,5 +1,5 @@
 import {
-  Timestamp, addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where,
+  Timestamp, addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc,
 } from 'firebase/firestore';
 import { barangayById } from './barangays';
 import { db } from './firebase';
@@ -237,12 +237,11 @@ const sortNewest = <T extends { createdAt: Date | null }>(list: T[]): T[] =>
   list.sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
 
 /**
- * One barangay's reports: the Super Admin only sees their own barangay's (firestore.rules).
+ * Every report in every barangay: the Super Admin oversees all of Cebu City (firestore.rules).
  * Sorted client-side: orderBy would silently drop documents that lack the field.
  */
-export const subscribeReports = (barangayId: string, onData: (r: Report[]) => void, onError: (e: Error) => void) =>
-  onSnapshot(query(collection(db, 'reports'), where('barangayId', '==', barangayId)),
-    (snap) => onData(sortNewest(snap.docs.map((x) => toReport(x.id, x.data())))), onError);
+export const subscribeReports = (onData: (r: Report[]) => void, onError: (e: Error) => void) =>
+  onSnapshot(collection(db, 'reports'), (snap) => onData(sortNewest(snap.docs.map((x) => toReport(x.id, x.data())))), onError);
 
 const toCheckpoint = (id: string, d: Record<string, unknown>): Checkpoint => ({
   id,

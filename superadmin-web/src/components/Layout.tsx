@@ -13,7 +13,7 @@ export const ROUTES: Route[] = ['overview', 'reports', 'analytics', 'accounts', 
 
 const NAV: Array<{ route: Route; label: string; icon: ReactNode; group?: string }> = [
   { route: 'overview', label: 'Overview', icon: <OverviewIcon /> },
-  { route: 'reports', label: 'Reports', icon: <ReportsIcon /> },
+  { route: 'reports', label: 'All reports', icon: <ReportsIcon /> },
   { route: 'analytics', label: 'Analytics', icon: <AnalyticsIcon /> },
   { route: 'accounts', label: 'Accounts', icon: <UsersIcon />, group: 'People' },
   { route: 'approvals', label: 'Approvals', icon: <ApprovalsIcon /> },

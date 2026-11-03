@@ -136,11 +136,11 @@ await check("the Admin reads their barangay's report", assertSucceeds(getDoc(doc
 await check("the Admin can't read another barangay's report", assertFails(getDoc(doc(as('ad'), 'reports', 'r_b2'))));
 await check("the Admin can't list every report", assertFails(getDocs(collection(as('ad'), 'reports'))));
 await check("the Admin lists their barangay's reports", assertSucceeds(getDocs(query(collection(as('ad'), 'reports'), where('barangayId', '==', 'b1')))));
-await check("the Super Admin reads their barangay's report", assertSucceeds(getDoc(doc(as('sa'), 'reports', 'r_b1'))));
-await check("the Super Admin can't read another barangay's report", assertFails(getDoc(doc(as('sa'), 'reports', 'r_b2'))));
-await check("the Super Admin can't list another barangay's reports", assertFails(getDocs(query(collection(as('sa'), 'reports'), where('barangayId', '==', 'b2')))));
+await check("the Super Admin reads any barangay's report", assertSucceeds(getDoc(doc(as('sa'), 'reports', 'r_b2'))));
+await check('the Super Admin lists every report in the city', assertSucceeds(getDocs(collection(as('sa'), 'reports'))));
 await check('an Admin with no barangay sees no reports', assertFails(getDoc(doc(as('ad_none'), 'reports', 'r_b1'))));
-await check('a Super Admin with no barangay sees no reports', assertFails(getDoc(doc(as('sa_none'), 'reports', 'r_b1'))));
+await check('a Super Admin needs no barangay to see reports', assertSucceeds(getDoc(doc(as('sa_none'), 'reports', 'r_b1'))));
+await check("a deactivated Super Admin can't list reports", assertFails(getDocs(collection(as('sa_off'), 'reports'))));
 await check("an Admin with no barangay can't read a report with no barangay", assertFails(getDoc(doc(as('ad_none'), 'reports', 'r1'))));
 await check("the Admin can't change another barangay's report", assertFails(updateDoc(doc(as('ad'), 'reports', 'r_b2'), { status: 'rejected' })));
 await check("the Admin can't delete another barangay's report", assertFails(deleteDoc(doc(as('ad'), 'reports', 'r_b2'))));
