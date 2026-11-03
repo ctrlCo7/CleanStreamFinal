@@ -13,6 +13,8 @@ export interface TrackingFrame {
   /** True when the route is a straight line (no road route available). */
   straight: boolean;
   follow: boolean;
+  /** Crew leader's phone: close, tilted view turned the way the truck drives. */
+  driver?: boolean;
 }
 
 interface Props {
@@ -75,6 +77,10 @@ export function OsmTrackingView({ frame, dark, onUserPan, style }: Props) {
     if (src) { src.setData(routeData()); map.setPaintProperty('route-line', 'line-dasharray', f.straight ? [2, 1.5] : [1, 0]); }
     csGlide(truck, truckState, f.truck);
 
+    if (f.driver && fitted && follow) {
+      map.easeTo({ center: [f.truck.longitude, f.truck.latitude], zoom: 17, bearing: f.truck.heading, pitch: 45, duration: 800 });
+      return;
+    }
     var b = new maplibregl.LngLatBounds([f.truck.longitude, f.truck.latitude], [f.truck.longitude, f.truck.latitude]);
     b.extend([f.destination.longitude, f.destination.latitude]);
     if (!fitted) { f.ahead.forEach(function (p) { b.extend([p.longitude, p.latitude]); }); }

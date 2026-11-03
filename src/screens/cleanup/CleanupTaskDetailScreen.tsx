@@ -21,7 +21,7 @@ import { captureTaskPhoto } from '../../services/taskPhotoCapture';
 import { getReportById } from '../../services/reportsService';
 import { VERDICT_TEXT, compareCleanup } from '../../services/cleanupComparison';
 import { formatVolume } from '../../utils/units';
-import { endTrip, isTripActive, startTrip, subscribeTracking } from '../../services/crewTrackingService';
+import { endTrip, isTripActive, startTrip, subscribeTracking, watchLocalTrip } from '../../services/crewTrackingService';
 import { lacksPlayServices } from '../../services/devicePosition';
 import { CrewTrackingCard } from '../../components/map/CrewTrackingCard';
 
@@ -49,6 +49,9 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
   const [reportAi, setReportAi] = useState<AIAnalysisResult | undefined>();
   const [tracking, setTracking] = useState<CrewTracking | null>(null);
   useEffect(() => subscribeTracking(taskId, setTracking), [taskId]);
+  // This phone's own trip, straight from its GPS (no server round trip), for the driver's map.
+  const [localTrip, setLocalTrip] = useState<CrewTracking | null>(null);
+  useEffect(() => watchLocalTrip(taskId, setLocalTrip), [taskId]);
 
   // The original report's analysis is the "before" when no before photo was analyzed.
   const reportId = task?.reportId;
@@ -419,7 +422,11 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
             </View>
           )}
 
-          {task.status === 'accepted' && <CrewTrackingCard tracking={tracking} />}
+          {task.status === 'accepted' && (
+            isLeader && tripLive && localTrip?.status === 'en_route'
+              ? <CrewTrackingCard tracking={localTrip} driver />
+              : <CrewTrackingCard tracking={tracking} />
+          )}
 
           {(task.beforePhotoURLs.length > 0 || uploading === 'before' || isOpen) && (
             <Photos title="Before photos" urls={task.beforePhotoURLs} phase="before" />

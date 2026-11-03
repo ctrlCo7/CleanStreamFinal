@@ -23,8 +23,10 @@ import { auth, db } from './firebase';
 import { createNotification } from './notificationService';
 import { CleanupTask, CrewTracking, User } from '../types';
 import {
-  ARRIVED_M, LatLng, OFF_ROUTE_M, bearing, etaSeconds, formatEta, locateOnRoute, simplifyPath,
+  ARRIVED_M, LatLng, NavInstruction, NavStep, OFF_ROUTE_M, bearing, etaSeconds, formatEta,
+  locateOnRoute, nextInstruction, pathLength, placeSteps, simplifyPath,
 } from './routeMath';
+import * as Speech from 'expo-speech';
 import { distanceM } from './reportProximity';
 
 const COL = 'crewTracking';
@@ -38,23 +40,49 @@ const MIN_REROUTE_MS = 30000;
 
 // ─── Routing ─────────────────────────────────────────────────────────────────
 
-export interface RoadRoute { path: LatLng[]; distanceM: number; durationS: number; source: 'osrm' | 'straight' }
+export interface RoadRoute {
+  path: LatLng[]; distanceM: number; durationS: number; source: 'osrm' | 'straight';
+  /** Turn-by-turn directions for the crew (kept on their phone, not shared). */
+  steps: NavStep[];
+}
+
+interface OsrmStep {
+  name?: string;
+  ref?: string;
+  maneuver: { type: string; modifier?: string; exit?: number; location: [number, number] };
+}
 
 export async function fetchRoute(from: LatLng, to: LatLng, timeoutMs = 8000): Promise<RoadRoute> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const url = `${OSRM}/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=full&geometries=geojson`;
+    const url = `${OSRM}/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=full&geometries=geojson&steps=true`;
     const res = await fetch(url, { signal: controller.signal });
-    const json = await res.json() as { routes?: Array<{ distance: number; duration: number; geometry: { coordinates: [number, number][] } }> };
+    const json = await res.json() as { routes?: Array<{
+      distance: number; duration: number; geometry: { coordinates: [number, number][] }; legs?: Array<{ steps?: OsrmStep[] }>;
+    }> };
     const r = json.routes?.[0];
     if (!res.ok || !r || r.geometry.coordinates.length < 2) throw new Error('No route');
     const path = simplifyPath(r.geometry.coordinates.map(([lng, lat]) => ({ latitude: lat, longitude: lng })));
-    return { path, distanceM: r.distance, durationS: r.duration, source: 'osrm' };
+    const raw = (r.legs ?? []).flatMap((leg) => leg.steps ?? [])
+      // "new name" is just the same road changing its name: not worth telling the driver.
+      .filter((s) => s.maneuver.type !== 'new name' && s.maneuver.type !== 'notification')
+      .map((s) => ({
+        type: s.maneuver.type,
+        ...(s.maneuver.modifier ? { modifier: s.maneuver.modifier } : {}),
+        ...(s.maneuver.exit ? { exit: s.maneuver.exit } : {}),
+        name: s.name || s.ref || '',
+        location: { latitude: s.maneuver.location[1], longitude: s.maneuver.location[0] },
+      }));
+    return { path, distanceM: r.distance, durationS: r.duration, source: 'osrm', steps: placeSteps(path, raw) };
   } catch (e) {
     console.warn('[Tracking] Road route unavailable, using a straight line:', e);
     const dist = distanceM(from.latitude, from.longitude, to.latitude, to.longitude);
-    return { path: [from, to], distanceM: dist, durationS: etaSeconds(dist), source: 'straight' };
+    const path = [from, to];
+    return {
+      path, distanceM: dist, durationS: etaSeconds(dist), source: 'straight',
+      steps: placeSteps(path, [{ type: 'arrive', name: '', location: to }]),
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -81,6 +109,10 @@ interface TripRecord {
   lastWritePos: LatLng;
   lastReroute: number;
   background: boolean;
+  /** Turn-by-turn directions. Missing on trips saved by older versions of the app. */
+  steps?: NavStep[];
+  /** Which manoeuvres were already spoken, as "<atM>:far" / "<atM>:near". */
+  spoken?: string[];
 }
 
 export interface TripCallbacks {
@@ -96,6 +128,71 @@ let callbacks: TripCallbacks = {};
 const listeners = new Set<(s: CrewTracking | null) => void>();
 
 const publish = () => listeners.forEach((l) => l(trip?.state ?? null));
+
+// ─── Directions for the crew (like a ride-hailing driver app) ────────────────
+
+let nav: NavInstruction | null = null;
+const navListeners = new Set<(n: NavInstruction | null) => void>();
+const publishNav = () => navListeners.forEach((l) => l(nav));
+
+/** The crew's next turn while their trip to `taskId` is running on this phone. */
+export function watchNavigation(taskId: string, fn: (n: NavInstruction | null) => void): () => void {
+  const f = (n: NavInstruction | null) => fn(trip?.state.taskId === taskId ? n : null);
+  navListeners.add(f);
+  f(nav);
+  return () => { navListeners.delete(f); };
+}
+
+const VOICE_KEY = 'cleanstream_voice_directions_v1';
+let voiceOn = true;
+AsyncStorage.getItem(VOICE_KEY).then((v) => { if (v === 'off') voiceOn = false; }).catch(() => undefined);
+
+export const isVoiceOn = () => voiceOn;
+export function setVoiceOn(on: boolean): void {
+  voiceOn = on;
+  if (!on) Speech.stop().catch(() => undefined);
+  AsyncStorage.setItem(VOICE_KEY, on ? 'on' : 'off').catch(() => undefined);
+}
+
+const say = (text: string) => {
+  if (!voiceOn) return;
+  try {
+    Speech.speak(text, { language: 'en-US' });
+  } catch (e) {
+    console.warn('[Tracking] Voice directions unavailable:', e);
+  }
+};
+
+// Each turn is announced twice: ahead of time, then just before it.
+const ANNOUNCE_FAR_M = 250;
+const ANNOUNCE_NEAR_M = 50;
+const spokenDistance = (m: number) =>
+  m < 1000 ? `${Math.round(m / 50) * 50 || 50} meters` : `${(m / 1000).toFixed(1)} kilometers`;
+const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+
+function updateNav(t: TripRecord, travelledM: number): void {
+  nav = t.steps ? nextInstruction(t.steps, travelledM) : null;
+  publishNav();
+  if (!nav || nav.step.type === 'depart') return;
+  const spoken = (t.spoken ??= []);
+  const id = String(Math.round(nav.step.atM));
+  const d = nav.distanceM;
+  if (d <= ANNOUNCE_NEAR_M && nav.step.type !== 'arrive') {
+    if (!spoken.includes(`${id}:near`)) {
+      spoken.push(`${id}:near`, `${id}:far`);
+      say(nav.then ? `${nav.text}, then ${lowerFirst(nav.then)}` : nav.text);
+    }
+  } else if (d <= ANNOUNCE_FAR_M && d > ANNOUNCE_NEAR_M * 2 && !spoken.includes(`${id}:far`)) {
+    spoken.push(`${id}:far`);
+    say(`In ${spokenDistance(d)}, ${lowerFirst(nav.text)}`);
+  }
+}
+
+function clearNav(): void {
+  nav = null;
+  publishNav();
+  Speech.stop().catch(() => undefined);
+}
 
 async function loadTrip(): Promise<TripRecord | null> {
   if (tripLoaded) return trip;
@@ -136,6 +233,7 @@ const ping = (userId: string | undefined, s: CrewTracking, title: string, body: 
 async function stopUpdates(): Promise<void> {
   foregroundSub?.remove();
   foregroundSub = null;
+  clearNav();
   try {
     if (await Location.hasStartedLocationUpdatesAsync(TRIP_TASK)) await Location.stopLocationUpdatesAsync(TRIP_TASK);
   } catch (e) {
@@ -176,6 +274,9 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
       .then((r) => {
         if (trip !== t) return undefined;
         t.state = { ...t.state, route: r.path, routeSource: r.source, routeDistanceM: r.distanceM, routeDurationS: r.durationS };
+        t.steps = r.steps;
+        t.spoken = [];
+        say('Route updated');
         saveTrip();
         return updateDoc(doc(db, COL, s.taskId), { route: r.path, routeSource: r.source, routeDistanceM: r.distanceM, routeDurationS: r.durationS });
       })
@@ -206,6 +307,7 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
     ...(arrived ? { status: 'arrived' as const, arrivedAt: now } : {}),
   };
   publish();
+  if (!arrived) updateNav(t, pathLength(s.route) - onRoute.remainingM);
 
   const moved = distanceM(p.latitude, p.longitude, t.lastWritePos.latitude, t.lastWritePos.longitude);
   if (arrived || (now - t.lastWriteAt >= MIN_WRITE_MS && moved >= MIN_MOVE_M) || now - t.lastWriteAt >= HEARTBEAT_MS) {
@@ -221,6 +323,7 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
 
   if (arrived) {
     await stopUpdates();
+    say('You have arrived at the cleanup site');
     ping(t.assignedByUserId, t.state, '🚚 Cleanup crew arrived', `${t.state.crewName} has arrived at the cleanup site.`);
     trip = null;
     saveTrip();
@@ -303,9 +406,14 @@ export async function startTrip(task: CleanupTask, crew: User, cb: TripCallbacks
   };
   await setDoc(doc(db, COL, task.id), state);
 
-  trip = { state, assignedByUserId: task.assignedByUserId, lastWriteAt: now, lastWritePos: start, lastReroute: now, background: canBackground };
+  trip = {
+    state, assignedByUserId: task.assignedByUserId, lastWriteAt: now, lastWritePos: start, lastReroute: now,
+    background: canBackground, steps: route.steps, spoken: [],
+  };
   await saveTrip();
   publish();
+  updateNav(trip, 0);
+  say(`Heading to the cleanup site, ${spokenDistance(route.distanceM)}, about ${formatEta(route.durationS)}`);
 
   // Tell the official and the reporter, like "Your rider is on the way".
   const body = `${state.crewName} is heading to the site. Arriving in about ${formatEta(state.etaSeconds)}. Open the report to follow them live.`;

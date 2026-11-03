@@ -13,6 +13,7 @@ import { MapErrorBoundary } from '../common/MapErrorBoundary';
 import { MAP_COLORS, nativeMapLook } from './mapTheme';
 import { TeardropPin, TruckIcon } from './MapIcons';
 import { OsmTrackingView, TrackingFrame } from './OsmTrackingView';
+import { NavigationBanner } from './NavigationBanner';
 
 // No update for this long means the crew's phone lost signal or closed the app.
 const STALE_S = 120;
@@ -21,8 +22,12 @@ const STALE_S = 120;
  * A live "your crew is on the way" card, like a delivery app: arrival time, distance,
  * and a map with the route and a truck that glides along it as GPS updates arrive.
  * Works on Google Maps, Apple Maps, and OpenStreetMap (phones without Google services).
+ * `driver`: the crew leader's own phone, which also gets turn-by-turn directions and a map
+ * that follows the truck closely, turned the way it drives.
  */
-export function CrewTrackingCard({ tracking, mapHeight = 260 }: { tracking: CrewTracking | null; mapHeight?: number }) {
+export function CrewTrackingCard({ tracking, mapHeight = 260, driver = false }: {
+  tracking: CrewTracking | null; mapHeight?: number; driver?: boolean;
+}) {
   const { colors, isDark } = useTheme();
   const { t } = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -51,6 +56,7 @@ export function CrewTrackingCard({ tracking, mapHeight = 260 }: { tracking: Crew
 
   return (
     <View style={styles.card}>
+      {driver && <NavigationBanner taskId={tracking.taskId} destination={tracking.destination} />}
       <View style={styles.head}>
         <View style={styles.etaBox}>
           <Text style={styles.etaLabel}>{t('track.arrivingIn')}</Text>
@@ -66,13 +72,13 @@ export function CrewTrackingCard({ tracking, mapHeight = 260 }: { tracking: Crew
           </Text>
         </View>
       </View>
-      <TrackingMap tracking={tracking} isDark={isDark} height={mapHeight} />
+      <TrackingMap tracking={tracking} isDark={isDark} height={driver ? Math.max(mapHeight, 340) : mapHeight} driver={driver} />
       {tracking.routeSource === 'straight' && <Text style={styles.note}>{t('track.straightNote')}</Text>}
     </View>
   );
 }
 
-function TrackingMap({ tracking, isDark, height }: { tracking: CrewTracking; isDark: boolean; height: number }) {
+function TrackingMap({ tracking, isDark, height, driver }: { tracking: CrewTracking; isDark: boolean; height: number; driver: boolean }) {
   const { colors } = useTheme();
   const { t } = useT();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -99,18 +105,26 @@ function TrackingMap({ tracking, isDark, height }: { tracking: CrewTracking; isD
     return [at.point, ...tracking.route.slice(at.segment + 1)];
   }, [tracking.route, truckTarget]);
 
-  // Keep the truck and the site in view while following.
+  // Keep the truck and the site in view while following. The driver instead gets a close,
+  // tilted view that turns with the truck, like a navigation app.
   useEffect(() => {
     if (!follow || fallback || !map.current) return;
+    if (driver) {
+      map.current.animateCamera(
+        { center: truckTarget, heading: truckTarget.heading, pitch: 45, zoom: 17 },
+        { duration: 800 },
+      );
+      return;
+    }
     map.current.fitToCoordinates([truckTarget, tracking.destination], {
       edgePadding: { top: 60, right: 60, bottom: 60, left: 60 },
       animated: true,
     });
-  }, [truckTarget, tracking.destination, follow, fallback]);
+  }, [truckTarget, tracking.destination, follow, fallback, driver]);
 
   const frame: TrackingFrame = useMemo(() => ({
-    truck: truckTarget, ahead, destination: tracking.destination, straight: tracking.routeSource === 'straight', follow,
-  }), [truckTarget, ahead, tracking.destination, tracking.routeSource, follow]);
+    truck: truckTarget, ahead, destination: tracking.destination, straight: tracking.routeSource === 'straight', follow, driver,
+  }), [truckTarget, ahead, tracking.destination, tracking.routeSource, follow, driver]);
 
   return (
     <View style={[styles.map, { height }]}>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  bearing, etaSeconds, formatDistance, formatEta, lerpAngle, locateOnRoute, pathLength, simplifyPath,
+  bearing, etaSeconds, formatDistance, formatEta, lerpAngle, locateOnRoute, nextInstruction, pathLength, placeSteps,
+  simplifyPath, stepArrow, stepText,
 } from '../routeMath';
 
 // A 3-point route heading north, then east, in Cebu. ~0.009° latitude ≈ 1 km.
@@ -89,5 +90,50 @@ describe('OpenFreeMap page script', () => {
     expect(TRUCK_SVG).not.toContain('`');
     expect(TRUCK_SVG).not.toContain("'");
     expect(TRUCK_SVG).toContain('csTruckBody');
+  });
+});
+
+describe('turn-by-turn directions', () => {
+  const steps = placeSteps(route, [
+    { type: 'depart', name: 'Jones Ave', location: A },
+    { type: 'turn', modifier: 'right', name: 'Osmeña Blvd', location: B },
+    { type: 'arrive', name: '', location: C },
+  ]);
+  const legA = pathLength([A, B]);
+
+  it('places each manoeuvre along the route', () => {
+    expect(steps[0].atM).toBe(0);
+    expect(steps[1].atM).toBeCloseTo(legA, -1);
+    expect(steps[2].atM).toBeCloseTo(pathLength(route), 5);
+  });
+
+  it('says what to do in plain words', () => {
+    expect(stepText(steps[1])).toBe('Turn right onto Osmeña Blvd');
+    expect(stepText({ type: 'roundabout', exit: 2, name: 'N. Bacalso Ave' })).toBe('At the roundabout, take the second exit onto N. Bacalso Ave');
+    expect(stepText({ type: 'continue', modifier: 'straight', name: '' })).toBe('Continue straight');
+    expect(stepText({ type: 'turn', modifier: 'uturn', name: '' })).toBe('Make a U-turn');
+    expect(stepText({ type: 'fork', modifier: 'slight left', name: '' })).toBe('Keep left at the fork');
+    expect(stepArrow(steps[1])).toBe('→');
+    expect(stepArrow(steps[2])).toBe('🏁');
+  });
+
+  it('gives the next turn and how far it is', () => {
+    expect(nextInstruction(steps, 0)?.step.type).toBe('depart');
+    const n = nextInstruction(steps, 300);
+    expect(n?.text).toBe('Turn right onto Osmeña Blvd');
+    expect(n?.distanceM).toBeCloseTo(legA - 300, -1);
+    // Just past the turn it still shows it; well past, it moves on to arriving.
+    expect(nextInstruction(steps, legA + 5)?.step.type).toBe('turn');
+    expect(nextInstruction(steps, legA + 100)?.text).toBe('Arrive at the cleanup site');
+    expect(nextInstruction(steps, pathLength(route) + 1)).toBeNull();
+  });
+
+  it('mentions the following turn only when it comes soon after', () => {
+    expect(nextInstruction(steps, 300)?.then).toBeUndefined();
+    const close = placeSteps(route, [
+      { type: 'turn', modifier: 'left', name: '', location: B },
+      { type: 'turn', modifier: 'right', name: 'P. del Rosario St', location: { latitude: 10.309, longitude: 123.8905 } },
+    ]);
+    expect(nextInstruction(close, 100)?.then).toBe('Turn right onto P. del Rosario St');
   });
 });

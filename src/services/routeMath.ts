@@ -91,6 +91,113 @@ export function formatEta(seconds: number): string {
   return `${Math.floor(min / 60)} hr ${min % 60} min`;
 }
 
+// ─── Turn-by-turn directions (crew's phone) ──────────────────────────────────
+
+/** One manoeuvre from the routing service (OSRM), e.g. "turn left onto Osmeña Blvd". */
+export interface NavStep {
+  /** OSRM maneuver type: depart, turn, continue, new name, merge, fork, end of road, roundabout, arrive... */
+  type: string;
+  /** left, right, slight left, sharp right, straight, uturn... */
+  modifier?: string;
+  /** Roundabout exit number. */
+  exit?: number;
+  /** Street name; empty when the road has none. */
+  name: string;
+  location: LatLng;
+  /** Metres from the start of the route to this manoeuvre, measured along the route. */
+  atM: number;
+}
+
+/** What the crew should do next, and how far away it is. */
+export interface NavInstruction {
+  step: NavStep;
+  distanceM: number;
+  text: string;
+  /** The manoeuvre right after this one, when it comes soon after (e.g. "Then turn right"). */
+  then?: string;
+}
+
+/** Works out how far along the route each manoeuvre is. Never goes backwards. */
+export function placeSteps(path: LatLng[], steps: Omit<NavStep, 'atM'>[]): NavStep[] {
+  const total = pathLength(path);
+  let last = 0;
+  return steps.map((s) => {
+    last = s.type === 'arrive' ? total : Math.max(last, total - locateOnRoute(path, s.location).remainingM);
+    return { ...s, atM: last };
+  });
+}
+
+const ordinal = (n: number) => {
+  const words = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'];
+  return words[n - 1] ?? `${n}th`;
+};
+
+const TURN_WORDS: Record<string, string> = {
+  left: 'left', right: 'right', 'slight left': 'slightly left', 'slight right': 'slightly right',
+  'sharp left': 'sharp left', 'sharp right': 'sharp right',
+};
+
+/** "Turn left onto Osmeña Blvd" from an OSRM manoeuvre. */
+export function stepText(s: Pick<NavStep, 'type' | 'modifier' | 'exit' | 'name'>): string {
+  const onto = s.name ? ` onto ${s.name}` : '';
+  const turn = TURN_WORDS[s.modifier ?? ''];
+  switch (s.type) {
+    case 'arrive': return 'Arrive at the cleanup site';
+    case 'depart': return s.name ? `Head out on ${s.name}` : 'Head out';
+    case 'roundabout':
+    case 'rotary':
+      return s.exit ? `At the roundabout, take the ${ordinal(s.exit)} exit${onto}` : `Go through the roundabout${onto}`;
+    case 'exit roundabout':
+    case 'exit rotary':
+      return `Exit the roundabout${onto}`;
+    case 'merge': return `Merge${turn ? ` ${turn}` : ''}${onto}`;
+    case 'on ramp': return `Take the ramp${turn ? ` on the ${s.modifier?.replace('slight ', '')}` : ''}${onto}`;
+    case 'off ramp': return `Take the exit${turn ? ` on the ${s.modifier?.replace('slight ', '')}` : ''}${onto}`;
+    case 'fork': return `Keep ${s.modifier?.includes('left') ? 'left' : s.modifier?.includes('right') ? 'right' : 'straight'} at the fork${onto}`;
+    case 'end of road': return `At the end of the road, turn ${s.modifier?.includes('left') ? 'left' : 'right'}${onto}`;
+    default:
+      if (s.modifier === 'uturn') return `Make a U-turn${onto}`;
+      if (!turn) return s.name ? `Continue on ${s.name}` : 'Continue straight';
+      return `Turn ${turn}${onto}`;
+  }
+}
+
+/** Arrow for the direction banner. */
+export function stepArrow(s: Pick<NavStep, 'type' | 'modifier'>): string {
+  if (s.type === 'arrive') return '🏁';
+  if (s.type === 'roundabout' || s.type === 'rotary') return '⟳';
+  switch (s.modifier) {
+    case 'left': case 'sharp left': return '←';
+    case 'right': case 'sharp right': return '→';
+    case 'slight left': return '↖';
+    case 'slight right': return '↗';
+    case 'uturn': return '↶';
+    default: return '↑';
+  }
+}
+
+// A manoeuvre counts as done once the truck is this far past it.
+const PASSED_M = 15;
+// "Then ..." is only shown when the next manoeuvre follows within this distance.
+const THEN_WITHIN_M = 150;
+
+/**
+ * The next manoeuvre for a truck that has driven `travelledM` metres along the route.
+ * The opening "Head out" is skipped once the truck is moving.
+ */
+export function nextInstruction(steps: NavStep[], travelledM: number): NavInstruction | null {
+  const i = steps.findIndex((s) => s.atM > travelledM + (s.type === 'arrive' ? 0 : -PASSED_M) && (s.type !== 'depart' || travelledM < PASSED_M));
+  if (i < 0) return null;
+  const step = steps[i];
+  const after = steps[i + 1];
+  return {
+    step,
+    distanceM: Math.max(0, step.atM - travelledM),
+    text: stepText(step),
+    ...(after && after.atM - step.atM <= THEN_WITHIN_M ? { then: stepText(after) } : {}),
+  };
+}
+
 export function formatDistance(m: number): string {
   return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1)} km`;
 }
