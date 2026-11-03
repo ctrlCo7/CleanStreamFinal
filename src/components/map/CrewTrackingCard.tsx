@@ -3,7 +3,7 @@ import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useTheme } from '../../hooks/useTheme';
 import { useT } from '../../hooks/useT';
-import { useGlide } from '../../hooks/useGlide';
+import { useGlide, useTruckTarget } from '../../hooks/useGlide';
 import { useMapEngine } from '../../hooks/useMapFallback';
 import { ThemeColors } from '../../constants/theme';
 import { CrewTracking } from '../../types';
@@ -97,13 +97,28 @@ function TrackingMap({ tracking, isDark, height, driver }: { tracking: CrewTrack
     () => ({ latitude: tracking.latitude, longitude: tracking.longitude, heading: tracking.heading }),
     [tracking.latitude, tracking.longitude, tracking.heading],
   );
-  const truck = useGlide(truckTarget);
+  // Moves along the road between updates, at a steady speed (like ride-hailing apps).
+  const motion = useTruckTarget(tracking);
+  const truck = useGlide(motion);
+  // "Directions": show the whole way still to go, truck to site. Bumped on each tap.
+  const [fitRoute, setFitRoute] = useState(0);
 
   // Only the part of the route still ahead, like a delivery app.
   const ahead = useMemo(() => {
     const at = locateOnRoute(tracking.route, truckTarget);
     return [at.point, ...tracking.route.slice(at.segment + 1)];
   }, [tracking.route, truckTarget]);
+
+  // Directions: the whole remaining route in view, flat and north up, until Follow is tapped.
+  useEffect(() => {
+    if (!fitRoute || fallback || !map.current) return;
+    // Undo the driver's tilted, turning view first.
+    map.current.animateCamera({ heading: 0, pitch: 0 }, { duration: 0 });
+    map.current.fitToCoordinates([truckTarget, ...ahead, tracking.destination], {
+      edgePadding: { top: 70, right: 50, bottom: 50, left: 50 },
+      animated: true,
+    });
+  }, [fitRoute]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep the truck and the site in view while following. The driver instead gets a close,
   // tilted view that turns with the truck, like a navigation app.
@@ -123,8 +138,8 @@ function TrackingMap({ tracking, isDark, height, driver }: { tracking: CrewTrack
   }, [truckTarget, tracking.destination, follow, fallback, driver]);
 
   const frame: TrackingFrame = useMemo(() => ({
-    truck: truckTarget, ahead, destination: tracking.destination, straight: tracking.routeSource === 'straight', follow, driver,
-  }), [truckTarget, ahead, tracking.destination, tracking.routeSource, follow, driver]);
+    truck: motion ?? truckTarget, ahead, fitRoute, destination: tracking.destination, straight: tracking.routeSource === 'straight', follow, driver,
+  }), [motion, truckTarget, ahead, fitRoute, tracking.destination, tracking.routeSource, follow, driver]);
 
   return (
     <View style={[styles.map, { height }]}>
@@ -172,11 +187,21 @@ function TrackingMap({ tracking, isDark, height, driver }: { tracking: CrewTrack
           </MapView>
         </MapErrorBoundary>
       )}
-      {!follow && (
-        <TouchableOpacity style={styles.recenter} onPress={() => setFollow(true)} accessibilityRole="button">
-          <Text style={styles.recenterText}>{t('track.recenter')}</Text>
+      <View style={styles.mapButtons} pointerEvents="box-none">
+        <TouchableOpacity
+          style={styles.mapBtn}
+          onPress={() => { setFollow(false); setFitRoute((n) => n + 1); }}
+          accessibilityRole="button"
+          accessibilityLabel={t('track.directions')}
+        >
+          <Text style={styles.recenterText}>🧭 {t('track.directions')}</Text>
         </TouchableOpacity>
-      )}
+        {!follow && (
+          <TouchableOpacity style={styles.mapBtn} onPress={() => setFollow(true)} accessibilityRole="button">
+            <Text style={styles.recenterText}>🚚 {t('track.follow')}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 }
@@ -196,9 +221,9 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   sub: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
   updated: { fontSize: 11, color: Colors.textMuted, marginTop: 3 },
   map: { borderRadius: 14, overflow: 'hidden', backgroundColor: Colors.grayBg },
-  recenter: {
-    position: 'absolute', top: 10, right: 10, backgroundColor: Colors.surface, borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 7,
+  mapButtons: { position: 'absolute', top: 10, left: 10, right: 10, flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  mapBtn: {
+    backgroundColor: Colors.surface, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3,
   },
   recenterText: { fontSize: 12, fontWeight: '700', color: Colors.teal },

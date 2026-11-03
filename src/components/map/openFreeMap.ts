@@ -105,17 +105,42 @@ export const OSM_LOOK = {
 /**
  * Glides a MapLibre marker to a new position and turns it the short way round, like a
  * vehicle in a delivery app. `state` keeps the marker's current position between calls.
+ * With `to.via` (road corners) and `to.durationMs` it drives along the road at a steady
+ * speed, turning at each corner (same as useGlide on Google/Apple maps).
  */
 export const glideJs = `
   function csLerpAngle(a, b, t) { var d = ((b - a + 540) % 360) - 180; return (a + d * t + 360) % 360; }
+  function csDist(a, b) {
+    var k = Math.cos(a.lat * Math.PI / 180), dx = (b.lng - a.lng) * k, dy = b.lat - a.lat;
+    return Math.sqrt(dx * dx + dy * dy) * 111320;
+  }
+  function csBearing(a, b) {
+    var r = Math.PI / 180, y = Math.sin((b.lng - a.lng) * r) * Math.cos(b.lat * r);
+    var x = Math.cos(a.lat * r) * Math.sin(b.lat * r) - Math.sin(a.lat * r) * Math.cos(b.lat * r) * Math.cos((b.lng - a.lng) * r);
+    return (Math.atan2(y, x) / r + 360) % 360;
+  }
   window.csGlide = function (marker, state, to) {
     if (!state.shown) { state.shown = { lng: to.longitude, lat: to.latitude, h: to.heading || 0 }; }
     var from = { lng: state.shown.lng, lat: state.shown.lat, h: state.shown.h }, start = Date.now();
+    var target = { lng: to.longitude, lat: to.latitude };
+    var path = [from].concat((to.via || []).map(function (p) { return { lng: p.longitude, lat: p.latitude }; }), [target]);
+    var lens = [], total = 0;
+    for (var i = 1; i < path.length; i++) { lens.push(csDist(path[i - 1], path[i])); total += lens[i - 1]; }
+    var tracked = to.durationMs != null, duration = to.durationMs || 1800;
     cancelAnimationFrame(state.anim);
     (function step() {
-      var t = Math.min(1, (Date.now() - start) / 1800), e = 1 - Math.pow(1 - t, 3);
-      state.shown = { lng: from.lng + (to.longitude - from.lng) * e, lat: from.lat + (to.latitude - from.lat) * e,
-        h: csLerpAngle(from.h, to.heading || 0, e) };
+      var t = Math.min(1, (Date.now() - start) / duration);
+      if (tracked && path.length > 2 && total > 0) {
+        var left = total * t, j = 0;
+        while (j < lens.length - 1 && left > lens[j]) { left -= lens[j]; j++; }
+        var f = lens[j] ? Math.min(1, left / lens[j]) : 1, a = path[j], b = path[j + 1];
+        state.shown = { lng: a.lng + (b.lng - a.lng) * f, lat: a.lat + (b.lat - a.lat) * f,
+          h: t === 1 ? (to.heading || 0) : csLerpAngle(state.shown.h, csBearing(a, b), 0.35) };
+      } else {
+        var e = tracked ? t : 1 - Math.pow(1 - t, 3);
+        state.shown = { lng: from.lng + (to.longitude - from.lng) * e, lat: from.lat + (to.latitude - from.lat) * e,
+          h: csLerpAngle(from.h, to.heading || 0, tracked ? Math.min(1, e * 2) : e) };
+      }
       marker.setLngLat([state.shown.lng, state.shown.lat]).setRotation(state.shown.h);
       if (t < 1) state.anim = requestAnimationFrame(step);
     })();

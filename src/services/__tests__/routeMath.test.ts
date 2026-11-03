@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   bearing, etaSeconds, formatDistance, formatEta, lerpAngle, locateOnRoute, nextInstruction, pathLength, placeSteps,
-  simplifyPath, stepArrow, stepText,
+  simplifyPath, stepArrow, stepText, pointAlong, cornersBetween, isPlausibleFix,
 } from '../routeMath';
+import { nextMotion } from '../../components/map/truckMotion';
+import type { CrewTracking } from '../../types';
 
 // A 3-point route heading north, then east, in Cebu. ~0.009° latitude ≈ 1 km.
 const A = { latitude: 10.30, longitude: 123.89 };
@@ -135,5 +137,56 @@ describe('turn-by-turn directions', () => {
       { type: 'turn', modifier: 'right', name: 'P. del Rosario St', location: { latitude: 10.309, longitude: 123.8905 } },
     ]);
     expect(nextInstruction(close, 100)?.then).toBe('Turn right onto P. del Rosario St');
+  });
+});
+
+describe('keeping the truck on the road', () => {
+  const legA = pathLength([A, B]);
+
+  it('finds the point and road direction a distance along the route', () => {
+    const half = pointAlong(route, legA / 2);
+    expect(half.point.latitude).toBeCloseTo((A.latitude + B.latitude) / 2, 5);
+    expect(Math.round(half.heading)).toBe(0);
+    expect(Math.round(pointAlong(route, legA + 100).heading)).toBe(90);
+    expect(pointAlong(route, 1e9).point).toEqual(C);
+  });
+
+  it('lists the corners passed between two distances', () => {
+    expect(cornersBetween(route, 100, legA + 100)).toEqual([B]);
+    expect(cornersBetween(route, 100, 200)).toEqual([]);
+    expect(cornersBetween(route, legA + 10, legA + 200)).toEqual([]);
+  });
+
+  it('ignores blurry fixes and impossible jumps, but never freezes for long', () => {
+    const last = { ...A, accuracy: 8, timeMs: 0 };
+    expect(isPlausibleFix({ ...A, accuracy: 10, timeMs: 1000 }, null)).toBe(true);
+    expect(isPlausibleFix({ latitude: 10.3001, longitude: 123.89, accuracy: 10, timeMs: 3000 }, last)).toBe(true);
+    expect(isPlausibleFix({ latitude: 10.3001, longitude: 123.89, accuracy: 120, timeMs: 3000 }, last)).toBe(false);
+    expect(isPlausibleFix({ ...B, accuracy: 10, timeMs: 3000 }, last)).toBe(false); // 1 km in 3 s
+    expect(isPlausibleFix({ ...B, accuracy: 120, timeMs: 20000 }, last)).toBe(true);
+  });
+});
+
+describe('truck motion between updates (viewers)', () => {
+  const trip = (alongM: number, atMs: number, onRoute = true) => {
+    const at = pointAlong(route, alongM).point;
+    return {
+      ...at, heading: 0, alongM, onRoute, updatedAtMs: atMs, route, routeDistanceM: pathLength(route),
+    } as unknown as CrewTracking;
+  };
+  const legA = pathLength([A, B]);
+
+  it('drives through the corner instead of cutting across', () => {
+    const first = nextMotion(undefined, trip(legA - 50, 0));
+    const second = nextMotion(first.memo, trip(legA + 50, 3000));
+    expect(second.target.via).toEqual([B]);
+    expect(second.target.durationMs).toBe(3000);
+  });
+
+  it('jumps straight there after a new route, lost signal or leaving the road', () => {
+    const first = nextMotion(undefined, trip(legA - 50, 0));
+    expect(nextMotion(first.memo, trip(legA + 50, 3000, false)).target.via).toEqual([]);
+    expect(nextMotion({ ...first.memo, routeKey: 'other' }, trip(legA + 50, 3000)).target.via).toEqual([]);
+    expect(nextMotion(first.memo, trip(legA + 50, 60000)).target.durationMs).toBe(5000);
   });
 });

@@ -28,6 +28,9 @@ export interface OsmTruck {
   latitude: number;
   longitude: number;
   heading: number;
+  /** Road corners to drive through and how long to take (truckMotion.ts). */
+  via?: Array<{ latitude: number; longitude: number }>;
+  durationMs?: number;
   /** Plain text shown when the truck is tapped. */
   label: string;
 }

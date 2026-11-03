@@ -205,6 +205,8 @@ const en = {
   'track.stale': 'Signal lost · last seen {time} ago',
   'track.arrived': 'The cleanup crew has arrived at the site',
   'track.recenter': 'Recenter',
+  'track.directions': 'Directions',
+  'track.follow': 'Follow truck',
   'track.straightNote': 'No road route available, so a straight line to the site is shown.',
 };
 
@@ -404,6 +406,8 @@ const fil: Partial<Record<StringKey, string>> = {
   'track.stale': 'Nawala ang signal · huling nakita {time} ang nakalipas',
   'track.arrived': 'Dumating na ang mga tagalinis sa lugar',
   'track.recenter': 'Ibalik sa gitna',
+  'track.directions': 'Direksyon',
+  'track.follow': 'Sundan ang trak',
   'track.straightNote': 'Walang makuhang ruta sa kalsada, kaya tuwid na linya papunta sa lugar ang ipinapakita.',
 };
 
@@ -601,6 +605,8 @@ const ceb: Partial<Record<StringKey, string>> = {
   'track.stale': 'Nawala ang signal · katapusang nakita {time} ang milabay',
   'track.arrived': 'Niabot na ang mga tiglimpyo sa lugar',
   'track.recenter': 'Ibalik sa tunga',
+  'track.directions': 'Direksyon',
+  'track.follow': 'Sundan ang trak',
   'track.straightNote': 'Walay makuha nga ruta sa dalan, mao nga tul-id nga linya paingon sa lugar ang gipakita.',
 };
 

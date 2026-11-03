@@ -395,6 +395,10 @@ export interface CrewTracking {
   routeDurationS: number;
   remainingM: number;
   etaSeconds: number;
+  /** Metres driven along `route` (when the truck is on it), so viewers can glide it along the road. */
+  alongM?: number;
+  /** True when the truck is on its route and shown on the road rather than at the raw GPS fix. */
+  onRoute?: boolean;
   startedAt: number;
   /** Milliseconds since epoch on the crew's phone, for "updated 5 s ago". */
   updatedAtMs: number;

@@ -6,7 +6,8 @@ import { TRUCK_SVG, teardropPinHtml } from './mapIconsHtml';
 import { glideJs, mapHead, mapInitJs } from './openFreeMap';
 
 export interface TrackingFrame {
-  truck: { latitude: number; longitude: number; heading: number };
+  /** Where the truck goes next; `via` and `durationMs` make it drive along the road (truckMotion.ts). */
+  truck: { latitude: number; longitude: number; heading: number; via?: Array<{ latitude: number; longitude: number }>; durationMs?: number };
   /** Route still ahead of the truck. */
   ahead: Array<{ latitude: number; longitude: number }>;
   destination: { latitude: number; longitude: number };
@@ -15,6 +16,8 @@ export interface TrackingFrame {
   follow: boolean;
   /** Crew leader's phone: close, tilted view turned the way the truck drives. */
   driver?: boolean;
+  /** Bumped when Directions is tapped: show the whole remaining route. */
+  fitRoute?: number;
 }
 
 interface Props {
@@ -41,7 +44,7 @@ export function OsmTrackingView({ frame, dark, onUserPan, style }: Props) {
   ${mapInitJs({ dark, latitude: first.truck.latitude, longitude: first.truck.longitude, zoom: 14, interactive: true })}
   ${glideJs}
 
-  var latest = null, follow = true, fitted = false;
+  var latest = null, follow = true, fitted = false, lastFit = 0;
   var empty = { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } };
   function routeData() {
     return !latest ? empty : { type: 'Feature', properties: {}, geometry: { type: 'LineString',
@@ -77,6 +80,16 @@ export function OsmTrackingView({ frame, dark, onUserPan, style }: Props) {
     if (src) { src.setData(routeData()); map.setPaintProperty('route-line', 'line-dasharray', f.straight ? [2, 1.5] : [1, 0]); }
     csGlide(truck, truckState, f.truck);
 
+    // Directions: the whole remaining route in view, flat and north up.
+    if (f.fitRoute && f.fitRoute !== lastFit) {
+      lastFit = f.fitRoute;
+      var r = new maplibregl.LngLatBounds([f.truck.longitude, f.truck.latitude], [f.truck.longitude, f.truck.latitude]);
+      r.extend([f.destination.longitude, f.destination.latitude]);
+      f.ahead.forEach(function (p) { r.extend([p.longitude, p.latitude]); });
+      map.fitBounds(r, { padding: { top: 70, right: 50, bottom: 50, left: 50 }, maxZoom: 17, bearing: 0, pitch: 0, duration: 800 });
+      fitted = true;
+      return;
+    }
     if (f.driver && fitted && follow) {
       map.easeTo({ center: [f.truck.longitude, f.truck.latitude], zoom: 17, bearing: f.truck.heading, pitch: 45, duration: 800 });
       return;

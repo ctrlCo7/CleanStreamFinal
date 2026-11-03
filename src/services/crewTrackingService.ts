@@ -24,16 +24,17 @@ import { createNotification } from './notificationService';
 import { CleanupTask, CrewTracking, User } from '../types';
 import {
   ARRIVED_M, LatLng, NavInstruction, NavStep, OFF_ROUTE_M, bearing, etaSeconds, formatEta,
-  locateOnRoute, nextInstruction, pathLength, placeSteps, simplifyPath,
+  GpsFix, SNAP_M, isPlausibleFix, locateOnRoute, nextInstruction, pathLength, placeSteps, pointAlong, simplifyPath,
 } from './routeMath';
 import * as Speech from 'expo-speech';
 import { distanceM } from './reportProximity';
 
 const COL = 'crewTracking';
 const OSRM = 'https://router.project-osrm.org/route/v1/driving';
-// Write at most this often, unless the truck has moved a lot.
-const MIN_WRITE_MS = 4000;
-const MIN_MOVE_M = 12;
+// Write at most this often, unless the truck has moved a lot. Ride-hailing apps refresh every
+// few seconds; viewers glide the truck along the road in between.
+const MIN_WRITE_MS = 2500;
+const MIN_MOVE_M = 6;
 // Even when stopped (traffic), refresh so viewers see the crew is still live.
 const HEARTBEAT_MS = 20000;
 const MIN_REROUTE_MS = 30000;
@@ -123,6 +124,8 @@ export interface TripCallbacks {
 let trip: TripRecord | null = null;
 let tripLoaded = false;
 let foregroundSub: Location.LocationSubscription | null = null;
+/** The last GPS fix that was used, to throw away glitches (see isPlausibleFix). */
+let lastFix: GpsFix | null = null;
 let rerouting = false;
 let callbacks: TripCallbacks = {};
 const listeners = new Set<(s: CrewTracking | null) => void>();
@@ -262,9 +265,18 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
   const t = t0;
   const s = t.state;
   const now = Date.now();
-  const p: LatLng = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+  const fix: GpsFix = { latitude: loc.coords.latitude, longitude: loc.coords.longitude, accuracy: loc.coords.accuracy, timeMs: loc.timestamp || now };
+  // A blurry fix (indoors, between tall buildings) or an impossible jump: skip it, like
+  // ride-hailing apps do, instead of making the truck hop around.
+  if (!isPlausibleFix(fix, lastFix)) return;
+  lastFix = fix;
+  const raw: LatLng = { latitude: fix.latitude, longitude: fix.longitude };
   const dest = s.destination;
-  const onRoute = locateOnRoute(s.route, p);
+  const onRoute = locateOnRoute(s.route, raw);
+  const travelledM = pathLength(s.route) - onRoute.remainingM;
+  // Close to the route: draw the truck on the road, facing along it (GPS wanders 5–20 m).
+  const snapped = onRoute.offRouteM <= SNAP_M && s.routeSource === 'osrm';
+  const p: LatLng = snapped ? onRoute.point : raw;
 
   // Strayed from the route (wrong turn, closed road): get a new one, not too often.
   if (onRoute.offRouteM > OFF_ROUTE_M && !rerouting && now - t.lastReroute > MIN_REROUTE_MS) {
@@ -287,12 +299,15 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
   const remainingM = onRoute.offRouteM > OFF_ROUTE_M
     ? distanceM(p.latitude, p.longitude, dest.latitude, dest.longitude) * 1.3
     : onRoute.remainingM;
-  // GPS heading is unreliable when stopped; then face along the road instead.
+  // On the road, face the way the road goes. Off it, use the GPS heading while moving
+  // (it's unreliable when stopped), else face along the nearest bit of road.
   const moving = (loc.coords.speed ?? 0) > 1;
-  const heading = moving && loc.coords.heading != null && loc.coords.heading >= 0
-    ? loc.coords.heading
-    : s.route[onRoute.segment + 1] ? bearing(onRoute.point, s.route[onRoute.segment + 1]) : s.heading;
-  const arrived = distanceM(p.latitude, p.longitude, dest.latitude, dest.longitude) <= ARRIVED_M;
+  const heading = snapped
+    ? pointAlong(s.route, travelledM).heading
+    : moving && loc.coords.heading != null && loc.coords.heading >= 0
+      ? loc.coords.heading
+      : s.route[onRoute.segment + 1] ? bearing(onRoute.point, s.route[onRoute.segment + 1]) : s.heading;
+  const arrived = distanceM(raw.latitude, raw.longitude, dest.latitude, dest.longitude) <= ARRIVED_M;
 
   t.state = {
     ...s,
@@ -303,11 +318,13 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
     ...(loc.coords.accuracy != null ? { accuracy: loc.coords.accuracy } : {}),
     remainingM: Math.round(arrived ? 0 : remainingM),
     etaSeconds: arrived ? 0 : etaSeconds(remainingM, s.routeDistanceM, s.routeDurationS),
+    alongM: Math.round(travelledM * 10) / 10,
+    onRoute: snapped,
     updatedAtMs: now,
     ...(arrived ? { status: 'arrived' as const, arrivedAt: now } : {}),
   };
   publish();
-  if (!arrived) updateNav(t, pathLength(s.route) - onRoute.remainingM);
+  if (!arrived) updateNav(t, travelledM);
 
   const moved = distanceM(p.latitude, p.longitude, t.lastWritePos.latitude, t.lastWritePos.longitude);
   if (arrived || (now - t.lastWriteAt >= MIN_WRITE_MS && moved >= MIN_MOVE_M) || now - t.lastWriteAt >= HEARTBEAT_MS) {
@@ -420,10 +437,11 @@ export async function startTrip(task: CleanupTask, crew: User, cb: TripCallbacks
   ping(task.assignedByUserId, state, '🚚 Cleanup crew on the way', body);
   ping(task.reporterUserId, state, '🚚 Cleanup crew on the way', body);
 
+  lastFix = null;
   const options: Location.LocationTaskOptions = {
-    accuracy: Location.Accuracy.High,
-    timeInterval: 4000,
-    distanceInterval: 10,
+    accuracy: Location.Accuracy.BestForNavigation,
+    timeInterval: 2000,
+    distanceInterval: 5,
     activityType: Location.ActivityType.AutomotiveNavigation,
     pausesUpdatesAutomatically: false,
     showsBackgroundLocationIndicator: true,
@@ -449,7 +467,7 @@ export async function startTrip(task: CleanupTask, crew: User, cb: TripCallbacks
     }
   }
   foregroundSub = await watchPosition(
-    { accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 8 },
+    { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 2000, distanceInterval: 5 },
     (loc) => { handleLocation(loc); },
   );
   return 'foreground';

@@ -91,6 +91,58 @@ export function formatEta(seconds: number): string {
   return `${Math.floor(min / 60)} hr ${min % 60} min`;
 }
 
+// ─── Keeping the truck on the road (like ride-hailing apps) ──────────────────
+
+/** Within this distance of the route, the truck is drawn on the road instead of at the raw GPS fix. */
+export const SNAP_M = 35;
+
+/** The point `m` metres along the route, and which way the road goes there. */
+export function pointAlong(path: LatLng[], m: number): { point: LatLng; heading: number } {
+  if (path.length === 0) return { point: { latitude: 0, longitude: 0 }, heading: 0 };
+  if (path.length === 1 || m <= 0) return { point: path[0], heading: path[1] ? bearing(path[0], path[1]) : 0 };
+  let left = m;
+  for (let i = 0; i < path.length - 1; i++) {
+    const len = d(path[i], path[i + 1]);
+    if (left <= len) {
+      return { point: lerp(path[i], path[i + 1], len === 0 ? 0 : left / len), heading: bearing(path[i], path[i + 1]) };
+    }
+    left -= len;
+  }
+  const n = path.length;
+  return { point: path[n - 1], heading: bearing(path[n - 2], path[n - 1]) };
+}
+
+/** The route's corners between two distances along it (exclusive), so a glide follows the road. */
+export function cornersBetween(path: LatLng[], fromM: number, toM: number): LatLng[] {
+  const out: LatLng[] = [];
+  let at = 0;
+  for (let i = 1; i < path.length; i++) {
+    at += d(path[i - 1], path[i]);
+    if (at > toM) break;
+    if (at > fromM && i < path.length - 1) out.push(path[i]);
+  }
+  return out;
+}
+
+export interface GpsFix { latitude: number; longitude: number; accuracy?: number | null; timeMs: number }
+
+// Phones report fixes worse than this indoors or between tall buildings.
+const MAX_ACCURACY_M = 50;
+// Faster than this (~200 km/h) between two fixes is a GPS glitch, not the truck.
+const MAX_SPEED_MPS = 55;
+// After this long without a good fix, take whatever comes rather than freezing the truck.
+const MAX_GAP_MS = 15000;
+
+/** Whether a GPS fix is believable, compared with the last one that was used. */
+export function isPlausibleFix(fix: GpsFix, last: GpsFix | null): boolean {
+  if (!last) return true;
+  const gap = fix.timeMs - last.timeMs;
+  if (gap >= MAX_GAP_MS) return true;
+  if (fix.accuracy != null && fix.accuracy > MAX_ACCURACY_M) return false;
+  const moved = d(fix, last);
+  return moved / Math.max(gap / 1000, 0.5) <= MAX_SPEED_MPS;
+}
+
 // ─── Turn-by-turn directions (crew's phone) ──────────────────────────────────
 
 /** One manoeuvre from the routing service (OSRM), e.g. "turn left onto Osmeña Blvd". */

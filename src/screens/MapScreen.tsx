@@ -24,7 +24,8 @@ import { nativeMapLook } from '../components/map/mapTheme';
 import { TeardropPin, TruckIcon, useMarkerDrawing } from '../components/map/MapIcons';
 import { subscribeActiveTrips } from '../services/crewTrackingService';
 import { formatEta } from '../services/routeMath';
-import { useGlide } from '../hooks/useGlide';
+import { useTrackedTruck } from '../hooks/useGlide';
+import { MotionMemo, nextMotion } from '../components/map/truckMotion';
 import { useAppSelector } from '../store/hooks';
 import {
   getMarkerColor,
@@ -193,13 +194,9 @@ const MapLegend = memo(({ styles }: { styles: ReturnType<typeof createStyles> })
 
 // ─── Live trucks (officials and Admin) ────────────────────────────────────────
 
-/** A cleanup truck on its way, gliding between GPS updates and facing where it drives. */
+/** A cleanup truck on its way, driving along the road between GPS updates and facing where it goes. */
 function LiveTruckMarker({ trip, onPress }: { trip: CrewTracking; onPress: (taskId: string) => void }) {
-  const target = useMemo(
-    () => ({ latitude: trip.latitude, longitude: trip.longitude, heading: trip.heading }),
-    [trip.latitude, trip.longitude, trip.heading],
-  );
-  const pos = useGlide(target);
+  const pos = useTrackedTruck(trip);
   // Let the truck drawing render once, then freeze it (Android snapshots marker views).
   const [drawing, setDrawing] = useState(true);
   useEffect(() => {
@@ -265,11 +262,14 @@ export default function MapScreen({ navigation }: Props) {
   const handleFilter = useCallback((val: string) => setFilter(val), []);
 
   // Trucks on the OpenFreeMap map (Huawei phones and the fallback); tapping one opens its task.
+  // Each one drives along the road between updates, like on Google/Apple maps.
+  const truckMemos = React.useRef(new Map<string, MotionMemo>());
   const osmTrucks = useMemo(
-    () => trips.map((t) => ({
-      id: t.taskId, latitude: t.latitude, longitude: t.longitude, heading: t.heading,
-      label: `${t.crewName} · arriving in ${formatEta(t.etaSeconds)}`,
-    })),
+    () => trips.map((t) => {
+      const { target, memo } = nextMotion(truckMemos.current.get(t.taskId), t);
+      truckMemos.current.set(t.taskId, memo);
+      return { id: t.taskId, ...target, label: `${t.crewName} · arriving in ${formatEta(t.etaSeconds)}` };
+    }),
     [trips],
   );
 
