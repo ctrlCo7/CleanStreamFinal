@@ -15,9 +15,34 @@
  * using a fixed identifier so re-scheduling after an admin change just
  * replaces the one standing alarm rather than accumulating duplicates.
  */
-import * as Notifications from 'expo-notifications';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
+
+type NotificationsModule = typeof import('expo-notifications');
+
+let notificationsModule: NotificationsModule | null | undefined;
+
+/**
+ * expo-notifications throws the moment it is imported inside Expo Go (Android push was removed
+ * from Expo Go in SDK 53), which crashed the whole app on launch. So it is loaded only when first
+ * needed, and never in Expo Go. In Expo Go the alarm simply isn't scheduled; installed builds
+ * (APK / development build) work normally.
+ */
+function loadNotifications(): NotificationsModule | null {
+  if (notificationsModule !== undefined) return notificationsModule;
+  if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
+    notificationsModule = null;
+    return null;
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    notificationsModule = require('expo-notifications') as NotificationsModule;
+  } catch {
+    notificationsModule = null;
+  }
+  return notificationsModule;
+}
 
 const COL = 'checkpointAlarms';
 const CHANNEL_ID = 'waterway-alarm';
@@ -51,6 +76,8 @@ let handlerConfigured = false;
  * show a banner/sound at all -- must be set once, early (call from app init). */
 export function configureAlarmNotificationHandler(): void {
   if (handlerConfigured) return;
+  const Notifications = loadNotifications();
+  if (!Notifications) return;
   handlerConfigured = true;
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -63,6 +90,8 @@ export function configureAlarmNotificationHandler(): void {
 }
 
 export async function requestAlarmPermissions(): Promise<boolean> {
+  const Notifications = loadNotifications();
+  if (!Notifications) return false;
   const current = await Notifications.getPermissionsAsync();
   if (current.granted) return true;
   const requested = await Notifications.requestPermissionsAsync();
@@ -72,7 +101,8 @@ export async function requestAlarmPermissions(): Promise<boolean> {
 let channelReady = false;
 
 export async function initAlarmChannel(): Promise<void> {
-  if (channelReady) return;
+  const Notifications = loadNotifications();
+  if (!Notifications || channelReady) return;
   configureAlarmNotificationHandler();
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
     name: 'Daily checkpoint alarm',
@@ -149,6 +179,8 @@ export const subscribeToCheckpointAlarm = (
  * permission revoked then regranted, Android force-stop), so this doubles
  * as the defensive re-sync for that case too. */
 export const reconcileDailyCheckpointAlarm = async (config: CheckpointAlarmConfig | null): Promise<void> => {
+  const Notifications = loadNotifications();
+  if (!Notifications) return;
   await initAlarmChannel();
   await Notifications.cancelScheduledNotificationAsync(CHECKPOINT_NOTIFICATION_ID).catch(() => {});
   if (!config) return;
