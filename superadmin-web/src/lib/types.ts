@@ -15,7 +15,7 @@ export const SELF_REGISTERING_STAFF: Role[] = ['barangay', 'cleanup_team'];
 
 export type AccountStatus = 'active' | 'pending' | 'rejected' | 'inactive' | 'removed';
 
-/** Set on Admin / Barangay Official sign-ups, which must pass an ID + face check. */
+/** Set on Barangay Captain / Barangay Official sign-ups, which must pass an ID + face check. */
 export type IdVerificationStatus = 'pending' | 'approved' | 'rejected';
 
 export const ID_TYPE_LABELS: Record<string, string> = {

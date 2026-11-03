@@ -21,7 +21,7 @@ export function Approvals() {
       <header className="page-head">
         <div>
           <h1>Approvals</h1>
-          <p className="muted">People who registered in the app and are waiting for you. Admin and Barangay Official applicants submit an ID and selfies for you to check.</p>
+          <p className="muted">People who registered in the app and are waiting for you. Barangay Captain and Barangay Official applicants submit an ID and selfies for you to check.</p>
         </div>
       </header>
 
