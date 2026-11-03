@@ -33,7 +33,7 @@ export default function SplashScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.teal} />
+      <StatusBar barStyle="light-content" />
 
       <View style={styles.body}>
         <Animated.View style={[styles.iconWrap, { opacity: fadeIcon }]}>

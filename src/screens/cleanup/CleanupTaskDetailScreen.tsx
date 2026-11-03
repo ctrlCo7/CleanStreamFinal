@@ -465,7 +465,7 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
       </KeyboardAvoidingView>
 
       {/* Decline reason */}
-      <Modal visible={declineOpen} transparent animationType="fade" onRequestClose={() => !busy && setDeclineOpen(false)}>
+      <Modal visible={declineOpen} transparent animationType="fade" onRequestClose={() => { if (!busy) setDeclineOpen(false); }}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.sectionTitle}>Why can&apos;t you do this task?</Text>

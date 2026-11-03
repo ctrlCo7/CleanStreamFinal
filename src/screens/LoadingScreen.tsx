@@ -7,7 +7,7 @@ import { LogoMark } from '../components/common/LogoMark';
 export default function LoadingScreen() {
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1D9E75" />
+      <StatusBar barStyle="light-content" />
       <View style={styles.logoWrap}>
         <LogoMark size={64} />
       </View>

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo } from 'react';
 import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 
@@ -125,7 +125,6 @@ const buildHtml = (region: OsmMapRegion, markers: OsmMarker[], interactive: bool
  * on init. Has no dependency on Google Play Services at all.
  */
 export function OsmMapView({ region, markers, onMarkerPress, interactive = true, style }: OsmMapViewProps) {
-  const webviewRef = useRef<WebView>(null);
 
   const html = useMemo(() => buildHtml(region, markers, interactive), [region, markers, interactive]);
 
@@ -137,7 +136,6 @@ export function OsmMapView({ region, markers, onMarkerPress, interactive = true,
   return (
     <View style={[styles.container, style]}>
       <WebView
-        ref={webviewRef}
         source={{ html }}
         originWhitelist={['*']}
         style={styles.webview}

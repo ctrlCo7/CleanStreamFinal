@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView,
+  View, Text, TextInput, TouchableOpacity, ScrollView, ScrollViewInstance,
   StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -22,7 +22,7 @@ export default function CitizenChatScreen({ navigation, route }: Props) {
   const { user } = useAppSelector((s) => s.auth);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   // Derive the other participant's ID from conversationId (format: uid1_uid2)
   const receiverId = conversationId.includes('_')
