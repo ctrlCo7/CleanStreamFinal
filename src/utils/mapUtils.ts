@@ -55,6 +55,24 @@ export function severityFromScore(score: number): SeverityLevel {
   return 'low';
 }
 
+const LEVELS: SeverityLevel[] = ['low', 'moderate', 'high', 'critical'];
+
+/**
+ * A report's severity, read defensively so every pin gets a colour: the saved `severity`
+ * (any letter case, e.g. "High"), else the AI's own level, else its 0–100 score, else 'low'.
+ */
+export function reportSeverity(r: {
+  severity?: unknown;
+  aiAnalysis?: { severityLevel?: unknown; severityScore?: unknown } | null;
+}): SeverityLevel {
+  for (const v of [r.severity, r.aiAnalysis?.severityLevel]) {
+    const s = typeof v === 'string' ? v.trim().toLowerCase() : '';
+    if ((LEVELS as string[]).includes(s)) return s as SeverityLevel;
+  }
+  const score = Number(r.aiAnalysis?.severityScore);
+  return Number.isFinite(score) ? severityFromScore(score) : 'low';
+}
+
 /**
  * For a cluster of reports, returns the colour of the highest-severity member.
  * Ensures a cluster containing any critical report is always red.

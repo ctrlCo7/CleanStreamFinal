@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { subscribeToBarangayReports } from '../services/reportsService';
+import { subscribeToMapReports } from '../services/reportsService';
 import { useAppSelector } from '../store/hooks';
 import { WasteReport } from '../types';
-import { countBySeverity, SeverityCount, ZERO_COUNTS } from '../utils/mapUtils';
+import { countBySeverity, reportSeverity, SeverityCount, ZERO_COUNTS } from '../utils/mapUtils';
 
 export interface UseMapReportsResult {
   reports: WasteReport[];
@@ -15,7 +15,8 @@ export interface UseMapReportsResult {
  * Real-time Firestore subscription for map markers.
  * Only returns reports that have valid GPS coordinates.
  * Automatically updates when any report's severity changes in Firestore.
- * Everyone only gets their own barangay's reports (the rules allow nothing else).
+ * Everyone only gets their own barangay's reports (the rules allow nothing else), and only
+ * those not cleaned up yet: once an official confirms the cleanup, the pin goes away.
  */
 export function useMapReports(): UseMapReportsResult {
   const [raw, setRaw] = useState<WasteReport[]>([]);
@@ -28,19 +29,27 @@ export function useMapReports(): UseMapReportsResult {
       setLoading(false);
     };
     if (!barangayId) { onReports([]); return undefined; }
-    return subscribeToBarangayReports(barangayId, onReports);
+    return subscribeToMapReports(barangayId, onReports);
   }, [barangayId]);
 
   // Filter to only mappable reports (have GPS coords) — memoized to avoid allocation on every render
+  // Every report gets a proper severity level (see reportSeverity), so its pin is coloured.
   const reports = useMemo(
     () =>
-      raw.filter(
-        (r) =>
-          typeof r.location?.latitude === 'number' &&
-          typeof r.location?.longitude === 'number' &&
-          !isNaN(r.location.latitude) &&
-          !isNaN(r.location.longitude),
-      ),
+      raw
+        .filter(
+          (r) =>
+            // Cleaned up and confirmed: off the map (the query already leaves these out).
+            r.status !== 'completed' &&
+            typeof r.location?.latitude === 'number' &&
+            typeof r.location?.longitude === 'number' &&
+            !isNaN(r.location.latitude) &&
+            !isNaN(r.location.longitude),
+        )
+        .map((r) => {
+          const severity = reportSeverity(r);
+          return severity === r.severity ? r : { ...r, severity };
+        }),
     [raw],
   );
 

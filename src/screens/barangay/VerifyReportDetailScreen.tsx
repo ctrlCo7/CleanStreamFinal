@@ -6,7 +6,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
-import { AIWasteType, RootStackParamList, SeverityLevel, WasteReport } from '../../types';
+import { AIWasteType, CONCERN_LABELS, RootStackParamList, SeverityLevel, WasteReport } from '../../types';
+import { formatPH } from '../../utils/phTime';
+import { formatDateKey } from '../../utils/dates';
 import { Badge } from '../../components/common/Badge';
 import { BackIcon } from '../../components/common/TabIcons';
 import { useAppSelector } from '../../store/hooks';
@@ -14,6 +16,8 @@ import { getReportById, verifyReport, rejectReport } from '../../services/report
 import { HOTSPOT_MIN_REPORTS } from '../../services/reportProximity';
 import { WASTE_TYPE_LABELS } from '../../services/wasteAnalysis';
 import { canViewReport } from '../../services/assignmentRules';
+import { explainWriteError } from '../../utils/firestoreErrors';
+import { notifyReportRejected, notifyReportVerified } from '../../services/workflowNotifications';
 
 const OTHER_BARANGAY = 'This report belongs to another barangay. Only its own barangay can view it and take action.';
 
@@ -81,12 +85,20 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
         severity: confirmedSeverity,
         wasteType: confirmedWasteType,
       });
-      Alert.alert('Report verified', 'This report has been marked as verified. Do you want to assign a cleanup crew now?', [
-        { text: 'Later', style: 'cancel', onPress: () => navigation.goBack() },
-        { text: 'Assign a crew', onPress: () => navigation.replace('BarangayAssignCrew', { reportId }) },
-      ]);
-    } catch {
-      Alert.alert('Error', 'Failed to verify this report. Please try again.');
+      if (report) notifyReportVerified(report, user).catch(() => undefined);
+      Alert.alert(
+        'Report verified',
+        'The reporter has been told, and the report was forwarded to the Barangay Captain. Do you want to propose a cleanup schedule now? The Captain approves it.',
+        [
+          { text: 'Later', style: 'cancel', onPress: () => navigation.goBack() },
+          { text: 'Propose a schedule', onPress: () => navigation.replace('BarangayAssignCrew', { reportId }) },
+        ],
+      );
+    } catch (e) {
+      console.warn('[Verify] Report verify failed:', e);
+      Alert.alert('Could not verify', explainWriteError(e, 'verify this report', {
+        otherBarangay: !!report?.barangayId && report.barangayId !== user.barangayId,
+      }));
     } finally {
       setSaving(false);
     }
@@ -101,7 +113,8 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
     setSaving(true);
     try {
       await rejectReport(reportId, user.uid, officerName, reason.trim());
-      Alert.alert('Report rejected', 'The reporter will see this report marked as rejected.');
+      if (report) notifyReportRejected(report, user, reason.trim()).catch(() => undefined);
+      Alert.alert('Report rejected', 'The reporter has been told, with your reason.');
       navigation.goBack();
     } catch {
       Alert.alert('Error', 'Failed to reject this report. Please try again.');
@@ -120,6 +133,7 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
           setSaving(true);
           try {
             await rejectReport(reportId, user.uid, officerName, `Duplicate of ${report.duplicateOfNumber}`);
+            notifyReportRejected(report, user, `Duplicate of ${report.duplicateOfNumber}`).catch(() => undefined);
             navigation.goBack();
           } catch {
             Alert.alert('Error', 'Failed to close this report. Please try again.');
@@ -176,7 +190,9 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
           {[
             { k: 'Report #', v: report.reportNumber ?? report.id.slice(0, 12) },
             { k: 'Submitted by', v: report.userName || '—' },
-            { k: 'Date & time', v: new Date(report.createdAt).toLocaleString() },
+            { k: 'Concern', v: report.concernType ? CONCERN_LABELS[report.concernType] : '—' },
+            { k: 'Incident date', v: report.incidentDate ? formatDateKey(report.incidentDate) : '—' },
+            { k: 'Submitted', v: formatPH(report.createdAt) },
             { k: 'GPS location', v: report.location ? `${report.location.latitude.toFixed(4)}°N, ${report.location.longitude.toFixed(4)}°E` : '—' },
             { k: 'Primary waste', v: report.aiAnalysis?.wasteTypes?.[0]?.label || '—' },
             { k: 'Severity', v: report.severity, badge: true },
@@ -259,9 +275,9 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
               <TouchableOpacity
                 style={styles.assignBtn}
                 onPress={() => navigation.navigate('BarangayAssignCrew', { reportId })}
-                accessibilityLabel="Assign a cleanup crew"
+                accessibilityLabel="Propose a cleanup schedule"
               >
-                <Text style={styles.verifyBtnText}>Assign a cleanup crew</Text>
+                <Text style={styles.verifyBtnText}>Propose a cleanup schedule</Text>
               </TouchableOpacity>
             )}
           </View>

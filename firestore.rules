@@ -186,10 +186,11 @@ service cloud.firestore {
                         && !request.resource.data.diff(resource.data).affectedKeys()
                             .hasAny(['status', 'severity', 'userId', 'aiAnalysis'])) ||
 
-                      // Barangay: verify, reject, assign and close out reports in own barangay
+                      // Barangay official: VERIFICATION ONLY -- verify or reject reports in their own
+                      // barangay. Scheduling (assigned) and closing (completed) are the Captain's.
                       (isBarangayOfficer()
                         && inMyBarangay(resource.data.barangayId)
-                        && request.resource.data.status in ['verified', 'assigned', 'in_progress', 'completed', 'rejected']) ||
+                        && request.resource.data.status in ['verified', 'rejected']) ||
 
                       // Admin: any other change, only for their own barangay's reports
                       (isAdmin() && inMyBarangay(resource.data.barangayId)) ||
@@ -242,7 +243,8 @@ service cloud.firestore {
                     || (isBarangayOfficer()
                         && sameBarangay(resource.data.barangayId)
                         && request.resource.data.diff(resource.data).affectedKeys()
-                            .hasOnly(['lastInspectedAt', 'lastInspectedBy', 'lastInspectedByName', 'lastCondition']));
+                            .hasOnly(['lastInspectedAt', 'lastInspectedBy', 'lastInspectedByName', 'lastCondition', 'lastIssue',
+                                      'inspectionStartedAt', 'inspectionStartedBy', 'inspectionStartedByName']));
     }
 
     // ─── Checkpoint Alarms (each Captain sets their barangay's daily check time; ─
@@ -274,25 +276,47 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/reports/$(reportId)).data.get('barangayId', '');
       }
 
-      // Created by the Admin or an official, for their own barangay, always as themselves.
+      // Fields only the Barangay Captain may set: approving a schedule and closing a cleanup.
+      function captainOnlyFields() {
+        return ['approvedByUserId', 'approvedByName', 'approvedAt', 'rejectedByUserId', 'rejectedByName',
+                'rejectionRemarks', 'confirmedByUserId', 'confirmedAt', 'recordedByUserId', 'recordedByName'];
+      }
+
+      // Proposed by an official (status 'proposed', or 'declined' when the automatic conflict
+      // check refused it), or scheduled by the Captain (who may also approve it at once:
+      // 'assigned'). Always for their own barangay, as themselves, with that barangay's crew.
       allow create: if isAuthenticated()
                     && request.resource.data.assignedByUserId == currentUid()
-                    && (isAdmin() || isBarangayOfficer())
                     && inMyBarangay(request.resource.data.barangayId)
                     && request.resource.data.barangayId == reportBarangay(request.resource.data.reportId)
-                    && crewOfBarangay(request.resource.data.assignedTeamId, request.resource.data.barangayId);
+                    && crewOfBarangay(request.resource.data.assignedTeamId, request.resource.data.barangayId)
+                    && (
+                      (isAdmin() && request.resource.data.status in ['proposed', 'declined', 'assigned'])
+                      || (isBarangayOfficer()
+                          && request.resource.data.status in ['proposed', 'declined']
+                          && !request.resource.data.keys().hasAny(captainOnlyFields()))
+                    );
 
       allow update: if isAuthenticated() && (
-                      // Admin / official: the task can't move to another barangay or report, and a
-                      // replacement crew must be from the same barangay.
-                      ((isAdmin() || isBarangayOfficer()) && inMyBarangay(resource.data.barangayId)
+                      // Captain: approves / rejects / declines schedules and closes cleanups. The task
+                      // can't move to another barangay or report; a new crew must be the same barangay's.
+                      (isAdmin() && inMyBarangay(resource.data.barangayId)
                         && request.resource.data.barangayId == resource.data.barangayId
                         && request.resource.data.reportId == resource.data.reportId
                         && (request.resource.data.assignedTeamId == resource.data.assignedTeamId
                             || crewOfBarangay(request.resource.data.assignedTeamId, resource.data.barangayId))) ||
-                      // A crew leader can accept/decline, start, document and finish only their own task,
-                      // and cannot hand it to someone else
+                      // Official: may edit details, but never the status or any approval/closing field --
+                      // only the Captain can approve, reject or finalize a cleanup schedule.
+                      (isBarangayOfficer() && inMyBarangay(resource.data.barangayId)
+                        && request.resource.data.barangayId == resource.data.barangayId
+                        && request.resource.data.reportId == resource.data.reportId
+                        && request.resource.data.assignedTeamId == resource.data.assignedTeamId
+                        && request.resource.data.status == resource.data.status
+                        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(captainOnlyFields())) ||
+                      // A crew leader can accept/decline, start, document and finish only their own,
+                      // APPROVED task, and cannot hand it to someone else
                       (isCleanupTeam()
+                        && resource.data.status in ['assigned', 'accepted', 'in_progress']
                         && resource.data.assignedTeamId == currentUid()
                         && request.resource.data.assignedTeamId == resource.data.assignedTeamId
                         && request.resource.data.status in ['accepted', 'in_progress', 'completed', 'cancelled']
@@ -402,11 +426,13 @@ service cloud.firestore {
 
     // ─── Activity Logs ──────────────────────────────────────────────────────────
     match /activityLogs/{logId} {
-      // Users see their own logs; the Super Admin reads them all
+      // Users see their own logs; the Captain their barangay's (activity log); the Super Admin all
       allow read: if isSuperAdmin()
-                  || (isAuthenticated() && resource.data.userId == currentUid());
-      // All authenticated users can write their own activity
-      allow create: if isAuthenticated() && request.resource.data.userId == currentUid();
+                  || (isAuthenticated() && resource.data.userId == currentUid())
+                  || isCaptainOf(resource.data.get('barangayId', null));
+      // All authenticated users write their own activity, and only for their own barangay
+      allow create: if isAuthenticated() && request.resource.data.userId == currentUid()
+                    && (!('barangayId' in request.resource.data) || sameBarangay(request.resource.data.barangayId));
       // Logs are immutable
       allow update, delete: if false;
     }

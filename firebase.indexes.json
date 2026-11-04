@@ -248,6 +248,22 @@
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
+    {
+      "collectionGroup": "fieldCheckpoints",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "barangayId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "activityLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "barangayId", "order": "ASCENDING" },
+        { "fieldPath": "timestamp",  "order": "DESCENDING" }
+      ]
+    },
 
     // ─── conversations ───────────────────────────────────────────────────────────
 

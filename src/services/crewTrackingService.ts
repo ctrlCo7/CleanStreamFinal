@@ -23,8 +23,9 @@ import { auth, db } from './firebase';
 import { createNotification } from './notificationService';
 import { CleanupTask, CrewTracking, User } from '../types';
 import {
-  ARRIVED_M, LatLng, NavInstruction, NavStep, OFF_ROUTE_M, bearing, etaSeconds, formatEta,
+  ARRIVED_M, LatLng, NavInstruction, NavStep, OFF_ROUTE_M, REROUTE_M, bearing, etaSeconds, formatEta,
   GpsFix, SNAP_M, isPlausibleFix, locateOnRoute, nextInstruction, pathLength, placeSteps, pointAlong, simplifyPath,
+  rerouteDecision, truckHeading,
 } from './routeMath';
 import * as Speech from 'expo-speech';
 import { distanceM } from './reportProximity';
@@ -37,7 +38,6 @@ const MIN_WRITE_MS = 2500;
 const MIN_MOVE_M = 6;
 // Even when stopped (traffic), refresh so viewers see the crew is still live.
 const HEARTBEAT_MS = 20000;
-const MIN_REROUTE_MS = 30000;
 
 // ─── Routing ─────────────────────────────────────────────────────────────────
 
@@ -53,17 +53,38 @@ interface OsrmStep {
   maneuver: { type: string; modifier?: string; exit?: number; location: [number, number] };
 }
 
-export async function fetchRoute(from: LatLng, to: LatLng, timeoutMs = 8000): Promise<RoadRoute> {
+type OsrmRoute = {
+  distance: number; duration: number; geometry: { coordinates: [number, number][] }; legs?: Array<{ steps?: OsrmStep[] }>;
+};
+
+async function requestOsrm(from: LatLng, to: LatLng, heading: number | undefined, signal: AbortSignal): Promise<OsrmRoute> {
+  // `bearings` makes the route start the way the truck is already facing (within 60 degrees),
+  // so a re-route doesn't tell it to turn around in the middle of the road.
+  const bearings = heading != null ? `&bearings=${Math.round(((heading % 360) + 360) % 360)},60;` : '';
+  const url = `${OSRM}/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=full&geometries=geojson&steps=true${bearings}`;
+  const res = await fetch(url, { signal });
+  const json = await res.json() as { code?: string; routes?: OsrmRoute[] };
+  const r = json.routes?.[0];
+  if (!res.ok || !r || r.geometry.coordinates.length < 2) throw new Error(`No route (${json.code ?? res.status})`);
+  return r;
+}
+
+/**
+ * A road route from `from` to `to` (OSRM, the OpenStreetMap road network). `heading`, when
+ * known, keeps the route going the way the truck faces; if no such route exists (one-way
+ * street, dead end) it asks again without it, and only then falls back to a straight line.
+ */
+export async function fetchRoute(from: LatLng, to: LatLng, timeoutMs = 8000, heading?: number): Promise<RoadRoute> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const url = `${OSRM}/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=full&geometries=geojson&steps=true`;
-    const res = await fetch(url, { signal: controller.signal });
-    const json = await res.json() as { routes?: Array<{
-      distance: number; duration: number; geometry: { coordinates: [number, number][] }; legs?: Array<{ steps?: OsrmStep[] }>;
-    }> };
-    const r = json.routes?.[0];
-    if (!res.ok || !r || r.geometry.coordinates.length < 2) throw new Error('No route');
+    let r: OsrmRoute;
+    try {
+      r = await requestOsrm(from, to, heading, controller.signal);
+    } catch (e) {
+      if (heading == null || controller.signal.aborted) throw e;
+      r = await requestOsrm(from, to, undefined, controller.signal);
+    }
     const path = simplifyPath(r.geometry.coordinates.map(([lng, lat]) => ({ latitude: lat, longitude: lng })));
     const raw = (r.legs ?? []).flatMap((leg) => leg.steps ?? [])
       // "new name" is just the same road changing its name: not worth telling the driver.
@@ -109,6 +130,8 @@ interface TripRecord {
   lastWriteAt: number;
   lastWritePos: LatLng;
   lastReroute: number;
+  /** GPS fixes in a row further than REROUTE_M from the route. */
+  offCount?: number;
   background: boolean;
   /** Turn-by-turn directions. Missing on trips saved by older versions of the app. */
   steps?: NavStep[];
@@ -269,6 +292,7 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
   // A blurry fix (indoors, between tall buildings) or an impossible jump: skip it, like
   // ride-hailing apps do, instead of making the truck hop around.
   if (!isPlausibleFix(fix, lastFix)) return;
+  const prevFix = lastFix;
   lastFix = fix;
   const raw: LatLng = { latitude: fix.latitude, longitude: fix.longitude };
   const dest = s.destination;
@@ -278,19 +302,37 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
   const snapped = onRoute.offRouteM <= SNAP_M && s.routeSource === 'osrm';
   const p: LatLng = snapped ? onRoute.point : raw;
 
-  // Strayed from the route (wrong turn, closed road): get a new one, not too often.
-  if (onRoute.offRouteM > OFF_ROUTE_M && !rerouting && now - t.lastReroute > MIN_REROUTE_MS) {
+  // Strayed from the route (wrong turn, closed road): get a new one from where the truck is
+  // now, going the way it faces. Far off: at once; a little off: on the second fix in a row.
+  const decision = rerouteDecision({
+    offRouteM: onRoute.offRouteM, offCount: t.offCount ?? 0, straight: s.routeSource === 'straight',
+    nowMs: now, lastRerouteMs: t.lastReroute, busy: rerouting,
+  });
+  t.offCount = decision.offCount;
+  const { strayed } = decision;
+  if (decision.fetch) {
     rerouting = true;
     t.lastReroute = now;
-    fetchRoute(p, dest)
+    const facing = (loc.coords.speed ?? 0) > 1 ? s.heading : undefined;
+    fetchRoute(p, dest, 8000, facing)
       .then((r) => {
         if (trip !== t) return undefined;
-        t.state = { ...t.state, route: r.path, routeSource: r.source, routeDistanceM: r.distanceM, routeDurationS: r.durationS };
+        // Still no road route: keep the old line rather than swapping it for another.
+        if (r.source === 'straight' && t.state.routeSource === 'straight' && !strayed) return undefined;
+        const routeVersion = (t.state.routeVersion ?? 0) + 1;
+        t.state = {
+          ...t.state, route: r.path, routeSource: r.source, routeDistanceM: r.distanceM, routeDurationS: r.durationS,
+          routeVersion, offRoute: false,
+        };
+        t.offCount = 0;
         t.steps = r.steps;
         t.spoken = [];
-        say('Route updated');
+        if (strayed) say('Route updated');
         saveTrip();
-        return updateDoc(doc(db, COL, s.taskId), { route: r.path, routeSource: r.source, routeDistanceM: r.distanceM, routeDurationS: r.durationS });
+        publish();
+        return updateDoc(doc(db, COL, s.taskId), {
+          route: r.path, routeSource: r.source, routeDistanceM: r.distanceM, routeDurationS: r.durationS, routeVersion, offRoute: false,
+        });
       })
       .catch((e) => console.warn('[Tracking] Re-route failed:', e))
       .finally(() => { rerouting = false; });
@@ -299,14 +341,16 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
   const remainingM = onRoute.offRouteM > OFF_ROUTE_M
     ? distanceM(p.latitude, p.longitude, dest.latitude, dest.longitude) * 1.3
     : onRoute.remainingM;
-  // On the road, face the way the road goes. Off it, use the GPS heading while moving
-  // (it's unreliable when stopped), else face along the nearest bit of road.
-  const moving = (loc.coords.speed ?? 0) > 1;
-  const heading = snapped
-    ? pointAlong(s.route, travelledM).heading
-    : moving && loc.coords.heading != null && loc.coords.heading >= 0
-      ? loc.coords.heading
-      : s.route[onRoute.segment + 1] ? bearing(onRoute.point, s.route[onRoute.segment + 1]) : s.heading;
+  // On the road, face the way the road goes. Off it, the GPS course while moving, else the
+  // direction between this fix and the last one; stopped, keep facing the same way.
+  const heading = truckHeading({
+    roadHeading: snapped ? pointAlong(s.route, travelledM).heading : null,
+    gpsHeading: loc.coords.heading,
+    speed: loc.coords.speed,
+    prev: prevFix,
+    next: raw,
+    last: s.heading,
+  });
   const arrived = distanceM(raw.latitude, raw.longitude, dest.latitude, dest.longitude) <= ARRIVED_M;
 
   t.state = {
@@ -320,6 +364,7 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
     etaSeconds: arrived ? 0 : etaSeconds(remainingM, s.routeDistanceM, s.routeDurationS),
     alongM: Math.round(travelledM * 10) / 10,
     onRoute: snapped,
+    offRoute: onRoute.offRouteM > REROUTE_M && s.routeSource === 'osrm',
     updatedAtMs: now,
     ...(arrived ? { status: 'arrived' as const, arrivedAt: now } : {}),
   };
@@ -416,6 +461,8 @@ export async function startTrip(task: CleanupTask, crew: User, cb: TripCallbacks
     routeSource: route.source,
     routeDistanceM: route.distanceM,
     routeDurationS: route.durationS,
+    routeVersion: 0,
+    tripDistanceM: route.distanceM,
     remainingM: route.distanceM,
     etaSeconds: Math.round(route.durationS),
     startedAt: now,

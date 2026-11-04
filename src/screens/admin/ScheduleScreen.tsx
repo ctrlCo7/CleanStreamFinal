@@ -10,7 +10,7 @@ import { RootStackParamList } from '../../types';
 import { BackIcon } from '../../components/common/TabIcons';
 import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
-import { assignCrewToReport, CrewMember, getCrewsForBarangay, reportBarangayId } from '../../services/crewService';
+import { proposeCleanup, CrewMember, getCrewsForBarangay, reportBarangayId } from '../../services/crewService';
 import { formatDateKey, formatHHmm, toDateKey } from '../../utils/dates';
 import { formatPhone } from '../../utils/phone';
 import { CEBU_BARANGAYS } from '../../services/locationService';
@@ -82,10 +82,17 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
     setSaving(true);
     try {
       if (report && user && selectedCrew) {
-        // A real crew: this creates the task, marks the report assigned and notifies the crew and the reporter.
-        await assignCrewToReport({
+        // Checked automatically for clashes with approved cleanups first; a clash declines it.
+        const result = await proposeCleanup({
           report, crew: selectedCrew, assigner: user, scheduledDate, startTime: CREW_START, endTime: CREW_END,
         });
+        if (result.outcome === 'declined') {
+          const free = result.suggestion
+            ? `\n\nA free time: ${formatDateKey(result.suggestion.scheduledDate)}, ${formatHHmm(result.suggestion.startTime)}–${formatHHmm(result.suggestion.endTime)}. Use "Choose crew & time" to pick it.`
+            : '';
+          Alert.alert('Declined automatically: schedule conflict', `${result.conflicts.map((c) => c.message).join('\n\n')}${free}`);
+          return;
+        }
         getNotificationRecipientsByRole(['barangay'], selectedUnit.id)
           .then((barangayUserIds) => {
             if (barangayUserIds.length === 0) return;

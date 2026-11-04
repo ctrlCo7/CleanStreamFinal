@@ -27,6 +27,14 @@ function buildTypeColors(colors: ThemeColors): Record<NotificationType, string> 
     message: colors.blue,
     ai_result: colors.purple,
     system: colors.grayMuted,
+    report_forwarded: colors.purple,
+    schedule_proposed: colors.blue,
+    schedule_approved: colors.teal,
+    schedule_rejected: colors.red,
+    schedule_declined: colors.red,
+    checkpoint_missed: colors.red,
+    checkpoint_completed: colors.teal,
+    checkpoint_issue: colors.amber,
   };
 }
 

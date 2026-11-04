@@ -9,11 +9,14 @@ import { CleanupTask } from '../../types';
  */
 export function describeTask(task: Pick<CleanupTask, 'status' | 'confirmedAt'>): { label: string; tone: 'new' | 'active' | 'wait' | 'done' | 'bad' } {
   switch (task.status) {
-    case 'assigned': return { label: 'New', tone: 'new' };
+    case 'proposed': return { label: 'Awaiting Captain', tone: 'wait' };
+    case 'declined': return { label: 'Declined: conflict', tone: 'bad' };
+    case 'rejected': return { label: 'Rejected', tone: 'bad' };
+    case 'assigned': return { label: 'Approved', tone: 'new' };
     case 'accepted': return { label: 'Accepted', tone: 'active' };
     case 'in_progress': return { label: 'In progress', tone: 'active' };
     case 'completed': return task.confirmedAt ? { label: 'Done', tone: 'done' } : { label: 'Awaiting confirmation', tone: 'wait' };
-    case 'cancelled': return { label: 'Declined', tone: 'bad' };
+    case 'cancelled': return { label: 'Crew declined', tone: 'bad' };
     default: return { label: String(task.status), tone: 'active' };
   }
 }

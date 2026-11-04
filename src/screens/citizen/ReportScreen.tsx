@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, SafeAreaView,
   ScrollView, ActivityIndicator, Alert, Image, TextInput,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
@@ -14,7 +14,11 @@ import { StringKey } from '../../i18n/strings';
 import { enqueueReport, isOnline } from '../../services/offlineQueue';
 import { analyzeAndSaveReport } from '../../services/reportSubmission';
 import { ThemeColors } from '../../constants/theme';
-import { RootStackParamList, WaterContext } from '../../types';
+import { ConcernType, RootStackParamList, WaterContext } from '../../types';
+import { addDaysKey, phDateKey } from '../../utils/phTime';
+import { formatDateKey } from '../../utils/dates';
+
+const CONCERNS: ConcernType[] = ['clogged_drainage', 'garbage_accumulation', 'polluted_waterway', 'illegal_dumping', 'other'];
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { upsertReport } from '../../store/reportsSlice';
 import { watchLocation, CEBU_BARANGAYS, CebuBarangay } from '../../services/locationService';
@@ -43,7 +47,11 @@ export default function CitizenReportScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [location, setLocation] = useState<GeoLocation | null>(null);
   const [geoStatus, setGeoStatus] = useState<'detecting' | 'found' | 'manual' | 'error'>('detecting');
-  const [notes, setNotes] = useState('');
+  // Opened by an official from a checkpoint inspection that found an issue: filled in for them.
+  const params = useRoute<RouteProp<RootStackParamList, 'CitizenReport'>>().params;
+  const [notes, setNotes] = useState(params?.notes ?? '');
+  const [concernType, setConcernType] = useState<ConcernType>(params?.fromCheckpointId ? 'polluted_waterway' : 'garbage_accumulation');
+  const [incidentDate, setIncidentDate] = useState(phDateKey());
   const [processing, setProcessing] = useState(false);
   const [aiStep, setAiStep] = useState(0);
   const [waterContext, setWaterContext] = useState<WaterContext>('unknown');
@@ -189,7 +197,7 @@ Is this where you are?`,
     const saveOffline = async () => {
       try {
         await enqueueReport({
-          userId: user.uid, userRole: user.role, userName, photoUri, location, notes, waterContext,
+          userId: user.uid, userRole: user.role, userName, photoUri, location, notes, waterContext, concernType, incidentDate,
         });
         Alert.alert(
           t('report.offlineSavedTitle'),
@@ -217,6 +225,7 @@ Is this where you are?`,
     try {
       const result = await createReport(
         user.uid, user.role, userName, photoUri, location, notes, undefined, location.barangayId, location.barangay,
+        { concernType, incidentDate, fromCheckpointId: params?.fromCheckpointId },
       );
       reportId = result.reportId;
       reportNumber = result.reportNumber;
@@ -235,7 +244,7 @@ Is this where you are?`,
     // The reporter can stop waiting at any time ("Skip analysis").
     const skip = new Promise<void>((resolve) => { skipAnalysisRef.current = resolve; });
     const { ai, aiIssue, proximity } = await analyzeAndSaveReport({
-      reportId, reportNumber, userId: user.uid, location, photoUri, waterContext, skip,
+      reportId, reportNumber, userId: user.uid, location, photoUri, waterContext, skip, concernType,
     });
     skipAnalysisRef.current = null;
 
@@ -396,6 +405,43 @@ Is this where you are?`,
                   accessibilityState={{ selected: on }}
                 >
                   <Text style={[styles.contextChipText, on && styles.contextChipTextOn]}>{t(`ctx.${o}` as StringKey)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.formLabel}>{t('report.concern')}</Text>
+          <View style={styles.contextRow}>
+            {CONCERNS.map((c) => {
+              const on = concernType === c;
+              return (
+                <TouchableOpacity
+                  key={c}
+                  style={[styles.contextChip, on && styles.contextChipOn]}
+                  onPress={() => setConcernType(c)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: on }}
+                >
+                  <Text style={[styles.contextChipText, on && styles.contextChipTextOn]}>{t(`concern.${c}` as StringKey)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.formLabel}>{t('report.incidentDate')}</Text>
+          <View style={styles.contextRow}>
+            {[0, 1, 2, 3, 4, 5, 6].map((ago) => {
+              const key = addDaysKey(phDateKey(), -ago);
+              const on = incidentDate === key;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.contextChip, on && styles.contextChipOn]}
+                  onPress={() => setIncidentDate(key)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: on }}
+                >
+                  <Text style={[styles.contextChipText, on && styles.contextChipTextOn]}>
+                    {ago === 0 ? t('report.today') : ago === 1 ? t('report.yesterday') : formatDateKey(key).replace(/, \d{4}$/, '')}
+                  </Text>
                 </TouchableOpacity>
               );
             })}

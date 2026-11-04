@@ -36,7 +36,14 @@ export const mapHead = (dark: boolean) => `
  * Defines `csOnStyle(fn)`: runs fn now if the style is loaded and again after any style
  * switch (sources/layers such as the route have to be re-added then).
  */
-export const mapInitJs = (opts: { dark: boolean; latitude: number; longitude: number; zoom: number; interactive: boolean }) => `
+export const mapInitJs = (opts: {
+  dark: boolean; latitude: number; longitude: number; zoom: number; interactive: boolean;
+  /** 3D maps: allow turning and tilting the map (two fingers, or right-drag on a computer). */
+  rotate?: boolean;
+  /** Show MapLibre's own zoom buttons (default true; pages with their own controls turn it off). */
+  controls?: boolean;
+  pitch?: number;
+}) => `
   var RASTER_STYLE = { version: 8, sources: { carto: { type: 'raster', tileSize: 256,
     tiles: ['a','b','c','d'].map(function (s) { return 'https://' + s + '.basemaps.cartocdn.com/${opts.dark ? 'dark_all' : 'rastertiles/voyager'}/{z}/{x}/{y}@2x.png'; }),
     attribution: '&copy; OpenStreetMap contributors &copy; CARTO' } },
@@ -47,12 +54,13 @@ export const mapInitJs = (opts: { dark: boolean; latitude: number; longitude: nu
     center: [${opts.longitude}, ${opts.latitude}],
     zoom: ${opts.zoom},
     interactive: ${opts.interactive ? 'true' : 'false'},
-    dragRotate: false,
-    pitchWithRotate: false,
+    dragRotate: ${opts.rotate ? 'true' : 'false'},
+    pitchWithRotate: ${opts.rotate ? 'true' : 'false'},
+    ${opts.rotate ? `maxPitch: 75, pitch: ${opts.pitch ?? 0}, antialias: true,` : ''}
     attributionControl: { compact: true },
   });
-  if (${opts.interactive ? 'true' : 'false'}) map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
-  map.touchZoomRotate && map.touchZoomRotate.disableRotation && map.touchZoomRotate.disableRotation();
+  if (${opts.interactive && opts.controls !== false ? 'true' : 'false'}) map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+  if (!${opts.rotate ? 'true' : 'false'}) map.touchZoomRotate && map.touchZoomRotate.disableRotation && map.touchZoomRotate.disableRotation();
 
   var styleHooks = [], styleReady = false, usingFallback = false;
   window.csOnStyle = function (fn) { styleHooks.push(fn); if (styleReady) fn(); };

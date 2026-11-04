@@ -6,9 +6,10 @@ import { ThemeColors } from '../../constants/theme';
 import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
 import { ReportStatus } from '../../types';
+import { explainWriteError } from '../../utils/firestoreErrors';
 import {
   FieldCheckpointRecord,
-  subscribeToAllCheckpoints,
+  subscribeToBarangayFieldCheckpoints,
   verifyCheckpoint,
 } from '../../services/checkpointService';
 
@@ -44,21 +45,27 @@ export default function AdminHistoryScreen() {
   const [checkpointsLoaded, setCheckpointsLoaded] = useState(false);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
+  // Only this Captain's own barangay's inspection reports: the only ones they may read and
+  // verify. (Loading every barangay's made the rules refuse the list and the verify.)
   useEffect(() => {
-    const unsub = subscribeToAllCheckpoints((records) => {
+    if (!user?.barangayId) { setCheckpoints([]); setCheckpointsLoaded(true); return undefined; }
+    return subscribeToBarangayFieldCheckpoints(user.barangayId, (records) => {
       setCheckpoints(records);
       setCheckpointsLoaded(true);
     });
-    return unsub;
-  }, []);
+  }, [user?.barangayId]);
 
   const handleVerifyCheckpoint = async (checkpointId: string) => {
     if (!user || verifyingId) return;
+    const record = checkpoints.find((c) => c.id === checkpointId);
     setVerifyingId(checkpointId);
     try {
       await verifyCheckpoint(checkpointId, user.uid, `${user.firstName} ${user.lastName}`);
-    } catch {
-      Alert.alert('Error', 'Failed to verify this checkpoint. Please try again.');
+    } catch (e) {
+      console.warn('[History] Checkpoint verify failed:', e);
+      Alert.alert('Could not verify', explainWriteError(e, 'verify this checkpoint report', {
+        otherBarangay: !!record && record.barangayId !== user.barangayId,
+      }));
     } finally {
       setVerifyingId(null);
     }

@@ -25,7 +25,8 @@ export const createCleanupTask = async (
     ...data,
     beforePhotoURLs: [],
     afterPhotoURLs: [],
-    status: 'assigned' as CleanupTaskStatus,
+    // The status given (proposed, declined, or assigned for a Captain's own approved schedule).
+    status: (data.status ?? 'proposed') as CleanupTaskStatus,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -45,7 +46,9 @@ export const getTasksByTeam = async (teamId: string): Promise<CleanupTask[]> => 
     orderBy('scheduledDate', 'asc'),
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as CleanupTask));
+  // A crew only ever sees schedules the Barangay Captain approved (not proposals, declined or rejected ones).
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as CleanupTask))
+    .filter((t) => t.status !== 'proposed' && t.status !== 'declined' && t.status !== 'rejected');
 };
 
 export const getTasksByBarangay = async (

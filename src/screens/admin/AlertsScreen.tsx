@@ -8,7 +8,8 @@ import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
 import { subscribeToConversations } from '../../services/messagingService';
 import { createAnnouncement } from '../../services/announcementService';
-import { Conversation, RootStackParamList } from '../../types';
+import { subscribeToMapReports } from '../../services/reportsService';
+import { Conversation, RootStackParamList, WasteReport } from '../../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -19,7 +20,15 @@ export default function AdminAlertsScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const { user } = useAppSelector((s) => s.auth);
-  const { reports } = useAppSelector((s) => s.reports);
+  // Its own live list of this Captain's barangay reports, so alerts show even when the
+  // Dashboard hasn't loaded reports yet (before, the list could be empty except for the
+  // "unread conversations" item, and every tap went to Messages).
+  const [reports, setReports] = useState<WasteReport[]>([]);
+  const [reportsLoaded, setReportsLoaded] = useState(false);
+  useEffect(() => {
+    if (!user?.barangayId) { setReports([]); setReportsLoaded(true); return undefined; }
+    return subscribeToMapReports(user.barangayId, (r) => { setReports(r); setReportsLoaded(true); });
+  }, [user?.barangayId]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [composerOpen, setComposerOpen] = useState(false);
@@ -65,8 +74,8 @@ export default function AdminAlertsScreen() {
       ? [{
           id: 'unread_messages',
           level: 'info' as const,
-          title: `${unreadConvCount} unread conversation${unreadConvCount > 1 ? 's' : ''}`,
-          body: 'Open Messages to reply',
+          title: `💬 ${unreadConvCount} unread conversation${unreadConvCount > 1 ? 's' : ''}`,
+          body: 'Tap to open Messages',
         }]
       : []),
   ];
@@ -92,12 +101,15 @@ export default function AdminAlertsScreen() {
   const DOT_COLORS: Record<string, string> = { critical: colors.critical, high: colors.red, moderate: colors.amber, info: colors.blue };
 
   const handlePress = (alert: AlertItem) => {
+    // A report alert opens that report (to review it and schedule its cleanup), the same as
+    // tapping a priority report on the Dashboard.
     if (alert.reportId) {
       navigation.navigate('AdminSchedule', { reportId: alert.reportId });
       return;
     }
+    // Only the separate "unread conversations" item goes to the Messages tab.
     if (alert.id === 'unread_messages') {
-      navigation.navigate('AdminTabs', {} as never);
+      navigation.navigate('AdminTabs', { screen: 'AdminMessages' } as never);
       return;
     }
     dismiss(alert.id);
@@ -188,7 +200,7 @@ export default function AdminAlertsScreen() {
           const sLabel = level.charAt(0).toUpperCase() + level.slice(1);
           return (
             <View key={level}>
-              <Text style={styles.sectionHdr}>{sLabel === 'Info' ? 'Updates' : `${sLabel} priority`}</Text>
+              <Text style={styles.sectionHdr}>{sLabel === 'Info' ? 'Messages' : `${sLabel} priority`}</Text>
               {items.map((alert) => {
                 const s = LEVEL_STYLES[alert.level];
                 return (
@@ -220,9 +232,11 @@ export default function AdminAlertsScreen() {
             </View>
           );
         })}
-        {visible.length === 0 && (
+        {!reportsLoaded ? (
+          <ActivityIndicator color={colors.teal} style={{ marginTop: 24 }} />
+        ) : visible.every((a) => a.level === 'info') && (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No active alerts</Text>
+            <Text style={styles.emptyText}>No urgent reports in your barangay right now</Text>
           </View>
         )}
       </ScrollView>

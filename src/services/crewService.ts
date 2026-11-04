@@ -1,18 +1,21 @@
 /**
  * Cleanup crews and the life of a cleanup task:
  *
- *   assign (Admin / barangay official) -> accept or decline (crew) -> start -> add photos -> finish
- *   -> confirm (official / Admin, which closes the report and tells the reporter)
+ *   propose (official) -> automatic conflict check -> approve (Barangay Captain only) -> accept or
+ *   decline (crew) -> start -> add photos -> finish -> confirm (Captain, which closes the report)
  *
  * A crew can be a smartphone user (the crew leader's account) or have no app at all: an official
  * can record the work on their behalf (`recordWorkOnBehalf`). Notifications are best-effort: a
  * failed notification must never undo or block the work itself.
  */
 import { collection, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
-import { CleanupTask, User, WasteReport } from '../types';
-import { addTaskPhoto, createCleanupTask, uploadTaskPhoto } from './cleanupTaskService';
+import { CleanupTask, NotificationType, ScheduleConflictInfo, User, WasteReport } from '../types';
+import { addTaskPhoto, createCleanupTask, getActiveTasksByBarangay, uploadTaskPhoto } from './cleanupTaskService';
 import { db } from './firebase';
-import { createNotification, sendReportNotification } from './notificationService';
+import { createNotification, getNotificationRecipientsByRole, sendReportNotification } from './notificationService';
+import { describeConflict, findScheduleConflicts, ScheduleConflict, ScheduleSlot, suggestFreeSlot } from './scheduleConflicts';
+import { logBarangayActivity } from './activityLogService';
+import { addDaysKey, phDateKey, phMinutes } from '../utils/phTime';
 import { updateReportStatus } from './reportsService';
 import { assignmentProblem, reportBarangayId } from './assignmentRules';
 import { mergeSummaries, summarizeAnalysis } from './cleanupComparison';
@@ -69,16 +72,24 @@ const minutesBetween = (start: string, end: string): number => {
   return Number.isFinite(diff) && diff > 0 ? diff : 120;
 };
 
-// ─── Assigning ───────────────────────────────────────────────────────────────
+// ─── Scheduling: propose → automatic conflict check → Captain approves ──────
+//
+//   official proposes ─┬─ clashes with an approved cleanup → DECLINED automatically
+//                      │     (reason + the clashing schedule + a free time suggested)
+//                      └─ free → PROPOSED → Barangay Captain approves (checked again) → ASSIGNED
+//                                                          └─ or rejects with remarks → REJECTED
+//
+// Only the Barangay Captain can approve (firestore.rules enforces it too). A Captain's own
+// proposal is approved at once after the same automatic check.
 
 export interface AssignCrewInput {
   report: WasteReport;
   crew: CrewMember;
-  /** The official or Admin doing the assigning. */
+  /** The official or Captain proposing the schedule. */
   assigner: User;
-  /** YYYY-MM-DD */
+  /** YYYY-MM-DD (Philippine date) */
   scheduledDate: string;
-  /** HH:mm */
+  /** HH:mm (Philippine time) */
   startTime: string;
   endTime: string;
   notes?: string;
@@ -86,18 +97,117 @@ export interface AssignCrewInput {
   personnelCount?: number;
 }
 
-/** Creates the task, marks the report assigned, and tells the crew and the person who reported it. */
-export const assignCrewToReport = async (i: AssignCrewInput): Promise<string> => {
+export type ProposalResult =
+  | { outcome: 'declined'; taskId: string; conflicts: ScheduleConflictInfo[]; suggestion: CleanupTask['suggestedSlot'] | null }
+  | { outcome: 'proposed'; taskId: string }
+  | { outcome: 'approved'; taskId: string };
+
+const toSlot = (t: Pick<CleanupTask, 'id' | 'title' | 'status' | 'scheduledDate' | 'startTime' | 'endTime' | 'assignedTeamId' | 'assignedTeamName' | 'location' | 'equipmentNeeded'>): ScheduleSlot => ({
+  id: t.id, title: t.title, status: t.status, scheduledDate: t.scheduledDate, startTime: t.startTime, endTime: t.endTime,
+  assignedTeamId: t.assignedTeamId, assignedTeamName: t.assignedTeamName, location: t.location, equipmentNeeded: t.equipmentNeeded ?? [],
+});
+
+const conflictInfo = (c: ScheduleConflict): ScheduleConflictInfo => ({
+  taskId: c.with.id ?? '',
+  title: c.with.title ?? 'Cleanup',
+  scheduledDate: c.with.scheduledDate,
+  startTime: c.with.startTime,
+  endTime: c.with.endTime,
+  place: c.with.location?.address || c.with.location?.barangay || '',
+  crewName: c.with.assignedTeamName ?? '',
+  reasons: c.reasons,
+  message: describeConflict(c),
+});
+
+/** The barangay's approved cleanups that still hold their time slots. */
+const approvedSchedules = async (barangayId: string): Promise<ScheduleSlot[]> =>
+  (await getActiveTasksByBarangay(barangayId)).map(toSlot);
+
+/** Checks a schedule against the barangay's approved cleanups. Exported for the screens' live preview. */
+export const checkScheduleConflicts = async (barangayId: string, slot: ScheduleSlot) => {
+  const existing = await approvedSchedules(barangayId);
+  const conflicts = findScheduleConflicts(slot, existing);
+  const suggestion = conflicts.length
+    ? suggestFreeSlot(slot, existing, { addDays: addDaysKey, earliestDate: phDateKey(), earliestTime: `${String(Math.floor(phMinutes() / 60)).padStart(2, '0')}:${String(phMinutes() % 60).padStart(2, '0')}` })
+    : null;
+  return { conflicts, suggestion };
+};
+
+const captainsOf = (barangayId: string) => getNotificationRecipientsByRole(['admin'], barangayId).catch(() => [] as string[]);
+const staffNote = async (userIds: string[], n: { title: string; body: string; type: NotificationType; taskId?: string; reportId?: string }) => {
+  await Promise.all(userIds.map((userId) => createNotification({ userId, ...n }).catch((e) => console.warn('[Schedule] notification failed (non-fatal):', e))));
+};
+
+/** Marks the report assigned and tells the crew, the reporter and whoever proposed it. */
+const announceApproved = async (task: CleanupTask, captain: User) => {
+  await updateReportStatus(task.reportId, 'assigned', captain.uid, fullName(captain), {
+    assignedTeamId: task.assignedTeamId,
+    assignedTeamName: task.assignedTeamName,
+    assignedBarangayId: task.barangayId,
+    cleanupTaskId: task.id,
+    note: `Cleanup scheduled for ${task.scheduledDate}, ${task.startTime}–${task.endTime} (approved by the Barangay Captain)`,
+  });
+  await notify(task.assignedTeamId, 'New cleanup task', `${task.reportNumber ?? 'A report'} on ${task.scheduledDate}, ${task.startTime}. Open the app to accept it.`, task, 'task_assigned');
+  if (task.assignedByUserId !== captain.uid) {
+    await staffNote([task.assignedByUserId], {
+      title: 'Cleanup schedule approved',
+      body: `The Barangay Captain approved the cleanup for ${task.reportNumber ?? 'the report'} on ${task.scheduledDate}, ${task.startTime}–${task.endTime}.`,
+      type: 'schedule_approved', taskId: task.id, reportId: task.reportId,
+    });
+  }
+  if (task.reporterUserId) {
+    sendReportNotification(task.reporterUserId, 'report_assigned', task.reportId, task.reportNumber ?? task.reportId, undefined,
+      `It is scheduled for ${task.scheduledDate}, ${task.startTime}.`).catch(() => undefined);
+  }
+};
+
+const declineReasonFor = (conflicts: ScheduleConflictInfo[]) =>
+  `Declined automatically: it clashes with an approved cleanup. ${conflicts.map((c) => c.message).join(' ')}`;
+
+/** The fields that mark a schedule as declined automatically because of a clash. */
+const declinedFields = (conflicts: ScheduleConflictInfo[], suggestion: CleanupTask['suggestedSlot'] | null) => ({
+  status: 'declined' as const,
+  declineReason: declineReasonFor(conflicts),
+  conflicts,
+  ...(suggestion ? { suggestedSlot: suggestion } : {}),
+  decidedAt: new Date().toISOString(),
+});
+
+/** Tells whoever proposed it why it was declined (and a free time), and logs it. */
+const announceDeclined = async (
+  taskId: string, task: Pick<CleanupTask, 'reportId' | 'reportNumber' | 'assignedByUserId' | 'barangayId'>,
+  conflicts: ScheduleConflictInfo[], suggestion: CleanupTask['suggestedSlot'] | null, actor: User,
+) => {
+  const reason = declineReasonFor(conflicts);
+  const free = suggestion ? ` A free time: ${suggestion.scheduledDate}, ${suggestion.startTime}–${suggestion.endTime}.` : '';
+  await staffNote([task.assignedByUserId], {
+    title: 'Cleanup schedule declined automatically', body: `${reason}${free} Propose a different schedule.`,
+    type: 'schedule_declined', taskId, reportId: task.reportId,
+  });
+  logBarangayActivity({
+    actor, barangayId: task.barangayId, action: 'schedule_declined', entityType: 'task', entityId: taskId,
+    summary: `Schedule for ${task.reportNumber ?? 'a report'} declined automatically (conflict)`,
+  });
+};
+
+/**
+ * Proposes a cleanup schedule for a verified report. It is checked automatically against the
+ * barangay's approved cleanups: a clash declines it at once (with the reason and a free time);
+ * otherwise it waits for the Barangay Captain. A Captain's own proposal is approved directly.
+ */
+export const proposeCleanup = async (i: AssignCrewInput): Promise<ProposalResult> => {
   const { report, crew, assigner } = i;
-  const assignerName = fullName(assigner);
   const problem = assignmentProblem(report, crew, assigner);
   if (problem) throw new Error(problem);
-  // The task always belongs to the report's barangay (the security rules check this too).
+  if (report.status !== 'verified' && report.status !== 'assigned') {
+    throw new Error('Only verified reports can get a cleanup schedule. Verify the report first.');
+  }
+  const isCaptain = assigner.role === 'admin';
   const barangayId = reportBarangayId(report) as string;
   const barangayName = report.barangay ?? report.location.barangay ?? crew.barangay ?? '';
   const where_ = report.location.address ?? barangayName;
-
-  const taskId = await createCleanupTask({
+  const assignerName = fullName(assigner);
+  const base = {
     reportId: report.id,
     reportNumber: report.reportNumber,
     reporterUserId: report.userId,
@@ -113,7 +223,6 @@ export const assignCrewToReport = async (i: AssignCrewInput): Promise<string> =>
     description: i.notes?.trim() || `${report.severity} severity waste report${where_ ? ` at ${where_}` : ''}.`,
     location: report.location,
     priority: report.severity,
-    status: 'assigned',
     scheduledDate: i.scheduledDate,
     startTime: i.startTime,
     endTime: i.endTime,
@@ -121,26 +230,92 @@ export const assignCrewToReport = async (i: AssignCrewInput): Promise<string> =>
     equipmentNeeded: i.equipmentNeeded ?? [],
     personnelCount: i.personnelCount ?? 0,
     isAiSuggested: false,
-  });
+  };
 
-  await updateReportStatus(report.id, 'assigned', assigner.uid, assignerName, {
-    assignedTeamId: crew.uid,
-    assignedTeamName: crew.name,
-    assignedBarangayId: barangayId,
-    cleanupTaskId: taskId,
-  });
-
-  const task = { id: taskId, reportId: report.id } as CleanupTask;
-  await notify(crew.uid, 'New cleanup task', `${report.reportNumber ?? 'A report'} on ${i.scheduledDate}, ${i.startTime}. Open the app to accept it.`, task, 'task_assigned');
-  if (report.userId) {
-    try {
-      await sendReportNotification(report.userId, 'report_assigned', report.id, report.reportNumber ?? report.id);
-    } catch (e) {
-      console.warn('[Crew] reporter notification failed (non-fatal):', e);
-    }
+  // Automatic conflict check against every approved cleanup in the barangay.
+  const { conflicts, suggestion } = await checkScheduleConflicts(barangayId, toSlot({ ...base, id: undefined as unknown as string, status: 'proposed' }));
+  if (conflicts.length) {
+    const infos = conflicts.map(conflictInfo);
+    const taskId = await createCleanupTask({ ...base, ...declinedFields(infos, suggestion) });
+    await announceDeclined(taskId, { ...base }, infos, suggestion, assigner);
+    return { outcome: 'declined', taskId, conflicts: infos, suggestion };
   }
-  return taskId;
+
+  if (isCaptain) {
+    const now = new Date().toISOString();
+    const taskId = await createCleanupTask({
+      ...base, status: 'assigned', approvedByUserId: assigner.uid, approvedByName: assignerName, approvedAt: now, decidedAt: now,
+    });
+    await announceApproved({ ...base, id: taskId, status: 'assigned' } as CleanupTask, assigner);
+    logBarangayActivity({
+      actor: assigner, barangayId, action: 'schedule_approved', entityType: 'task', entityId: taskId,
+      summary: `Cleanup for ${report.reportNumber ?? 'a report'} scheduled and approved for ${i.scheduledDate}, ${i.startTime}–${i.endTime}`,
+    });
+    return { outcome: 'approved', taskId };
+  }
+
+  const taskId = await createCleanupTask({ ...base, status: 'proposed' });
+  await staffNote(await captainsOf(barangayId), {
+    title: 'Cleanup schedule awaiting your approval',
+    body: `${assignerName} proposed a cleanup for ${report.reportNumber ?? 'a report'} on ${i.scheduledDate}, ${i.startTime}–${i.endTime} with ${crew.name}.`,
+    type: 'schedule_proposed', taskId, reportId: report.id,
+  });
+  logBarangayActivity({
+    actor: assigner, barangayId, action: 'schedule_proposed', entityType: 'task', entityId: taskId,
+    summary: `Proposed a cleanup for ${report.reportNumber ?? 'a report'} on ${i.scheduledDate}, ${i.startTime}–${i.endTime} (${crew.name})`,
+  });
+  return { outcome: 'proposed', taskId };
 };
+
+/**
+ * The Barangay Captain approves a proposed schedule. It is checked again first (another
+ * cleanup may have been approved since): a clash declines it automatically instead.
+ */
+export const approveCleanup = async (task: CleanupTask, captain: User): Promise<'approved' | 'declined'> => {
+  if (captain.role !== 'admin') throw new Error('Only the Barangay Captain can approve cleanup schedules.');
+  if (task.status !== 'proposed') throw new Error('This schedule is no longer waiting for approval.');
+  const { conflicts, suggestion } = await checkScheduleConflicts(task.barangayId, toSlot(task));
+  if (conflicts.length) {
+    const infos = conflicts.map(conflictInfo);
+    await updateDoc(doc(db, TASKS, task.id), { ...declinedFields(infos, suggestion), updatedAt: serverTimestamp() });
+    await announceDeclined(task.id, task, infos, suggestion, captain);
+    return 'declined';
+  }
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, TASKS, task.id), {
+    status: 'assigned', approvedByUserId: captain.uid, approvedByName: fullName(captain), approvedAt: now, decidedAt: now,
+    updatedAt: serverTimestamp(),
+  });
+  await announceApproved(task, captain);
+  logBarangayActivity({
+    actor: captain, barangayId: task.barangayId, action: 'schedule_approved', entityType: 'task', entityId: task.id,
+    summary: `Approved the cleanup for ${task.reportNumber ?? 'a report'} on ${task.scheduledDate}, ${task.startTime}–${task.endTime}`,
+  });
+  return 'approved';
+};
+
+/** The Barangay Captain rejects a proposed schedule; remarks are required. */
+export const rejectCleanup = async (task: CleanupTask, captain: User, remarks: string): Promise<void> => {
+  if (captain.role !== 'admin') throw new Error('Only the Barangay Captain can reject cleanup schedules.');
+  if (!remarks.trim()) throw new Error('Please give a reason, so the official knows what to change.');
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, TASKS, task.id), {
+    status: 'rejected', rejectedByUserId: captain.uid, rejectedByName: fullName(captain), rejectionRemarks: remarks.trim(),
+    decidedAt: now, updatedAt: serverTimestamp(),
+  });
+  await staffNote([task.assignedByUserId], {
+    title: 'Cleanup schedule rejected',
+    body: `The Barangay Captain rejected the cleanup for ${task.reportNumber ?? 'the report'} on ${task.scheduledDate}: ${remarks.trim()}`,
+    type: 'schedule_rejected', taskId: task.id, reportId: task.reportId,
+  });
+  logBarangayActivity({
+    actor: captain, barangayId: task.barangayId, action: 'schedule_rejected', entityType: 'task', entityId: task.id,
+    summary: `Rejected the cleanup for ${task.reportNumber ?? 'a report'} on ${task.scheduledDate}: ${remarks.trim()}`,
+  });
+};
+
+/** Live list of a barangay's cleanup schedules (all states), for the Captain and officials. */
+export const SCHEDULE_DECISION_STATES: CleanupTask['status'][] = ['proposed', 'declined', 'rejected'];
 
 // ─── The crew's side ─────────────────────────────────────────────────────────
 
@@ -213,6 +388,7 @@ export const finishTask = async (task: CleanupTask, actor: User, input: FinishIn
 
 /** Confirms a finished cleanup: closes the report and tells the person who reported it. */
 export const confirmTaskCompleted = async (task: CleanupTask, actor: User): Promise<void> => {
+  if (actor.role !== 'admin') throw new Error('Only the Barangay Captain can confirm a finished cleanup.');
   await updateReportStatus(task.reportId, 'completed', actor.uid, fullName(actor), { note: 'Cleanup confirmed' });
   await updateDoc(doc(db, TASKS, task.id), { confirmedByUserId: actor.uid, confirmedAt: new Date().toISOString(), updatedAt: serverTimestamp() });
   if (task.reporterUserId) {
@@ -229,6 +405,7 @@ export const confirmTaskCompleted = async (task: CleanupTask, actor: User): Prom
  * the official's name, flagged as recorded on behalf) and confirms in one go.
  */
 export const recordWorkOnBehalf = async (task: CleanupTask, actor: User, input: FinishInput): Promise<void> => {
+  if (actor.role !== 'admin') throw new Error('Only the Barangay Captain can record a cleanup as done.');
   if ((task.afterPhotoURLs?.length ?? 0) === 0) throw new Error('Add at least one "after" photo before recording the work as done.');
   await updateDoc(doc(db, TASKS, task.id), {
     status: 'completed',

@@ -11,11 +11,11 @@ export type NotificationCategory = 'reports' | 'tasks' | 'community' | 'messages
 export type NotificationPrefs = Partial<Record<NotificationCategory, boolean>>;
 
 export const CATEGORY_TYPES: Record<Exclude<NotificationCategory, 'dailyAlarm'>, NotificationType[]> = {
-  reports: ['report_submitted', 'report_verified', 'report_assigned', 'report_in_progress', 'report_completed', 'report_rejected', 'ai_result'],
-  tasks: ['task_assigned', 'task_updated'],
+  reports: ['report_submitted', 'report_verified', 'report_assigned', 'report_in_progress', 'report_completed', 'report_rejected', 'ai_result', 'report_forwarded'],
+  tasks: ['task_assigned', 'task_updated', 'schedule_proposed', 'schedule_approved', 'schedule_rejected', 'schedule_declined'],
   community: ['event_reminder', 'announcement'],
   messages: ['message'],
-  alerts: ['system'],
+  alerts: ['system', 'checkpoint_missed', 'checkpoint_completed', 'checkpoint_issue'],
 };
 
 export function categoryOf(type: NotificationType): NotificationCategory {

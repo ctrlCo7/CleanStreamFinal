@@ -18,8 +18,10 @@ import { db } from './firebase';
 import { withTimeout } from '../utils/async';
 import { uploadToCloudinary } from './cloudinaryService';
 import { NearbyCandidate, ProximityResult, findProximity, isApproximateAddress } from './reportProximity';
+import { reportSeverity } from '../utils/mapUtils';
 import {
   WasteReport,
+  ConcernType,
   GeoLocation,
   AIAnalysisResult,
   UserRole,
@@ -51,6 +53,9 @@ const normalizeReport = (id: string, data: Record<string, unknown>): WasteReport
   for (const field of TIMESTAMP_FIELDS) {
     if (field in normalized) normalized[field] = toISOIfTimestamp(normalized[field]);
   }
+  // One clean severity for every screen (map pins, dashboard counts, alerts): "High",
+  // a missing value, or only an AI score all become a proper level.
+  normalized.severity = reportSeverity(normalized as Parameters<typeof reportSeverity>[0]);
   return { id, ...normalized } as WasteReport;
 };
 
@@ -89,7 +94,7 @@ export const createReport = async (
   barangay?: string,
   // From the offline queue: a fixed ID (so a retry can never create a second report)
   // and the time the photo was really taken.
-  opts?: { reportId?: string; capturedAt?: string },
+  opts?: { reportId?: string; capturedAt?: string; concernType?: ConcernType; incidentDate?: string; fromCheckpointId?: string },
 ): Promise<{ reportId: string; reportNumber: string }> => {
   if (opts?.reportId) {
     const existing = await getDoc(doc(db, 'reports', opts.reportId));
@@ -129,6 +134,9 @@ export const createReport = async (
     wasteTypes: [],
     statusHistory: [{ ...firstEntry, changedAt: new Date().toISOString() }],
     ...(opts?.capturedAt ? { capturedAt: opts.capturedAt } : {}),
+    ...(opts?.concernType ? { concernType: opts.concernType } : {}),
+    ...(opts?.incidentDate ? { incidentDate: opts.incidentDate } : {}),
+    ...(opts?.fromCheckpointId ? { fromCheckpointId: opts.fromCheckpointId } : {}),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -409,9 +417,54 @@ export const subscribeToBarangayReports = (
     orderBy('createdAt', 'desc'),
     limit(50),
   );
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => (normalizeReport(d.id, d.data()))));
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => (normalizeReport(d.id, d.data()))));
+    },
+    // Without this a failed query (no connection, rules, missing index) would leave the map
+    // stuck on "Loading map data…" with nothing to show.
+    (e) => {
+      console.warn('[Reports] Map reports query failed:', e);
+      callback([]);
+    },
+  );
+};
+
+/**
+ * Report statuses that still belong on the map. A report leaves the map once its cleanup is
+ * confirmed by an official (confirmTaskCompleted sets it to 'completed').
+ */
+export const ON_MAP_STATUSES: ReportStatus[] = ['pending', 'verified', 'assigned', 'in_progress', 'rejected', 'cancelled'];
+
+/**
+ * The map's reports: a barangay's reports that haven't been cleaned up yet, live. When a
+ * cleanup is confirmed the report drops out of this query and its pin disappears by itself.
+ * Uses the barangayId + status + createdAt index; if that index isn't deployed yet, falls
+ * back to the plain barangay query and leaves out completed reports on the phone.
+ */
+export const subscribeToMapReports = (
+  barangayId: string,
+  callback: (reports: WasteReport[]) => void,
+) => {
+  let fallbackUnsub: (() => void) | null = null;
+  const q = query(
+    collection(db, 'reports'),
+    where('barangayId', '==', barangayId),
+    where('status', 'in', ON_MAP_STATUSES),
+    orderBy('createdAt', 'desc'),
+    limit(100),
+  );
+  const unsub = onSnapshot(
+    q,
+    (snap) => callback(snap.docs.map((d) => normalizeReport(d.id, d.data()))),
+    (e) => {
+      console.warn('[Reports] Map query failed, using the plain barangay query:', e);
+      fallbackUnsub = subscribeToBarangayReports(barangayId, (reports) =>
+        callback(reports.filter((r) => r.status !== 'completed')));
+    },
+  );
+  return () => { unsub(); fallbackUnsub?.(); };
 };
 
 export const subscribeToCriticalReports = (callback: (reports: WasteReport[]) => void) => {

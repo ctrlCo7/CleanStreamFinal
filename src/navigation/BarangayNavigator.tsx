@@ -1,6 +1,8 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useTheme } from '../hooks/useTheme';
+import { useCheckpointMonitor } from '../hooks/useCheckpointMonitor';
+import { useAppSelector } from '../store/hooks';
 import { useAppSettings } from '../services/appSettings';
 import { BarangayTabParamList } from '../types';
 
@@ -23,6 +25,8 @@ const Tab = createBottomTabNavigator<BarangayTabParamList>();
 
 export default function BarangayNavigator() {
   const { colors } = useTheme();
+  // Always running while signed in: daily checkpoint alarms (officials) and missed-checkpoint alerts.
+  useCheckpointMonitor(useAppSelector((st) => st.auth.user), { manage: true });
   // The Super Admin can switch features off for everyone (System settings).
   const { features } = useAppSettings();
   return (

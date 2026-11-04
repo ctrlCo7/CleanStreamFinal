@@ -13,13 +13,20 @@ import { maintenanceText, useMaintenance } from '../../hooks/useMaintenance';
 import { ThemeColors } from '../../constants/theme';
 import { useAppSelector } from '../../store/hooks';
 import {
-  ManagedCheckpoint, createCheckpoint, formatCheckpointTime, isInspectedToday,
+  ManagedCheckpoint, createCheckpoint, formatCheckpointTime, isInspectedToday, startInspection,
   subscribeToBarangayCheckpoints, todayCheckpointDay,
 } from '../../services/checkpointService';
+import { CHECKPOINT_STATUS_LABELS, CheckpointDayStatus, checkpointDayStatus, isIssueCondition } from '../../services/checkpointStatus';
+import { explainWriteError } from '../../utils/firestoreErrors';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { getCurrentLocation } from '../../services/locationService';
-import { getNotificationRecipientsByRole, sendBulkNotification } from '../../services/notificationService';
 import { CameraIcon } from '../../components/common/TabIcons';
-import { GeoLocation } from '../../types';
+import { GeoLocation, RootStackParamList } from '../../types';
+
+const STATUS_TINT = (c: ThemeColors): Record<CheckpointDayStatus, string> => ({
+  not_today: c.textMuted, pending: c.amber, ongoing: c.blue, completed: c.green, issue: c.redText, missed: c.red,
+});
 
 const CHECKPOINT_TYPES = ['Pre-cleanup assessment', 'During cleanup progress', 'Post-cleanup verification', 'Hazmat status update', 'Community alert'];
 const CONDITIONS = ['Clean', 'Mild', 'Moderate', 'Heavy', 'Critical'];
@@ -64,6 +71,8 @@ export default function BarangayReportScreen() {
   const [managed, setManaged] = useState<ManagedCheckpoint[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = managed.find((c) => c.id === selectedId) ?? null;
+  const [starting, setStarting] = useState(false);
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const barangay = user?.barangay || 'Guadalupe';
 
@@ -174,19 +183,11 @@ export default function BarangayReportScreen() {
         selected ?? undefined,
       );
 
-      // Notify admins so checkpoint completions actually surface somewhere, per the
-      // CleanStream workflow ("notify the Admin regarding checkpoint completion").
-      getNotificationRecipientsByRole(['admin'])
-        .then((adminIds) => {
-          if (adminIds.length === 0) return;
-          return sendBulkNotification(
-            adminIds,
-            'Checkpoint report submitted',
-            `${officerName} (${barangay}) submitted a ${checkpointType.toLowerCase()} checkpoint${selected ? ` at ${selected.name}` : ''} — condition: ${condition}.`,
-            'system',
-          );
-        })
-        .catch((e) => console.warn('[Checkpoint] Admin notification failed (non-fatal):', e));
+      // The service tells this barangay's Captain (louder when an issue was found) and logs it.
+      const issue = isIssueCondition(condition);
+      const cpName = selected?.name;
+      const cpId = selected?.id;
+      const issueNotes = `Found during the ${cpName ? `${cpName} ` : ''}checkpoint inspection: condition ${condition}, ${wasteType}. ${notes.trim()}`;
 
       setSubmitted(true);
       setNotes('');
@@ -194,7 +195,19 @@ export default function BarangayReportScreen() {
       setSelectedId(null);
       setTimeout(() => {
         setSubmitted(false);
-        Alert.alert('Checkpoint submitted', 'Your field report has been sent to the admin.');
+        if (issue) {
+          // An environmental issue: offer to file an incident report for verification and action.
+          Alert.alert(
+            '⚠️ Issue detected',
+            'Your inspection was saved and the Barangay Captain was alerted. File an incident report so it is verified and a cleanup can be scheduled?',
+            [
+              { text: 'Later', style: 'cancel' },
+              { text: 'File incident report', onPress: () => navigation.navigate('CitizenReport', { fromCheckpointId: cpId, checkpointName: cpName, notes: issueNotes }) },
+            ],
+          );
+        } else {
+          Alert.alert('Inspection completed', 'Your inspection was saved and the Barangay Captain was notified.');
+        }
       }, 1500);
     } catch {
       Alert.alert('Error', 'Failed to submit. Please check your connection and try again.');
@@ -246,8 +259,7 @@ export default function BarangayReportScreen() {
               {managed.map((c) => {
                 const on = c.id === selectedId;
                 const mine = !!user?.uid && c.assignedUserIds.includes(user.uid);
-                const today = c.days.includes(todayCheckpointDay());
-                const done = isInspectedToday(c);
+                const status = checkpointDayStatus(c);
                 return (
                   <TouchableOpacity
                     key={c.id}
@@ -264,10 +276,8 @@ export default function BarangayReportScreen() {
                         {[c.waterway, `${c.days.join(', ')} · ${formatCheckpointTime(c.time)}`].filter(Boolean).join(' · ')}
                       </Text>
                     </View>
-                    {done ? (
-                      <Text style={[styles.cpTag, { color: colors.green }]}>Done today</Text>
-                    ) : today ? (
-                      <Text style={[styles.cpTag, { color: colors.amber }]}>Due today</Text>
+                    {status !== 'not_today' ? (
+                      <Text style={[styles.cpTag, { color: STATUS_TINT(colors)[status] }]}>{CHECKPOINT_STATUS_LABELS[status]}</Text>
                     ) : mine ? (
                       <Text style={styles.cpTag}>Assigned</Text>
                     ) : null}
@@ -286,6 +296,30 @@ export default function BarangayReportScreen() {
               </TouchableOpacity>
             </View>
           )}
+          {selected && (() => {
+            const st = checkpointDayStatus(selected);
+            if (st === 'completed' || st === 'issue') {
+              return <Text style={styles.cpEmpty}>Already inspected today by {selected.lastInspectedByName || 'an official'}. You can still file another inspection.</Text>;
+            }
+            if (st === 'ongoing') {
+              return <Text style={styles.cpEmpty}>Inspection ongoing{selected.inspectionStartedByName ? ` (started by ${selected.inspectionStartedByName})` : ''}. Take the photo and submit it below to complete it.</Text>;
+            }
+            return (
+              <TouchableOpacity
+                style={[styles.startBtn, starting && { opacity: 0.6 }]}
+                disabled={starting || !user}
+                onPress={async () => {
+                  if (!user) return;
+                  setStarting(true);
+                  try { await startInspection(selected.id, user); } catch (e) {
+                    Alert.alert('Could not start', explainWriteError(e, 'start this inspection'));
+                  } finally { setStarting(false); }
+                }}
+              >
+                <Text style={styles.startBtnText}>{starting ? 'Starting…' : `▶ Start inspection at ${selected.name}`}</Text>
+              </TouchableOpacity>
+            );
+          })()}
         </View>
 
         {/* Photo capture */}
@@ -435,6 +469,8 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   infoSub: { fontSize: 12, color: Colors.brgyDark, opacity: 0.8, marginTop: 3, lineHeight: 15 },
   field: { gap: 5 },
   cpEmpty: { fontSize: 12, color: Colors.textMuted, lineHeight: 16 },
+  startBtn: { marginTop: 8, backgroundColor: Colors.teal, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
+  startBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   cpList: { gap: 6 },
   cpItem: {
     backgroundColor: Colors.white, borderRadius: 14, paddingVertical: 11, paddingHorizontal: 13,

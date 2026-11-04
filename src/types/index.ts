@@ -243,6 +243,17 @@ export interface StatusHistoryEntry {
   note?: string;
 }
 
+/** The kind of environmental concern a citizen reports. */
+export type ConcernType = 'clogged_drainage' | 'garbage_accumulation' | 'polluted_waterway' | 'illegal_dumping' | 'other';
+
+export const CONCERN_LABELS: Record<ConcernType, string> = {
+  clogged_drainage: 'Clogged drainage',
+  garbage_accumulation: 'Garbage accumulation',
+  polluted_waterway: 'Polluted waterway',
+  illegal_dumping: 'Illegal dumping',
+  other: 'Other concern',
+};
+
 export interface WasteReport {
   id: string;
   reportNumber: string;
@@ -279,6 +290,12 @@ export interface WasteReport {
   groundTruthWasteType?: AIWasteType;
   // What the reporter says the waste is (confirmed or corrected on the AI result screen).
   citizenWasteType?: AIWasteType;
+  /** What kind of problem the reporter says it is. */
+  concernType?: ConcernType;
+  /** The date the reporter saw the problem (YYYY-MM-DD, Philippine date). */
+  incidentDate?: string;
+  /** Filed by an official from a checkpoint inspection that found an issue. */
+  fromCheckpointId?: string;
   // Set right after submission by checkNearbyReports (reportProximity.ts).
   duplicateOf?: string;
   duplicateOfNumber?: string;
@@ -314,7 +331,29 @@ export interface Barangay {
 
 // ─── Cleanup Tasks ────────────────────────────────────────────────────────────
 
-export type CleanupTaskStatus = 'assigned' | 'accepted' | 'in_progress' | 'completed' | 'cancelled';
+/**
+ * proposed  – an official proposed it; waiting for the Barangay Captain's approval
+ * declined  – declined automatically: it clashed with an approved cleanup (see `conflict`)
+ * rejected  – the Captain rejected it (see `rejectionRemarks`)
+ * assigned  – approved by the Captain; the crew has been told
+ * accepted / in_progress / completed / cancelled – the crew's progress
+ */
+export type CleanupTaskStatus =
+  | 'proposed' | 'declined' | 'rejected'
+  | 'assigned' | 'accepted' | 'in_progress' | 'completed' | 'cancelled';
+
+/** The approved cleanup a request clashed with, kept on the declined request. */
+export interface ScheduleConflictInfo {
+  taskId: string;
+  title: string;
+  scheduledDate: string;
+  startTime: string;
+  endTime: string;
+  place: string;
+  crewName: string;
+  reasons: string[];
+  message: string;
+}
 
 export interface CleanupTask {
   id: string;
@@ -353,6 +392,18 @@ export interface CleanupTask {
   personnelCount: number;
   wasteCollectedKg?: number;
   declineReason?: string;
+  // Schedule approval (the Barangay Captain only)
+  approvedByUserId?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  rejectedByUserId?: string;
+  rejectedByName?: string;
+  rejectionRemarks?: string;
+  decidedAt?: string;
+  /** Set when the request was declined automatically for clashing with an approved cleanup. */
+  conflicts?: ScheduleConflictInfo[];
+  /** A free time the system suggested instead, when it declined the request. */
+  suggestedSlot?: { scheduledDate: string; startTime: string; endTime: string };
   // Set when an official records the work on behalf of a crew without the app.
   recordedByUserId?: string;
   recordedByName?: string;
@@ -399,6 +450,12 @@ export interface CrewTracking {
   alongM?: number;
   /** True when the truck is on its route and shown on the road rather than at the raw GPS fix. */
   onRoute?: boolean;
+  /** True while the truck is away from its route (a new route is being worked out). */
+  offRoute?: boolean;
+  /** Bumped every time the route is recalculated, so viewers know the old one no longer applies. */
+  routeVersion?: number;
+  /** Length of the first route of the trip (re-routes don't change it), for "40% of the way". */
+  tripDistanceM?: number;
   startedAt: number;
   /** Milliseconds since epoch on the crew's phone, for "updated 5 s ago". */
   updatedAtMs: number;
@@ -458,7 +515,15 @@ export type NotificationType =
   | 'announcement'
   | 'message'
   | 'ai_result'
-  | 'system';
+  | 'system'
+  | 'report_forwarded'
+  | 'schedule_proposed'
+  | 'schedule_approved'
+  | 'schedule_rejected'
+  | 'schedule_declined'
+  | 'checkpoint_missed'
+  | 'checkpoint_completed'
+  | 'checkpoint_issue';
 
 export interface Notification {
   id: string;
@@ -510,12 +575,16 @@ export type ActivityAction =
   | 'report_created' | 'report_updated' | 'report_verified' | 'report_assigned'
   | 'report_completed' | 'report_rejected' | 'task_created' | 'task_updated'
   | 'task_completed' | 'event_created' | 'event_joined' | 'user_registered'
-  | 'user_updated' | 'announcement_published' | 'notification_sent' | 'login' | 'logout';
+  | 'user_updated' | 'announcement_published' | 'notification_sent' | 'login' | 'logout'
+  | 'schedule_proposed' | 'schedule_approved' | 'schedule_rejected' | 'schedule_declined'
+  | 'checkpoint_inspected' | 'checkpoint_issue' | 'checkpoint_missed';
 
 export type ActivityEntityType = 'report' | 'task' | 'event' | 'user' | 'announcement' | 'barangay' | 'system';
 
 export interface ActivityLog {
   id: string;
+  /** The barangay it happened in, so its Captain can review it (activity log). */
+  barangayId?: string;
   userId: string;
   userName: string;
   userRole: UserRole;
@@ -747,7 +816,8 @@ export type RootStackParamList = {
   AdminTabs: undefined;
   BarangayTabs: undefined;
   Map: { focusReport?: string };
-  CitizenReport: undefined;
+  // Officials can open it from a checkpoint inspection that found an issue (filled in for them).
+  CitizenReport: { fromCheckpointId?: string; checkpointName?: string; notes?: string } | undefined;
   CitizenAIResult: { report: WasteReport };
   CitizenDetail: { reportId: string };
   CitizenChat: { conversationId: string; participantName: string; receiverId?: string };
@@ -761,6 +831,7 @@ export type RootStackParamList = {
   BarangayChat: { conversationId: string; participantName: string; reportTag?: string; receiverId?: string; inboxKey?: string };
   BarangayAlarms: undefined;
   AdminCheckpointAlarms: undefined;
+  AdminApprovals: undefined;
 };
 
 export type CitizenTabParamList = {

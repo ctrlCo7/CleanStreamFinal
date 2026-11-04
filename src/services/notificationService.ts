@@ -42,6 +42,7 @@ export const sendReportNotification = async (
   reportId: string,
   reportNumber: string,
   severity?: SeverityLevel,
+  extra?: string,
 ): Promise<void> => {
   // The Super Admin can turn report status notifications off for everyone.
   if (!appSettings().notifications.reportUpdateAlerts) return;
@@ -80,9 +81,19 @@ export const sendReportNotification = async (
       body: `AI analysis for report ${reportNumber} is complete.`,
     },
     system: { title: 'System Notice', body: 'A system update is available.' },
+    report_forwarded: { title: 'Verified report for scheduling', body: `Report ${reportNumber} was verified and needs a cleanup schedule.` },
+    schedule_proposed: { title: 'Cleanup schedule awaiting approval', body: `A cleanup for ${reportNumber} was proposed.` },
+    schedule_approved: { title: 'Cleanup scheduled', body: `The cleanup for ${reportNumber} was approved.` },
+    schedule_rejected: { title: 'Cleanup schedule rejected', body: `The cleanup schedule for ${reportNumber} was rejected.` },
+    schedule_declined: { title: 'Cleanup schedule declined', body: `The cleanup schedule for ${reportNumber} clashed with another cleanup.` },
+    checkpoint_missed: { title: 'Missed checkpoint', body: 'A waterway checkpoint was not inspected on time.' },
+    checkpoint_completed: { title: 'Checkpoint inspected', body: 'A waterway checkpoint inspection was completed.' },
+    checkpoint_issue: { title: 'Issue detected at a checkpoint', body: 'An inspection found a problem at a waterway checkpoint.' },
   };
 
-  const msg = messages[type] ?? { title: 'Notification', body: '' };
+  const base = messages[type] ?? { title: 'Notification', body: '' };
+  // Extra detail (e.g. why a report was rejected) is added after the standard text.
+  const msg = extra ? { ...base, body: `${base.body} ${extra}` } : base;
 
   await createNotification({
     userId,

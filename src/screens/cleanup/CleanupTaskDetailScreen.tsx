@@ -75,6 +75,8 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
   const isLeader = !!user && !!task && task.assignedTeamId === user.uid;
   const isOfficial = !!user && !!task && !isLeader
     && (user.role === 'admin' || (user.role === 'barangay' && !!user.barangayId && user.barangayId === task.barangayId));
+  // Finalizing a cleanup (recording it done, confirming it) is the Barangay Captain's alone.
+  const isCaptain = isOfficial && user?.role === 'admin';
 
   const Header = (
     <View style={styles.header}>
@@ -261,7 +263,7 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
 
   const isOpen = task.status === 'assigned' || task.status === 'accepted' || task.status === 'in_progress';
   const hasAfter = task.afterPhotoURLs.length > 0;
-  const showPhotoInputs = (isLeader && task.status === 'in_progress') || (isOfficial && isOpen);
+  const showPhotoInputs = (isLeader && task.status === 'in_progress') || (isCaptain && isOpen);
 
   const Btn = ({ label, onPress, kind = 'primary', disabled }: {
     label: string; onPress: () => void; kind?: 'primary' | 'secondary' | 'danger'; disabled?: boolean;
@@ -493,12 +495,42 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
 
           {isLeader && task.status === 'completed' && !task.confirmedAt && (
             <View style={[styles.card, { backgroundColor: colors.amberBg }]}>
-              <Text style={[styles.body2, { color: colors.amberText, fontWeight: '600' }]}>Waiting for the official to confirm.</Text>
+              <Text style={[styles.body2, { color: colors.amberText, fontWeight: '600' }]}>Waiting for the Barangay Captain to confirm.</Text>
             </View>
           )}
 
+          {/* Schedule approval state (before the crew ever sees it) */}
+          {task.status === 'proposed' && (
+            <View style={[styles.card, { backgroundColor: colors.amberBg }]}>
+              <Text style={[styles.sectionTitle, { color: colors.amberText }]}>Waiting for the Barangay Captain's approval</Text>
+              <Text style={[styles.body2, { color: colors.amberText }]}>
+                Proposed by {task.assignedByName}. It passed the automatic conflict check; the crew is told once it's approved.
+              </Text>
+              {isCaptain && <Btn label="Review in Cleanup approvals" onPress={() => navigation.navigate('AdminApprovals')} />}
+            </View>
+          )}
+          {(task.status === 'declined' || task.status === 'rejected') && (
+            <View style={[styles.card, { backgroundColor: colors.redBg }]}>
+              <Text style={[styles.sectionTitle, { color: colors.redText }]}>
+                {task.status === 'declined' ? 'Declined automatically: schedule conflict' : `Rejected by ${task.rejectedByName ?? 'the Barangay Captain'}`}
+              </Text>
+              {task.status === 'declined'
+                ? (task.conflicts ?? []).map((c) => <Text key={c.taskId + c.message} style={[styles.body2, { color: colors.redText }]}>{c.message}</Text>)
+                : <Text style={[styles.body2, { color: colors.redText }]}>{task.rejectionRemarks}</Text>}
+              {!!task.suggestedSlot && (
+                <Text style={[styles.body2, { color: colors.redText, fontWeight: '600' }]}>
+                  A free time: {formatDateKey(task.suggestedSlot.scheduledDate)}, {formatHHmm(task.suggestedSlot.startTime)}–{formatHHmm(task.suggestedSlot.endTime)}
+                </Text>
+              )}
+              {isOfficial && <Btn label="Propose a different schedule" onPress={() => navigation.navigate('BarangayAssignCrew', { reportId: task.reportId })} />}
+            </View>
+          )}
+          {task.approvedByName && !['proposed', 'declined', 'rejected'].includes(task.status) && (
+            <Text style={styles.hint}>✓ Schedule approved by {task.approvedByName}</Text>
+          )}
+
           {/* Official / admin actions */}
-          {isOfficial && isOpen && (
+          {isCaptain && isOpen && (
             <>
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Crew has no phone or app?</Text>
@@ -516,7 +548,13 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
             </>
           )}
 
-          {isOfficial && task.status === 'completed' && !task.confirmedAt && (
+          {isOfficial && !isCaptain && task.status === 'completed' && !task.confirmedAt && (
+            <View style={[styles.card, { backgroundColor: colors.amberBg }]}>
+              <Text style={[styles.body2, { color: colors.amberText, fontWeight: '600' }]}>Finished by the crew. Waiting for the Barangay Captain to confirm.</Text>
+            </View>
+          )}
+
+          {isCaptain && task.status === 'completed' && !task.confirmedAt && (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>The crew says it is done</Text>
               <Text style={styles.muted}>Check the after photos above. If the area is clean, confirm it.</Text>
@@ -527,7 +565,7 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
           {isOfficial && task.status === 'cancelled' && (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>This crew can&apos;t do it</Text>
-              <Btn label="Assign another crew" onPress={() => navigation.navigate('BarangayAssignCrew', { reportId: task.reportId })} />
+              <Btn label={isCaptain ? 'Schedule another crew' : 'Propose another schedule'} onPress={() => navigation.navigate('BarangayAssignCrew', { reportId: task.reportId })} />
             </View>
           )}
 

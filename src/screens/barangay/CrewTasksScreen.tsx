@@ -13,21 +13,24 @@ import { formatDateKey, formatHHmm } from '../../utils/dates';
 import { telUrl } from '../../utils/phone';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BarangayCrewTasks'>;
-type Segment = 'needs' | 'progress' | 'done';
+type Segment = 'approval' | 'needs' | 'progress' | 'done';
 
-const needsOfficial = (t: CleanupTask) => t.status === 'cancelled' || (t.status === 'completed' && !t.confirmedAt);
-const isDone = (t: CleanupTask) => t.status === 'completed' && !!t.confirmedAt;
+// Declined automatically (conflict), rejected by the Captain, or the crew can't do it: propose again.
+const needsNewSchedule = (t: CleanupTask) => t.status === 'declined' || t.status === 'rejected' || t.status === 'cancelled';
+const isDone = (t: CleanupTask) => t.status === 'completed';
 
 const SEGMENTS: { key: Segment; label: string }[] = [
-  { key: 'needs', label: 'Needs you' },
+  { key: 'approval', label: 'Awaiting Captain' },
+  { key: 'needs', label: 'Needs new schedule' },
   { key: 'progress', label: 'In progress' },
   { key: 'done', label: 'Done' },
 ];
 
 const EMPTY: Record<Segment, { title: string; body: string }> = {
-  needs: { title: 'Nothing needs you right now', body: 'Declined tasks and finished work waiting for your confirmation will show up here.' },
-  progress: { title: 'No tasks in progress', body: 'Once you assign a crew to a verified report, the task shows up here.' },
-  done: { title: 'No finished tasks yet', body: 'Tasks you have confirmed will be listed here.' },
+  approval: { title: 'Nothing waiting for approval', body: 'Schedules you propose wait here until the Barangay Captain approves or rejects them.' },
+  needs: { title: 'Nothing needs a new schedule', body: 'Schedules declined for a conflict, rejected by the Captain, or turned down by the crew show up here.' },
+  progress: { title: 'No cleanups in progress', body: 'Approved cleanups show up here until the crew finishes.' },
+  done: { title: 'No finished cleanups yet', body: 'Finished cleanups are listed here. The Barangay Captain confirms them.' },
 };
 
 export default function CrewTasksScreen({ navigation }: Props) {
@@ -38,7 +41,7 @@ export default function CrewTasksScreen({ navigation }: Props) {
 
   const [tasks, setTasks] = useState<CleanupTask[] | null>(null);
   const [error, setError] = useState('');
-  const [segment, setSegment] = useState<Segment>('needs');
+  const [segment, setSegment] = useState<Segment>('approval');
   const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
@@ -58,7 +61,8 @@ export default function CrewTasksScreen({ navigation }: Props) {
   const groups = useMemo(() => {
     const list = tasks ?? [];
     return {
-      needs: list.filter(needsOfficial),
+      approval: list.filter((t) => t.status === 'proposed'),
+      needs: list.filter(needsNewSchedule),
       progress: list.filter((t) => t.status === 'assigned' || t.status === 'accepted' || t.status === 'in_progress'),
       done: list.filter(isDone),
     };
@@ -80,13 +84,13 @@ export default function CrewTasksScreen({ navigation }: Props) {
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} accessibilityLabel="Go back">
           <BackIcon size={18} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Crews & cleanup tasks</Text>
+        <Text style={styles.headerTitle}>Cleanup schedules</Text>
         <View style={{ width: 38 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <TouchableOpacity style={styles.shortcut} onPress={() => navigation.navigate('BarangayVerify')} activeOpacity={0.85}>
-          <Text style={styles.shortcutText}>Verify reports to assign crews</Text>
+          <Text style={styles.shortcutText}>Verify reports, then propose cleanup schedules</Text>
           <Text style={styles.shortcutArrow}>›</Text>
         </TouchableOpacity>
 
@@ -134,7 +138,10 @@ export default function CrewTasksScreen({ navigation }: Props) {
               </View>
               <Text style={styles.sub}>Crew: {t.assignedTeamName || 'Not set'}</Text>
               <Text style={styles.sub}>{formatDateKey(t.scheduledDate)}, {formatHHmm(t.startTime)} to {formatHHmm(t.endTime)}</Text>
-              {t.status === 'cancelled' && !!t.declineReason && (
+              {t.status === 'rejected' && !!t.rejectionRemarks && (
+                <Text style={styles.decline} numberOfLines={3}>Captain: {t.rejectionRemarks}</Text>
+              )}
+              {(t.status === 'cancelled' || t.status === 'declined') && !!t.declineReason && (
                 <Text style={styles.decline} numberOfLines={2}>Reason: {t.declineReason}</Text>
               )}
               {!!t.assignedTeamPhone && (

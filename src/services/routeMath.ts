@@ -8,8 +8,13 @@ import { distanceM } from './reportProximity';
 
 export interface LatLng { latitude: number; longitude: number }
 
-/** Leaving the route by more than this triggers a new route. */
+/** Leaving the route by more than this triggers a new route straight away. */
 export const OFF_ROUTE_M = 120;
+/**
+ * Further than this from the route on two fixes in a row also triggers a new route (a
+ * wrong turn shows up within a block; one stray fix is just GPS noise).
+ */
+export const REROUTE_M = 50;
 /** Within this distance of the site the crew counts as arrived. */
 export const ARRIVED_M = 60;
 /** Typical Cebu City driving speed, used when the routing service gives no duration. */
@@ -77,12 +82,117 @@ export function etaSeconds(remainingM: number, routeDistanceM?: number, routeDur
   return Math.round(remainingM / Math.max(speed, 1.4));
 }
 
-/** Keeps at most `max` points (first and last always kept) so a route fits in one Firestore document. */
-export function simplifyPath(path: LatLng[], max = 300): LatLng[] {
-  if (path.length <= max) return path;
-  const step = (path.length - 1) / (max - 1);
-  return Array.from({ length: max }, (_, i) => path[Math.round(i * step)]);
+// Metres from point p to the segment a–b, on a flat-earth projection (fine at city scale).
+function segmentDistanceM(p: LatLng, a: LatLng, b: LatLng): number {
+  const k = Math.cos((p.latitude * Math.PI) / 180);
+  const ax = a.longitude * k, ay = a.latitude, bx = b.longitude * k, by = b.latitude, px = p.longitude * k, py = p.latitude;
+  const len2 = (bx - ax) ** 2 + (by - ay) ** 2;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / len2));
+  return d(p, lerp(a, b, t));
 }
+
+// Douglas–Peucker: drops points only where the road is straight, so every corner stays.
+function douglasPeucker(path: LatLng[], toleranceM: number): LatLng[] {
+  const keep = new Uint8Array(path.length);
+  keep[0] = 1;
+  keep[path.length - 1] = 1;
+  const stack: Array<[number, number]> = [[0, path.length - 1]];
+  while (stack.length) {
+    const [s, e] = stack.pop()!;
+    let worst = -1, worstD = toleranceM;
+    for (let i = s + 1; i < e; i++) {
+      const dist = segmentDistanceM(path[i], path[s], path[e]);
+      if (dist > worstD) { worst = i; worstD = dist; }
+    }
+    if (worst > 0) {
+      keep[worst] = 1;
+      stack.push([s, worst], [worst, e]);
+    }
+  }
+  return path.filter((_, i) => keep[i]);
+}
+
+/**
+ * Keeps at most `max` points (first and last always kept) so a route fits in one Firestore
+ * document. Points are dropped only along straight stretches (Douglas–Peucker, starting at
+ * 1 m), so the line keeps every corner and stays on the road: picking every Nth point
+ * instead would cut corners and draw the route, and the truck, through buildings.
+ */
+export function simplifyPath(path: LatLng[], max = 400): LatLng[] {
+  if (path.length <= max) return path;
+  let tolerance = 1;
+  let out = douglasPeucker(path, tolerance);
+  while (out.length > max && tolerance < 200) {
+    tolerance *= 1.5;
+    out = douglasPeucker(path, tolerance);
+  }
+  return out;
+}
+
+/** Furthest any point of `path` lies from the polyline `simplified`, in metres (for tests and checks). */
+export function maxDeviationM(path: LatLng[], simplified: LatLng[]): number {
+  let worst = 0;
+  for (const p of path) {
+    let best = Infinity;
+    for (let i = 0; i < simplified.length - 1; i++) best = Math.min(best, segmentDistanceM(p, simplified[i], simplified[i + 1]));
+    worst = Math.max(worst, best);
+  }
+  return worst;
+}
+
+// ─── Which way the truck faces ───────────────────────────────────────────────
+
+/** Moving less than this between two fixes is GPS jitter, not a direction. */
+export const MIN_HEADING_MOVE_M = 5;
+/** Below this speed (m/s, ~4 km/h) the phone's own compass heading is unreliable. */
+const MIN_GPS_HEADING_SPEED = 1.2;
+
+/**
+ * The truck's heading, from the movement itself, never from how the map is turned:
+ *  1. on its road route: the direction of the road at that point;
+ *  2. moving: the phone's GPS course over ground;
+ *  3. otherwise the bearing between consecutive fixes, when it moved far enough to tell;
+ *  4. stopped: keep the last heading (a parked truck doesn't spin with GPS jitter).
+ */
+export function truckHeading(o: {
+  roadHeading?: number | null;
+  gpsHeading?: number | null;
+  speed?: number | null;
+  prev?: LatLng | null;
+  next: LatLng;
+  last: number;
+}): number {
+  if (o.roadHeading != null) return o.roadHeading;
+  if (o.gpsHeading != null && o.gpsHeading >= 0 && (o.speed ?? 0) >= MIN_GPS_HEADING_SPEED) return o.gpsHeading;
+  if (o.prev && d(o.prev, o.next) >= MIN_HEADING_MOVE_M) return bearing(o.prev, o.next);
+  return o.last;
+}
+
+// ─── When to work out a new route ────────────────────────────────────────────
+
+/** Between two re-routes at least this long, so a bad GPS patch can't flood the routing service. */
+export const MIN_REROUTE_MS = 12000;
+/** A straight-line route (routing service was unreachable) is retried this often. */
+export const STRAIGHT_RETRY_MS = 30000;
+
+/**
+ * Whether the crew's phone should fetch a new route now. Far off the route (> OFF_ROUTE_M):
+ * at once; a little off (> REROUTE_M): on the second fix in a row, since one stray fix is
+ * just GPS noise. A straight-line route is retried every so often in case the routing
+ * service is back. Returns the updated count of off-route fixes in a row.
+ */
+export function rerouteDecision(o: {
+  offRouteM: number; offCount: number; straight: boolean; nowMs: number; lastRerouteMs: number; busy: boolean;
+}): { offCount: number; strayed: boolean; fetch: boolean } {
+  const offCount = o.offRouteM > REROUTE_M ? o.offCount + 1 : 0;
+  const strayed = o.offRouteM > OFF_ROUTE_M || offCount >= 2;
+  const retryStraight = o.straight && o.nowMs - o.lastRerouteMs > STRAIGHT_RETRY_MS;
+  const fetch = (strayed || retryStraight) && !o.busy && o.nowMs - o.lastRerouteMs > MIN_REROUTE_MS;
+  return { offCount, strayed, fetch };
+}
+
+/** Signed turn from one heading to another, -180..180 (negative = left). */
+export const turnDelta = (from: number, to: number) => ((to - from + 540) % 360) - 180;
 
 export function formatEta(seconds: number): string {
   if (seconds < 60) return 'Less than 1 min';

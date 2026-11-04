@@ -4,7 +4,9 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../hooks/useTheme';
 import { useAppSettings } from '../../services/appSettings';
 import { ThemeColors } from '../../constants/theme';
-import { CrewTracking, RootStackParamList, WasteReport } from '../../types';
+import { CONCERN_LABELS, CrewTracking, RootStackParamList, WasteReport } from '../../types';
+import { formatPH } from '../../utils/phTime';
+import { formatDateKey } from '../../utils/dates';
 import { Badge } from '../../components/common/Badge';
 import { BackIcon } from '../../components/common/TabIcons';
 import { getReportById } from '../../services/reportsService';
@@ -106,7 +108,9 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
         {/* Details table */}
         <View style={styles.detailTable}>
           {[
-            { k: 'Date & time', v: new Date(report.createdAt).toLocaleString() },
+            { k: 'Concern', v: report.concernType ? CONCERN_LABELS[report.concernType] : '—' },
+            { k: 'Incident date', v: report.incidentDate ? formatDateKey(report.incidentDate) : '—' },
+            { k: 'Submitted', v: formatPH(report.createdAt) },
             { k: 'GPS location', v: `${report.location?.latitude.toFixed(4)}°N, ${report.location?.longitude.toFixed(4)}°E` },
             { k: 'Barangay', v: report.location?.barangay || '—' },
             { k: 'Primary waste', v: report.aiAnalysis?.wasteTypes[0]?.label || '—' },

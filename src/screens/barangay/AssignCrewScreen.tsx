@@ -11,8 +11,10 @@ import { Badge } from '../../components/common/Badge';
 import { BackIcon } from '../../components/common/TabIcons';
 import { useAppSelector } from '../../store/hooks';
 import { getReportById } from '../../services/reportsService';
-import { assignCrewToReport, CrewMember, getCrewsForBarangay, reportBarangayId as barangayOfReport } from '../../services/crewService';
-import { formatDateKey, formatHHmm, isValidDateKey, toDateKey } from '../../utils/dates';
+import { checkScheduleConflicts, proposeCleanup, CrewMember, getCrewsForBarangay, reportBarangayId as barangayOfReport } from '../../services/crewService';
+import { describeConflict } from '../../services/scheduleConflicts';
+import { addDaysKey, phDateKey } from '../../utils/phTime';
+import { formatDateKey, formatHHmm, isValidDateKey } from '../../utils/dates';
 import { formatPhone } from '../../utils/phone';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BarangayAssignCrew'>;
@@ -29,11 +31,8 @@ const toMinutes = (hhmm: string): number => {
   return h * 60 + m;
 };
 
-const dateKeyInDays = (days: number): string => {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return toDateKey(d);
-};
+// Philippine dates (UTC+8), whatever the phone's time zone.
+const dateKeyInDays = (days: number): string => addDaysKey(phDateKey(), days);
 
 const DATE_CHIPS = [
   { label: 'Today', days: 0 },
@@ -101,14 +100,33 @@ export default function AssignCrewScreen({ navigation, route }: Props) {
   const barangayName = report?.location?.barangay || report?.barangay || user?.barangay || 'your barangay';
   const reportNumber = report?.reportNumber ?? report?.id.slice(0, 12) ?? '';
   const reportBarangayId = report?.barangayId ?? report?.location?.barangayId;
-  const todayKey = toDateKey(new Date());
+  // "Today" in the Philippines (UTC+8), whatever the phone's own time zone.
+  const todayKey = phDateKey();
+
+  // Live conflict check while the schedule is being filled in: the same check that runs on
+  // sending, so a clash is visible before it gets declined.
+  const [preview, setPreview] = useState<{ conflicts: string[]; suggestion: { scheduledDate: string; startTime: string; endTime: string } | null } | null>(null);
+  useEffect(() => {
+    const crew = crews.find((c) => c.uid === crewId);
+    if (!report || !crew || !reportBarangayId || !isValidDateKey(dateKey) || endMin <= startMin) { setPreview(null); return undefined; }
+    let cancelled = false;
+    const id = setTimeout(() => {
+      checkScheduleConflicts(reportBarangayId, {
+        scheduledDate: dateKey.trim(), startTime: toHHmm(startMin), endTime: toHHmm(endMin),
+        assignedTeamId: crew.uid, assignedTeamName: crew.name, location: report.location, equipmentNeeded: equipment,
+      })
+        .then(({ conflicts, suggestion }) => { if (!cancelled) setPreview({ conflicts: conflicts.map(describeConflict), suggestion }); })
+        .catch((e) => { console.warn('[Assign] Conflict preview failed (checked again on sending):', e); if (!cancelled) setPreview(null); });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [report, crews, crewId, reportBarangayId, dateKey, startMin, endMin, equipment]);
 
   const header = (
     <View style={styles.header}>
       <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} accessibilityLabel="Go back">
         <BackIcon size={18} />
       </TouchableOpacity>
-      <Text style={styles.headerTitle}>Assign a cleanup crew</Text>
+      <Text style={styles.headerTitle}>{isAdmin ? 'Schedule a cleanup' : 'Propose a cleanup schedule'}</Text>
       <View style={{ width: 38 }} />
     </View>
   );
@@ -174,18 +192,21 @@ export default function AssignCrewScreen({ navigation, route }: Props) {
     if (!timeOk) { Alert.alert('Check the time', 'The end time must be after the start time.'); return; }
 
     const date = dateKey.trim();
+    const when = `${formatDateKey(date)}, ${formatHHmm(toHHmm(startMin))}–${formatHHmm(toHHmm(endMin))}`;
     Alert.alert(
-      'Assign this crew?',
-      `Assign ${selectedCrew.name} to ${reportNumber} on ${formatDateKey(date)}? They'll be notified.`,
+      isAdmin ? 'Schedule this cleanup?' : 'Send for approval?',
+      isAdmin
+        ? `${selectedCrew.name} for ${reportNumber} on ${when}. It's checked for clashes with approved cleanups first.`
+        : `${selectedCrew.name} for ${reportNumber} on ${when}. It's checked for clashes automatically, then sent to the Barangay Captain for approval.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Assign crew',
+          text: isAdmin ? 'Schedule' : 'Send for approval',
           onPress: async () => {
             if (saving) return;
             setSaving(true);
             try {
-              await assignCrewToReport({
+              const result = await proposeCleanup({
                 report,
                 crew: selectedCrew,
                 assigner: user,
@@ -197,7 +218,25 @@ export default function AssignCrewScreen({ navigation, route }: Props) {
                 personnelCount: workers > 0 ? workers : undefined,
               });
               setSaving(false);
-              Alert.alert('Crew assigned', `${selectedCrew.name} has been notified.`);
+              if (result.outcome === 'declined') {
+                // Declined automatically: say why, show the clashing schedule and a free time.
+                const s = result.suggestion;
+                Alert.alert(
+                  'Declined automatically: schedule conflict',
+                  `${result.conflicts.map((c) => c.message).join('\n\n')}${s ? `\n\nA free time: ${formatDateKey(s.scheduledDate)}, ${formatHHmm(s.startTime)}–${formatHHmm(s.endTime)}.` : ''}\n\nPropose a different schedule.`,
+                  s ? [
+                    { text: 'Close', style: 'cancel' },
+                    { text: 'Use the free time', onPress: () => { setDateKey(s.scheduledDate); setStartMin(toMinutes(s.startTime)); setEndMin(toMinutes(s.endTime)); } },
+                  ] : undefined,
+                );
+                return;
+              }
+              Alert.alert(
+                result.outcome === 'approved' ? 'Cleanup scheduled' : 'Sent for approval',
+                result.outcome === 'approved'
+                  ? `${selectedCrew.name} has been notified.`
+                  : 'The Barangay Captain has been asked to approve it. You\'ll be notified of the decision.',
+              );
               if (isAdmin) navigation.goBack();
               else navigation.replace('BarangayCrewTasks');
             } catch (err) {
@@ -350,8 +389,35 @@ export default function AssignCrewScreen({ navigation, route }: Props) {
           editable={!saving}
         />
 
+        {preview && preview.conflicts.length > 0 && (
+          <View style={styles.conflictCard}>
+            <Text style={styles.conflictTitle}>⚠️ This time clashes with an approved cleanup</Text>
+            {preview.conflicts.map((m) => <Text key={m} style={styles.conflictText}>{m}</Text>)}
+            <Text style={styles.conflictText}>If you send it like this, it will be declined automatically.</Text>
+            {preview.suggestion && (
+              <TouchableOpacity
+                style={styles.conflictBtn}
+                onPress={() => {
+                  const s = preview.suggestion!;
+                  setDateKey(s.scheduledDate); setStartMin(toMinutes(s.startTime)); setEndMin(toMinutes(s.endTime));
+                }}
+                disabled={saving}
+              >
+                <Text style={styles.conflictBtnText}>
+                  Use the free time: {formatDateKey(preview.suggestion.scheduledDate)}, {formatHHmm(preview.suggestion.startTime)}–{formatHHmm(preview.suggestion.endTime)}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+        {preview && preview.conflicts.length === 0 && (
+          <Text style={styles.okText}>✓ No clash with approved cleanups at this time.</Text>
+        )}
+
         <TouchableOpacity style={[styles.primaryBtn, !canSubmit && styles.primaryBtnOff]} onPress={submit} disabled={!canSubmit}>
-          {saving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.primaryText}>Assign crew</Text>}
+          {saving ? <ActivityIndicator size="small" color="#fff" /> : (
+            <Text style={styles.primaryText}>{isAdmin ? 'Schedule cleanup' : 'Send to the Captain for approval'}</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -381,6 +447,12 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   photoEmpty: { alignItems: 'center', justifyContent: 'center' },
   summaryTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
   noteBanner: { fontSize: 12, color: Colors.amberText, backgroundColor: Colors.amberBg, borderRadius: 10, padding: 10, lineHeight: 17 },
+  conflictCard: { backgroundColor: Colors.redBg, borderRadius: 12, padding: 12, gap: 6 },
+  conflictTitle: { fontSize: 13, fontWeight: '700', color: Colors.redText },
+  conflictText: { fontSize: 12, color: Colors.redText, lineHeight: 17 },
+  conflictBtn: { marginTop: 4, backgroundColor: Colors.surface, borderRadius: 10, paddingVertical: 9, paddingHorizontal: 10 },
+  conflictBtnText: { fontSize: 12, fontWeight: '700', color: Colors.tealDark, textAlign: 'center' },
+  okText: { fontSize: 12, color: Colors.tealDark, fontWeight: '600' },
   sectionTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary, marginTop: 4 },
   muted: { fontSize: 12, color: Colors.textMuted, lineHeight: 18 },
   hint: { fontSize: 12, color: Colors.textHint },

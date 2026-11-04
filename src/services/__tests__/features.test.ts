@@ -144,3 +144,29 @@ describe('translations', () => {
     expect(translateAiText('ceb', 'Something new')).toBe('Something new');
   });
 });
+
+describe('map pin severity', () => {
+  it('gives every report a severity colour, however it was saved', async () => {
+    const { reportSeverity, getMarkerColor, SEVERITY_COLORS } = await import('../../utils/mapUtils');
+    expect(reportSeverity({ severity: 'critical' })).toBe('critical');
+    expect(reportSeverity({ severity: 'High' })).toBe('high');          // capitalised
+    expect(reportSeverity({ severity: ' moderate ' })).toBe('moderate');
+    expect(reportSeverity({ aiAnalysis: { severityLevel: 'high' } })).toBe('high'); // only the AI's level
+    expect(reportSeverity({ severity: 'unknown', aiAnalysis: { severityScore: 80 } })).toBe('critical'); // only a score
+    expect(reportSeverity({ aiAnalysis: { severityScore: 30 } })).toBe('moderate');
+    expect(reportSeverity({})).toBe('low');
+    expect(getMarkerColor(reportSeverity({ severity: 'High' }))).toBe(SEVERITY_COLORS.high);
+  });
+});
+
+describe('saying why a save failed', () => {
+  it('explains refused, offline and missing cases instead of "try again"', async () => {
+    const { explainWriteError } = await import('../../utils/firestoreErrors');
+    expect(explainWriteError({ code: 'permission-denied' }, 'verify this report', { otherBarangay: true }))
+      .toContain('another barangay');
+    expect(explainWriteError({ code: 'permission-denied' }, 'verify this report')).toContain('not allowed');
+    expect(explainWriteError({ code: 'unavailable' }, 'verify this report')).toContain('no connection');
+    expect(explainWriteError({ code: 'not-found' }, 'verify this report')).toContain('no longer exists');
+    expect(explainWriteError(new Error('boom'), 'verify this report')).toContain('boom');
+  });
+});

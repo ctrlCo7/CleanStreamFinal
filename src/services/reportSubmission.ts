@@ -5,13 +5,14 @@
  * report screen and by the offline queue when it uploads a report filed without signal.
  * Every step here is non-critical: the report is already saved.
  */
-import { AIAnalysisResult, GeoLocation, WaterContext } from '../types';
+import { AIAnalysisResult, ConcernType, GeoLocation, WaterContext } from '../types';
 import { withTimeout } from '../utils/async';
 import { analyzeWastePhoto, unavailableAnalysis } from './aiService';
 import { appSettings } from './appSettings';
 import { checkNearbyReports, updateReportWithAI } from './reportsService';
 import { getNotificationRecipientsByRole, sendBulkNotification, sendReportNotification } from './notificationService';
 import { ProximityResult } from './reportProximity';
+import { notifyNewReport } from './workflowNotifications';
 
 export interface AfterCreateInput {
   reportId: string;
@@ -20,6 +21,8 @@ export interface AfterCreateInput {
   location: GeoLocation;
   photoUri: string;
   waterContext: WaterContext;
+  /** What kind of concern the reporter chose, for the officials' notice. */
+  concernType?: ConcernType;
   /** Resolves when the reporter taps "Skip analysis". */
   skip?: Promise<void>;
 }
@@ -69,9 +72,14 @@ export async function analyzeAndSaveReport(input: AfterCreateInput): Promise<Aft
     console.error('[Submit] AI result save failed (non-fatal):', e);
   }
 
-  // Barangay officials hear about critical/high reports in their barangay right away.
-  if ((ai.severityLevel === 'critical' || ai.severityLevel === 'high') && location.barangayId
-    && appSettings().notifications.criticalAlerts) {
+  // Barangay officials hear about every new report (it awaits their verification);
+  // critical/high ones get the louder severity alert below instead.
+  const urgent = (ai.severityLevel === 'critical' || ai.severityLevel === 'high') && appSettings().notifications.criticalAlerts;
+  if (!urgent && location.barangayId) {
+    notifyNewReport({ id: reportId, reportNumber, barangayId: location.barangayId, location, severity: ai.severityLevel, concernType: input.concernType })
+      .catch((e) => console.warn('[Submit] New-report notice failed (non-fatal):', e));
+  }
+  if (urgent && location.barangayId) {
     getNotificationRecipientsByRole(['barangay'], location.barangayId)
       .then((ids) => ids.length === 0 ? undefined : sendBulkNotification(
         ids,

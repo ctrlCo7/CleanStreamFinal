@@ -20,6 +20,7 @@ import { subscribeToBarangayTasks } from '../../services/cleanupTaskService';
 import {
   ManagedCheckpoint, formatCheckpointTime, isInspectedToday, subscribeToBarangayCheckpoints, todayCheckpointDay,
 } from '../../services/checkpointService';
+import { CHECKPOINT_STATUS_LABELS, checkpointDayStatus } from '../../services/checkpointStatus';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -57,7 +58,8 @@ export default function BarangayDashboardScreen() {
   useEffect(() => {
     if (!myBarangayId) return;
     const unsub = subscribeToBarangayTasks(myBarangayId, (tasks) => {
-      setNeedsYouCount(tasks.filter((t) => t.status === 'cancelled' || (t.status === 'completed' && !t.confirmedAt)).length);
+      // Schedules that need a new proposal: declined for a conflict, rejected by the Captain, or turned down by the crew.
+      setNeedsYouCount(tasks.filter((t) => t.status === 'declined' || t.status === 'rejected' || t.status === 'cancelled').length);
     });
     return unsub;
   }, [myBarangayId]);
@@ -177,8 +179,8 @@ export default function BarangayDashboardScreen() {
             {needsYouCount > 0 && (
               <AlertStrip
                 icon="🚛"
-                title={`${needsYouCount} cleanup task${needsYouCount === 1 ? '' : 's'} need you`}
-                sub="A crew declined, or finished and waits for your confirmation"
+                title={`${needsYouCount} cleanup schedule${needsYouCount === 1 ? '' : 's'} need${needsYouCount === 1 ? 's' : ''} a new proposal`}
+                sub="Declined for a conflict, rejected by the Captain, or turned down by the crew"
                 color={colors.tealDark}
                 bg={colors.tealLight}
                 onPress={() => navigation.navigate('BarangayCrewTasks')}
@@ -205,15 +207,18 @@ export default function BarangayDashboardScreen() {
             ) : (
               <Card style={styles.listCard}>
                 {todayList.map((c, i) => {
-                  const done = isInspectedToday(c);
+                  // Pending inspection · Inspection ongoing · Completed · Issue detected · Missed checkpoint
+                  const st = checkpointDayStatus(c);
+                  const done = st === 'completed' || st === 'issue';
+                  const tint = { not_today: colors.textMuted, pending: colors.amber, ongoing: colors.blue, completed: colors.green, issue: colors.redText, missed: colors.red }[st];
                   return (
                     <ListRow
                       key={c.id}
                       first={i === 0}
-                      accent={done ? colors.green : colors.amber}
+                      accent={tint}
                       title={c.name}
                       meta={`${formatCheckpointTime(c.time)}${c.waterway ? ` · ${c.waterway}` : ''}${done && c.lastInspectedByName ? ` · by ${c.lastInspectedByName}` : ''}`}
-                      right={<Text style={[styles.rowStatus, { color: done ? colors.green : colors.amber }]}>{done ? 'Done' : 'Inspect ›'}</Text>}
+                      right={<Text style={[styles.rowStatus, { color: tint }]}>{done ? CHECKPOINT_STATUS_LABELS[st] : `${CHECKPOINT_STATUS_LABELS[st]} ›`}</Text>}
                       onPress={() => tabNav.navigate('BarangayReport')}
                     />
                   );
@@ -227,7 +232,7 @@ export default function BarangayDashboardScreen() {
         <ActionGrid
           tiles={[
             { icon: '📝', label: 'Review reports', sub: pendingReviewCount ? `${pendingReviewCount} waiting` : 'Verify what residents sent', tint: colors.amberText, tintBg: colors.amberBg, onPress: () => navigation.navigate('BarangayVerify'), badge: pendingReviewCount },
-            { icon: '🚛', label: 'Crews & cleanup tasks', sub: 'Assign, follow and confirm', tint: colors.tealDark, tintBg: colors.tealLight, onPress: () => navigation.navigate('BarangayCrewTasks'), badge: needsYouCount },
+            { icon: '🚛', label: 'Cleanup schedules', sub: 'Propose and follow', tint: colors.tealDark, tintBg: colors.tealLight, onPress: () => navigation.navigate('BarangayCrewTasks'), badge: needsYouCount },
             { icon: '📅', label: 'Schedule', sub: 'Cleanups and events', tint: colors.brgyDark, tintBg: colors.brgyLight, onPress: () => navigation.navigate('BarangaySchedule', {}) },
             { icon: '⏰', label: 'Daily alarm', sub: 'Waterway check reminder', tint: colors.brgyDark, tintBg: colors.brgyLight, onPress: () => navigation.navigate('BarangayAlarms') },
             ...(features.cleanupEvents ? [{ icon: '🤝', label: 'Plan a volunteer cleanup', sub: 'Invite residents', tint: colors.greenText, tintBg: colors.greenBg, onPress: () => navigation.navigate('BarangayCreateEvent') }] : []),

@@ -118,27 +118,33 @@ export default function CitizenProfileScreen() {
               thumbColor="#fff"
             />
           </View>
-          <View style={[styles.settingsRow, { flexWrap: 'wrap' }]}>
-            <View style={[styles.infoIcon, { backgroundColor: colors.grayBg }]}>
-              <Text>🌐</Text>
+          {/* Language: label on one line, the three choices on their own line below. (A wrapping
+              row with a flex:1 label let the label collapse and the buttons overlap Dark mode.) */}
+          <View style={styles.langBlock}>
+            <View style={styles.langHead}>
+              <View style={[styles.infoIcon, { backgroundColor: colors.grayBg }]}>
+                <Text>🌐</Text>
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.langTitle}>{t('profile.language')}</Text>
+                <Text style={styles.langHint}>{t('profile.languageHint')}</Text>
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.settingsLabel}>{t('profile.language')}</Text>
-              <Text style={{ fontSize: 11, color: colors.textMuted }}>{t('profile.languageHint')}</Text>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 6, width: '100%', marginTop: 8 }}>
+            <View style={styles.langChoices} accessibilityRole="radiogroup">
               {(Object.keys(LANG_NAMES) as Lang[]).map((l) => (
                 <TouchableOpacity
                   key={l}
                   onPress={() => dispatch(changeLanguage(l))}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: lang === l }}
-                  style={{
-                    flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center',
-                    backgroundColor: lang === l ? colors.teal : colors.grayBg,
-                  }}
+                  style={[styles.langBtn, { backgroundColor: lang === l ? colors.teal : colors.grayBg }]}
                 >
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: lang === l ? '#fff' : colors.textPrimary }}>{LANG_NAMES[l]}</Text>
+                  <Text
+                    style={[styles.langBtnText, { color: lang === l ? '#fff' : colors.textPrimary }]}
+                    numberOfLines={2}
+                  >
+                    {LANG_NAMES[l]}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -213,6 +219,13 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   achieveText: { fontSize: 10, fontWeight: '500' },
   settingsRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: Colors.border },
   settingsLabel: { flex: 1, fontSize: 13, color: Colors.textPrimary },
+  langBlock: { paddingVertical: 10, gap: 10, borderBottomWidth: 0.5, borderBottomColor: Colors.border },
+  langHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  langTitle: { fontSize: 13, color: Colors.textPrimary },
+  langHint: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
+  langChoices: { flexDirection: 'row', gap: 6 },
+  langBtn: { flex: 1, minHeight: 40, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  langBtnText: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
   editBtn: { borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
   editBtnText: { fontSize: 13, fontWeight: '500' },
   logoutBtn: { borderWidth: 0.5, borderColor: Colors.borderMid, borderRadius: 10, paddingVertical: 11, alignItems: 'center' },

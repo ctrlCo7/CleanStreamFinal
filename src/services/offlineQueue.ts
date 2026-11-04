@@ -10,7 +10,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Directory, File, Paths } from 'expo-file-system';
-import { GeoLocation, UserRole, WaterContext } from '../types';
+import { ConcernType, GeoLocation, UserRole, WaterContext } from '../types';
 import { createReport, newReportId } from './reportsService';
 import { analyzeAndSaveReport } from './reportSubmission';
 
@@ -28,6 +28,8 @@ export interface QueuedReport {
   location: GeoLocation;
   notes: string;
   waterContext: WaterContext;
+  concernType?: ConcernType;
+  incidentDate?: string;
   capturedAt: string;
   attempts: number;
   lastError?: string;
@@ -131,7 +133,7 @@ export function syncOfflineReports(userId: string, force = false): Promise<numbe
         const { reportId, reportNumber } = await createReport(
           item.userId, item.userRole, item.userName, item.photoUri, item.location, item.notes,
           undefined, item.location.barangayId, item.location.barangay,
-          { reportId: item.id, capturedAt: item.capturedAt },
+          { reportId: item.id, capturedAt: item.capturedAt, concernType: item.concernType, incidentDate: item.incidentDate },
         );
         // The photo must stay until createReport's background upload has read it, so it is
         // removed on a later sync (cleanupOrphanPhotos), not here.

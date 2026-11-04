@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import MapView, { Marker, Callout } from 'react-native-maps';
+import MapView, { Marker } from 'react-native-maps';
 import { useTheme } from '../hooks/useTheme';
 import { ThemeColors } from '../constants/theme';
 import { CrewTracking, RootStackParamList, WasteReport, SeverityLevel } from '../types';
@@ -19,9 +19,10 @@ import { BackIcon } from '../components/common/TabIcons';
 import { useMapReports } from '../hooks/useMapReports';
 import { MapErrorBoundary } from '../components/common/MapErrorBoundary';
 import { useMapEngine } from '../hooks/useMapFallback';
-import { OsmMapView, OsmMarker, escapeHtml } from '../components/common/OsmMapView';
+import { OsmMapView, OsmMarker } from '../components/common/OsmMapView';
+import { formatVolume } from '../utils/units';
 import { nativeMapLook } from '../components/map/mapTheme';
-import { TeardropPin, TruckIcon, useMarkerDrawing } from '../components/map/MapIcons';
+import { TruckIcon } from '../components/map/MapIcons';
 import { subscribeActiveTrips } from '../services/crewTrackingService';
 import { formatEta } from '../services/routeMath';
 import { useTrackedTruck } from '../hooks/useGlide';
@@ -38,36 +39,6 @@ import {
 } from '../utils/mapUtils';
 
 
-// Builds the same callout content (photo, severity badge, barangay, waste
-// type, confidence, report number) as the native <Callout>, as HTML for the
-// Leaflet popup fallback.
-function buildPopupHtml(report: WasteReport): string {
-  const color     = getMarkerColor(report.severity);
-  const bgColor   = SEVERITY_BG[report.severity as SeverityLevel] ?? '#F9F9F9';
-  const emoji     = SEVERITY_EMOJIS[report.severity as SeverityLevel] ?? '⚪';
-  const sevLabel  = SEVERITY_LABELS[report.severity as SeverityLevel] ?? report.severity;
-  const barangay  = escapeHtml(report.location.barangay ?? report.barangay ?? 'Unknown');
-  const wasteLabel = escapeHtml(report.aiAnalysis?.wasteTypes?.[0]?.label ?? 'Waste detected');
-  const confidence = report.aiAnalysis?.confidence != null
-    ? `${Number(report.aiAnalysis.confidence).toFixed(1)}%`
-    : '—';
-  const reportNum = escapeHtml(report.reportNumber ?? report.id.slice(0, 12));
-
-  const photoHtml = report.photoURL
-    ? `<img src="${escapeHtml(report.photoURL)}" />`
-    : '';
-
-  return `${photoHtml}
-    <div style="display:inline-block;border-radius:6px;padding:3px 7px;background:${bgColor};margin-bottom:6px;">
-      <span style="font-size:11px;font-weight:700;color:${color};">${emoji} ${escapeHtml(sevLabel)}</span>
-    </div>
-    <div style="font-size:12px;font-weight:600;color:#1A1A18;">${barangay}</div>
-    <div style="font-size:10px;color:#6B6A64;margin-top:2px;">${wasteLabel}</div>
-    <div style="font-size:10px;color:#2E86DE;margin-top:3px;font-weight:600;">AI Confidence: ${confidence}</div>
-    <div style="font-size:9px;color:#9A9890;margin-top:2px;">${reportNum}</div>
-    <div class="cs-popup-tap" onclick="window.csNavigate('${report.id}')">Tap to view full report →</div>`;
-}
-
 type Props = NativeStackScreenProps<RootStackParamList, 'Map'>;
 
 const CEBU = {
@@ -79,74 +50,126 @@ const CEBU = {
 
 const FILTER_OPTIONS = ['All', 'Critical', 'High', 'Moderate', 'Low'] as const;
 
-// ─── Memoized marker (prevents re-rendering unchanged reports) ────────────────
+// ─── Report pins ──────────────────────────────────────────────────────────────
+//
+// Pins are ready-made images, one per severity, that Google Maps and Apple Maps draw
+// natively. Pins drawn as React views have to be photographed by the map first, and on
+// Android (new architecture) that photo is often taken before the colour is drawn, so
+// pins came out blank or uncoloured.
+
+const PIN_IMAGES: Record<SeverityLevel, number> = {
+  low: require('../../assets/images/pins/pin-low.png'),
+  moderate: require('../../assets/images/pins/pin-moderate.png'),
+  high: require('../../assets/images/pins/pin-high.png'),
+  critical: require('../../assets/images/pins/pin-critical.png'),
+};
+// The pin's tip (the exact spot) is 46 of its 48 points down.
+// (pin images: assets/images/pins, made by rendering an SVG at 1x/2x/3x)
+const PIN_ANCHOR = { x: 0.5, y: 46 / 48 };
+// Worse reports are drawn on top of milder ones nearby.
+const PIN_Z: Record<SeverityLevel, number> = { low: 1, moderate: 2, high: 3, critical: 4 };
 
 interface SeverityMarkerProps {
   report: WasteReport;
-  onNavigate: (reportId: string) => void;
-  styles: ReturnType<typeof createStyles>;
+  selected: boolean;
+  onSelect: (reportId: string) => void;
 }
 
 const SeverityMarker = memo(
-  ({ report, onNavigate, styles }: SeverityMarkerProps) => {
-    const color    = getMarkerColor(report.severity);
-    const bgColor  = SEVERITY_BG[report.severity as SeverityLevel] ?? '#F9F9F9';
-    const emoji    = SEVERITY_EMOJIS[report.severity as SeverityLevel] ?? '⚪';
-    const sevLabel = SEVERITY_LABELS[report.severity as SeverityLevel] ?? report.severity;
-    const drawing  = useMarkerDrawing(color);
-
-    const barangay   = report.location.barangay ?? report.barangay ?? 'Unknown';
-    const wasteLabel = report.aiAnalysis?.wasteTypes?.[0]?.label ?? 'Waste detected';
-    const confidence = report.aiAnalysis?.confidence != null
-      ? `${Number(report.aiAnalysis.confidence).toFixed(1)}%`
-      : '—';
-
-    return (
-      <Marker
-        coordinate={{
-          latitude: report.location.latitude,
-          longitude: report.location.longitude,
-        }}
-        // The pin's tip marks the exact spot.
-        anchor={{ x: 0.5, y: 1 }}
-        calloutAnchor={{ x: 0.5, y: 0 }}
-        // Live only while the pin is first drawn, then frozen: continuous native
-        // re-renders would make the map slow.
-        tracksViewChanges={drawing}
-      >
-        {/* Teardrop pin -- critical/high severity gets a soft glow halo so the worst
-            hotspots visually stand out on the map, not just differ by color. */}
-        <TeardropPin color={color} glow={report.severity === 'critical' || report.severity === 'high'} />
-
-        {/* Info callout -- includes the report's photo so tapping a marker
-            shows what was actually reported, not just text metadata. */}
-        <Callout style={styles.callout} onPress={() => onNavigate(report.id)}>
-          {!!report.photoURL && (
-            <Image source={{ uri: report.photoURL }} style={styles.calloutImage} resizeMode="cover" />
-          )}
-          <View style={[styles.calloutSeverityBadge, { backgroundColor: bgColor }]}>
-            <Text style={[styles.calloutSeverityText, { color }]}>
-              {emoji} {sevLabel}
-            </Text>
-          </View>
-          <Text style={styles.calloutBarangay}>{barangay}</Text>
-          <Text style={styles.calloutType}>{wasteLabel}</Text>
-          <Text style={styles.calloutConfidence}>AI Confidence: {confidence}</Text>
-          <Text style={styles.calloutReportNum} numberOfLines={1}>
-            {report.reportNumber ?? report.id.slice(0, 12)}
-          </Text>
-          <Text style={styles.calloutTap}>Tap to view full report →</Text>
-        </Callout>
-      </Marker>
-    );
-  },
-  // Custom equality: only re-render if severity, position, or confidence changed
+  ({ report, selected, onSelect }: SeverityMarkerProps) => (
+    <Marker
+      coordinate={{ latitude: report.location.latitude, longitude: report.location.longitude }}
+      image={PIN_IMAGES[report.severity] ?? PIN_IMAGES.low}
+      anchor={PIN_ANCHOR}
+      zIndex={selected ? 50 : PIN_Z[report.severity] ?? 1}
+      tracksViewChanges={false}
+      onPress={() => onSelect(report.id)}
+      accessibilityLabel={`${SEVERITY_LABELS[report.severity] ?? 'Report'} report`}
+    />
+  ),
   (prev, next) =>
+    prev.selected === next.selected &&
     prev.report.severity === next.report.severity &&
     prev.report.location.latitude === next.report.location.latitude &&
-    prev.report.location.longitude === next.report.location.longitude &&
-    prev.report.aiAnalysis?.confidence === next.report.aiAnalysis?.confidence,
+    prev.report.location.longitude === next.report.location.longitude,
 );
+
+// ─── The tapped report's analysis (a card over the map) ───────────────────────
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'Waiting for review', verified: 'Verified', assigned: 'Crew assigned', in_progress: 'Cleanup in progress',
+  completed: 'Cleaned up', rejected: 'Rejected', cancelled: 'Cancelled',
+};
+
+function ReportCard({ report, onOpen, onClose, styles }: {
+  report: WasteReport;
+  onOpen: (reportId: string) => void;
+  onClose: () => void;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const sev = report.severity;
+  const color = getMarkerColor(sev);
+  const ai = report.aiAnalysis;
+  const hasAi = !!ai && ai.analysisSource !== 'unavailable';
+  const waste = ai?.wasteTypes?.[0];
+  const barangay = report.location.barangay ?? report.barangay ?? 'Unknown';
+  const facts: Array<[string, string]> = hasAi ? [
+    ['AI confidence', `${Number(ai.confidence ?? 0).toFixed(0)}%`],
+    ['Est. volume', formatVolume(ai.estimatedVolume)],
+    ['Hazardous', ai.hazardousDetected ? 'Yes ⚠️' : 'No'],
+    ...(ai.cleanupPriority ? [['Priority', ai.cleanupPriority] as [string, string]] : []),
+  ] : [];
+
+  return (
+    <View style={styles.sheet}>
+      <View style={styles.sheetTop}>
+        {report.photoURL ? (
+          <Image source={{ uri: report.thumbnailURL || report.photoURL }} style={styles.sheetPhoto} resizeMode="cover" />
+        ) : (
+          <View style={[styles.sheetPhoto, styles.sheetNoPhoto]}><Text style={{ fontSize: 22 }}>🗑️</Text></View>
+        )}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={[styles.sheetBadge, { backgroundColor: SEVERITY_BG[sev] }]}>
+            <Text style={[styles.sheetBadgeText, { color }]}>
+              {SEVERITY_EMOJIS[sev]} {SEVERITY_LABELS[sev]}
+              {hasAi && Number.isFinite(ai.severityScore) ? ` · ${Math.round(ai.severityScore)}/100` : ''}
+            </Text>
+          </View>
+          <Text style={styles.sheetTitle} numberOfLines={1}>
+            {hasAi ? (waste ? `${waste.label}${waste.percentage ? ` · ${Math.round(waste.percentage)}%` : ''}` : 'No waste detected') : 'Waste report'}
+          </Text>
+          <Text style={styles.sheetSub} numberOfLines={1}>📍 {barangay}</Text>
+          <Text style={styles.sheetSub} numberOfLines={1}>
+            {STATUS_LABELS[report.status] ?? report.status} · {report.reportNumber ?? report.id.slice(0, 12)}
+          </Text>
+        </View>
+        <TouchableOpacity onPress={onClose} style={styles.sheetClose} accessibilityRole="button" accessibilityLabel="Close">
+          <Text style={styles.sheetCloseText}>✕</Text>
+        </TouchableOpacity>
+      </View>
+
+      {hasAi ? (
+        <View style={styles.factRow}>
+          {facts.map(([k, v]) => (
+            <View key={k} style={styles.fact}>
+              <Text style={styles.factValue} numberOfLines={1}>{v}</Text>
+              <Text style={styles.factLabel} numberOfLines={1}>{k}</Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.sheetNote}>AI analysis isn't available for this report yet. An official will review the photo.</Text>
+      )}
+      {hasAi && !!ai.environmentalImpact && (
+        <Text style={styles.sheetNote} numberOfLines={2}>{ai.environmentalImpact}</Text>
+      )}
+
+      <TouchableOpacity style={styles.sheetBtn} onPress={() => onOpen(report.id)} accessibilityRole="button">
+        <Text style={styles.sheetBtnText}>View full report →</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 // ─── Stats bar (4 severity counts, tappable to filter) ───────────────────────
 
@@ -261,6 +284,11 @@ export default function MapScreen({ navigation }: Props) {
 
   const handleFilter = useCallback((val: string) => setFilter(val), []);
 
+  // The tapped pin's report, shown in a card over the map (looked up live, so it updates).
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = useMemo(() => filtered.find((r) => r.id === selectedId) ?? null, [filtered, selectedId]);
+  const handleSelect = useCallback((reportId: string) => setSelectedId(reportId), []);
+
   // Trucks on the OpenFreeMap map (Huawei phones and the fallback); tapping one opens its task.
   // Each one drives along the road between updates, like on Google/Apple maps.
   const truckMemos = React.useRef(new Map<string, MotionMemo>());
@@ -281,7 +309,7 @@ export default function MapScreen({ navigation }: Props) {
         longitude: report.location.longitude,
         color: getMarkerColor(report.severity),
         glow: report.severity === 'critical' || report.severity === 'high',
-        popupHtml: buildPopupHtml(report),
+        // No popup: tapping the pin opens the same report card as on Google/Apple maps.
       })),
     [filtered],
   );
@@ -341,7 +369,7 @@ export default function MapScreen({ navigation }: Props) {
             region={CEBU}
             markers={osmMarkers}
             trucks={osmTrucks}
-            onMarkerPress={handleNavigate}
+            onMarkerPress={handleSelect}
             onTruckPress={openTask}
             style={styles.map}
           />
@@ -357,13 +385,15 @@ export default function MapScreen({ navigation }: Props) {
               showsMyLocationButton={false}
               moveOnMarkerPress={false}
               onMapReady={onMapReadyEngine}
+              // Tapping the map (not a pin) closes the report card. iOS also reports pin taps here.
+              onPress={(e) => { if (e.nativeEvent.action !== 'marker-press') setSelectedId(null); }}
             >
               {filtered.map((report) => (
                 <SeverityMarker
                   key={report.id}
                   report={report}
-                  onNavigate={handleNavigate}
-                  styles={styles}
+                  selected={report.id === selectedId}
+                  onSelect={handleSelect}
                 />
               ))}
               {trips.map((trip) => <LiveTruckMarker key={trip.taskId} trip={trip} onPress={openTask} />)}
@@ -379,8 +409,12 @@ export default function MapScreen({ navigation }: Props) {
           </View>
         )}
 
-        {/* Legend */}
-        <MapLegend styles={styles} />
+        {/* Legend, or the tapped report's analysis in its place */}
+        {selected ? (
+          <ReportCard report={selected} onOpen={handleNavigate} onClose={() => setSelectedId(null)} styles={styles} />
+        ) : (
+          <MapLegend styles={styles} />
+        )}
 
         {/* Live badge, with trucks on the road for officials and the Admin */}
         <View style={styles.liveBadge}>
@@ -391,7 +425,7 @@ export default function MapScreen({ navigation }: Props) {
         </View>
 
         {/* Back to Cebu City (Google/Apple maps; the OpenStreetMap view has its own zoom buttons) */}
-        {engine === 'native' && Platform.OS !== 'web' && (
+        {engine === 'native' && Platform.OS !== 'web' && !selected && (
           <TouchableOpacity
             style={styles.recenterBtn}
             onPress={() => mapRef.current?.animateToRegion(CEBU, 600)}
@@ -408,7 +442,7 @@ export default function MapScreen({ navigation }: Props) {
         <Text style={styles.bottomTotal}>
           {filtered.length} of {total} report{total !== 1 ? 's' : ''} shown
         </Text>
-        <Text style={styles.bottomSub}>AI-classified · Real-time</Text>
+        <Text style={styles.bottomSub}>Live · cleaned-up sites drop off</Text>
       </View>
     </SafeAreaView>
   );
@@ -490,49 +524,28 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   webFallbackTitle: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary, textAlign: 'center' },
   webFallbackText:  { fontSize: 12, color: Colors.textMuted, textAlign: 'center', lineHeight: 18 },
 
-  // Markers
-  markerWrap: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
-  pinGlow: {
-    position: 'absolute',
-    width: 46, height: 46, borderRadius: 23,
-    opacity: 0.22,
+  // Report card (tapped pin)
+  sheet: {
+    position: 'absolute', left: 10, right: 10, bottom: 12,
+    backgroundColor: Colors.surface, borderRadius: 18, padding: 12, gap: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 8,
   },
-  pin: {
-    width: 26, height: 26, borderRadius: 13,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3, borderColor: '#fff',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35, shadowRadius: 4, elevation: 5,
-  },
-  pinInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.9)' },
-
-  // Callout
-  callout: {
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: 10,
-    minWidth: 180,
-    maxWidth: 240,
-  },
-  calloutImage: {
-    width: '100%',
-    height: 110,
-    borderRadius: 10,
-    marginBottom: 7,
-  },
-  calloutSeverityBadge: {
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    alignSelf: 'flex-start',
-    marginBottom: 6,
-  },
-  calloutSeverityText: { fontSize: 11, fontWeight: '700' },
-  calloutBarangay:    { fontSize: 12, fontWeight: '600', color: Colors.textPrimary },
-  calloutType:        { fontSize: 10, color: Colors.textMuted, marginTop: 2 },
-  calloutConfidence:  { fontSize: 10, color: Colors.teal, marginTop: 3, fontWeight: '600' },
-  calloutReportNum:   { fontSize: 9, color: Colors.textHint, marginTop: 2 },
-  calloutTap:         { fontSize: 9, color: Colors.blue, marginTop: 6, fontWeight: '500' },
+  sheetTop: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  sheetPhoto: { width: 76, height: 76, borderRadius: 12, backgroundColor: Colors.grayBg },
+  sheetNoPhoto: { alignItems: 'center', justifyContent: 'center' },
+  sheetBadge: { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 4 },
+  sheetBadgeText: { fontSize: 11, fontWeight: '800' },
+  sheetTitle: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
+  sheetSub: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  sheetClose: { width: 30, height: 30, borderRadius: 15, backgroundColor: Colors.grayBg, alignItems: 'center', justifyContent: 'center' },
+  sheetCloseText: { fontSize: 13, fontWeight: '800', color: Colors.textPrimary },
+  factRow: { flexDirection: 'row', gap: 6 },
+  fact: { flex: 1, backgroundColor: Colors.grayBg, borderRadius: 10, paddingVertical: 7, paddingHorizontal: 6, alignItems: 'center' },
+  factValue: { fontSize: 13, fontWeight: '800', color: Colors.textPrimary },
+  factLabel: { fontSize: 9, color: Colors.textMuted, marginTop: 1, textTransform: 'uppercase', letterSpacing: 0.3 },
+  sheetNote: { fontSize: 11, color: Colors.textSecondary, lineHeight: 16 },
+  sheetBtn: { backgroundColor: Colors.teal, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
+  sheetBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 
   // Legend
   legend: {

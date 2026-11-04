@@ -7,6 +7,7 @@ import {
   orderBy,
   serverTimestamp,
   limit,
+  onSnapshot,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { ActivityLog, ActivityAction, ActivityEntityType, UserRole } from '../types';
@@ -35,6 +36,53 @@ export const logActivity = async (
     timestamp: serverTimestamp(),
   });
 };
+
+/**
+ * Records an action in a barangay's activity log (who did what, when), which that
+ * barangay's Captain and the Super Admin can review. Never throws: logging must not
+ * block the action itself.
+ */
+export const logBarangayActivity = async (e: {
+  actor: { uid: string; firstName?: string; lastName?: string; role: UserRole };
+  barangayId: string;
+  action: ActivityAction;
+  entityType: ActivityEntityType;
+  entityId: string;
+  summary: string;
+  details?: ActivityLog['details'];
+}): Promise<void> => {
+  try {
+    await addDoc(collection(db, COL), {
+      userId: e.actor.uid,
+      userName: `${e.actor.firstName ?? ''} ${e.actor.lastName ?? ''}`.trim() || 'Someone',
+      userRole: e.actor.role,
+      barangayId: e.barangayId,
+      action: e.action,
+      entityType: e.entityType,
+      entityId: e.entityId,
+      details: { summary: e.summary, ...(e.details ?? {}) },
+      deviceInfo: null,
+      timestamp: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn('[Activity] Could not record activity (non-fatal):', err);
+  }
+};
+
+/** A barangay's recent activity, newest first (the Captain's activity log). */
+export const subscribeToBarangayActivity = (
+  barangayId: string,
+  callback: (logs: ActivityLog[]) => void,
+  max = 30,
+) => onSnapshot(
+  query(collection(db, COL), where('barangayId', '==', barangayId), orderBy('timestamp', 'desc'), limit(max)),
+  (snap) => callback(snap.docs.map((d) => {
+    const data = d.data() as Record<string, unknown>;
+    const ts = data.timestamp as { toDate?: () => Date } | null;
+    return { id: d.id, ...data, timestamp: ts?.toDate?.()?.toISOString() ?? new Date().toISOString() } as ActivityLog;
+  })),
+  (err) => { console.warn('[Activity] Could not load the activity log:', err); callback([]); },
+);
 
 export const getActivityLogsByUser = async (
   userId: string,

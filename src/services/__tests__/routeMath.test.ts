@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bearing, etaSeconds, formatDistance, formatEta, lerpAngle, locateOnRoute, nextInstruction, pathLength, placeSteps,
-  simplifyPath, stepArrow, stepText, pointAlong, cornersBetween, isPlausibleFix,
+  simplifyPath, stepArrow, stepText, pointAlong, cornersBetween, isPlausibleFix, maxDeviationM, rerouteDecision, truckHeading, turnDelta,
 } from '../routeMath';
 import { nextMotion } from '../../components/map/truckMotion';
 import type { CrewTracking } from '../../types';
@@ -65,12 +65,76 @@ describe('ETA and formatting', () => {
 
 describe('simplifyPath', () => {
   it('keeps the start and end and caps the size', () => {
-    const long = Array.from({ length: 1000 }, (_, i) => ({ latitude: 10 + i / 1e4, longitude: 123 }));
+    const long = Array.from({ length: 1000 }, (_, i) => ({ latitude: 10 + i / 1e4, longitude: 123 + Math.sin(i / 7) / 2e4 }));
     const s = simplifyPath(long, 300);
-    expect(s).toHaveLength(300);
+    expect(s.length).toBeLessThanOrEqual(300);
     expect(s[0]).toBe(long[0]);
-    expect(s[299]).toBe(long[999]);
+    expect(s[s.length - 1]).toBe(long[999]);
     expect(simplifyPath(route)).toBe(route);
+  });
+
+  it('keeps every corner of a city grid route, so the line never cuts through a block', () => {
+    // 60 blocks of a zig-zag grid (100 m each way), 10 GPS points per side: 1200 points.
+    const grid: { latitude: number; longitude: number }[] = [];
+    let lat = 10.3, lng = 123.89;
+    const m = 1 / 111320;
+    for (let b = 0; b < 60; b++) {
+      for (let i = 0; i < 10; i++) grid.push({ latitude: lat + i * 10 * m, longitude: lng });
+      lat += 100 * m;
+      for (let i = 0; i < 10; i++) grid.push({ latitude: lat, longitude: lng + (i * 10 * m) / Math.cos((lat * Math.PI) / 180) });
+      lng += (100 * m) / Math.cos((lat * Math.PI) / 180);
+    }
+    const s = simplifyPath(grid, 400);
+    expect(s.length).toBeLessThanOrEqual(400);
+    expect(maxDeviationM(grid, s)).toBeLessThan(2);
+    // The old "every Nth point" approach cut corners by well over 10 m (through the block).
+    const step = (grid.length - 1) / 299;
+    const sampled = Array.from({ length: 300 }, (_, i) => grid[Math.round(i * step)]);
+    expect(maxDeviationM(grid, sampled)).toBeGreaterThan(10);
+  });
+});
+
+describe('working out a new route when the truck leaves it', () => {
+  const base = { offRouteM: 0, offCount: 0, straight: false, nowMs: 100000, lastRerouteMs: 0, busy: false };
+  it('stays on the route while on it', () => {
+    expect(rerouteDecision({ ...base, offRouteM: 20 })).toEqual({ offCount: 0, strayed: false, fetch: false });
+  });
+  it('re-routes on the second fix in a row off the route, not on one stray fix', () => {
+    const one = rerouteDecision({ ...base, offRouteM: 70 });
+    expect(one.fetch).toBe(false);
+    expect(rerouteDecision({ ...base, offRouteM: 70, offCount: one.offCount }).fetch).toBe(true);
+    // Back on the route in between: the count starts over.
+    expect(rerouteDecision({ ...base, offRouteM: 10, offCount: 1 }).offCount).toBe(0);
+  });
+  it('re-routes at once when far off', () => {
+    expect(rerouteDecision({ ...base, offRouteM: 200 }).fetch).toBe(true);
+  });
+  it('waits between re-routes and never runs two at once', () => {
+    expect(rerouteDecision({ ...base, offRouteM: 200, lastRerouteMs: 95000 }).fetch).toBe(false);
+    expect(rerouteDecision({ ...base, offRouteM: 200, busy: true }).fetch).toBe(false);
+  });
+  it('keeps trying for a road route when it only had a straight line', () => {
+    expect(rerouteDecision({ ...base, straight: true, lastRerouteMs: 60000 }).fetch).toBe(true);
+    expect(rerouteDecision({ ...base, straight: true, lastRerouteMs: 80000 }).fetch).toBe(false);
+  });
+});
+
+describe('which way the truck faces', () => {
+  const north = { latitude: 10.3001, longitude: 123.89 };
+  it('uses the road first, then the GPS course, then consecutive fixes, else keeps facing the same way', () => {
+    expect(truckHeading({ roadHeading: 90, gpsHeading: 10, speed: 8, prev: A, next: north, last: 0 })).toBe(90);
+    expect(truckHeading({ gpsHeading: 45, speed: 8, prev: A, next: north, last: 0 })).toBe(45);
+    // Crawling: the phone's course is noise; the ~11 m move north says north.
+    expect(Math.round(truckHeading({ gpsHeading: 200, speed: 0.5, prev: A, next: north, last: 270 }))).toBe(0);
+    // Parked with 1 m of GPS jitter backwards: no spinning round.
+    expect(truckHeading({ gpsHeading: null, speed: 0, prev: north, next: { latitude: 10.30009, longitude: 123.89 }, last: 0 })).toBe(0);
+    expect(truckHeading({ next: A, last: 123 })).toBe(123);
+  });
+  it('measures turns the short way round', () => {
+    expect(turnDelta(0, 90)).toBe(90);      // right
+    expect(turnDelta(0, 270)).toBe(-90);    // left
+    expect(turnDelta(350, 10)).toBe(20);
+    expect(Math.abs(turnDelta(0, 180))).toBe(180); // U-turn
   });
 });
 

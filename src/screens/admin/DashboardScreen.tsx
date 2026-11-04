@@ -7,7 +7,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useTheme } from '../../hooks/useTheme';
 import { useAppSettings } from '../../services/appSettings';
 import { ThemeColors } from '../../constants/theme';
-import { AdminTabParamList, CrewTracking, RootStackParamList, SeverityLevel } from '../../types';
+import { ActivityLog, AdminTabParamList, CleanupTask, CrewTracking, RootStackParamList, SeverityLevel } from '../../types';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { fetchAllReports } from '../../store/reportsSlice';
 import { MapPreview } from '../../components/common/MapPreview';
@@ -15,6 +15,14 @@ import { BellIcon } from '../../components/common/TabIcons';
 import { ActionGrid, AlertStrip, Card, EmptyNote, ListRow, ScreenHeader, SectionHead, StatStrip, greetingFor } from '../../components/ui/Kit';
 import { subscribeActiveTrips } from '../../services/crewTrackingService';
 import { formatEta } from '../../services/routeMath';
+import { subscribeToBarangayTasks } from '../../services/cleanupTaskService';
+import { subscribeToBarangayActivity } from '../../services/activityLogService';
+import { APPROVED_STATUSES } from '../../services/scheduleConflicts';
+import { CHECKPOINT_STATUS_LABELS } from '../../services/checkpointStatus';
+import { formatCheckpointTime } from '../../services/checkpointService';
+import { useCheckpointMonitor } from '../../hooks/useCheckpointMonitor';
+import { formatDateKey, formatHHmm } from '../../utils/dates';
+import { formatPH, phDateKey } from '../../utils/phTime';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -30,16 +38,37 @@ export default function AdminDashboardScreen() {
   const { reports, loading } = useAppSelector((s) => s.reports);
   const user = useAppSelector((s) => s.auth.user);
   const [trips, setTrips] = useState<CrewTracking[]>([]);
+  const [tasks, setTasks] = useState<CleanupTask[]>([]);
+  const [activity, setActivity] = useState<ActivityLog[]>([]);
+  // Today's waterway checkpoints (statuses refresh every minute).
+  const monitor = useCheckpointMonitor(user);
 
   const barangayId = user?.barangayId;
   const load = useCallback(() => dispatch(fetchAllReports(barangayId)), [dispatch, barangayId]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribeActiveTrips({ role: 'admin', barangayId }, setTrips), [barangayId]);
+  useEffect(() => (barangayId ? subscribeToBarangayTasks(barangayId, setTasks, () => setTasks([])) : undefined), [barangayId]);
+  useEffect(() => (barangayId ? subscribeToBarangayActivity(barangayId, setActivity, 8) : undefined), [barangayId]);
+
+  // Cleanup schedules
+  const today = phDateKey();
+  const proposals = tasks.filter((t) => t.status === 'proposed');
+  const approvedTasks = tasks.filter((t) => (APPROVED_STATUSES as readonly string[]).includes(t.status));
+  const upcoming = approvedTasks.filter((t) => t.scheduledDate >= today)
+    .sort((a, b) => `${a.scheduledDate}${a.startTime}`.localeCompare(`${b.scheduledDate}${b.startTime}`)).slice(0, 5);
+  const declined = tasks.filter((t) => t.status === 'declined').length;
+  const rejectedSchedules = tasks.filter((t) => t.status === 'rejected').length;
+  const completedCleanups = tasks.filter((t) => t.status === 'completed').length;
+  // Checkpoints
+  const cp = monitor.progress;
+  const flagged = (monitor.checkpoints ?? []).filter((c) => ['missed', 'issue'].includes(monitor.statuses.get(c.id) ?? ''));
 
   const open = reports.filter((r) => OPEN(r.status));
   const critical = open.filter((r) => r.severity === 'critical').length;
   const high = open.filter((r) => r.severity === 'high').length;
   const pending = reports.filter((r) => r.status === 'pending').length;
+  const verified = reports.filter((r) => r.status === 'verified').length;
+  const rejectedReports = reports.filter((r) => r.status === 'rejected').length;
   const inProgress = reports.filter((r) => r.status === 'assigned' || r.status === 'in_progress').length;
   const resolved = reports.filter((r) => r.status === 'completed').length;
 
@@ -74,7 +103,7 @@ export default function AdminDashboardScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScreenHeader
         title={`${greetingFor()}, ${user?.firstName || 'Captain'}`}
-        subtitle="Administrator · Cebu City"
+        subtitle={`Barangay Captain · ${user?.barangay ? `Brgy. ${user.barangay}` : 'no barangay set'}`}
         right={(
           <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('AdminAlerts')} accessibilityLabel="Alerts">
             <BellIcon color={colors.textSecondary} size={18} />
@@ -92,7 +121,7 @@ export default function AdminDashboardScreen() {
           <AlertStrip
             icon="📍"
             title="No barangay on your account"
-            sub="Admins only see their own barangay's reports. Ask the Super Admin to set your barangay."
+            sub="A Captain only sees their own barangay. Ask the Super Admin to set your barangay."
             color={colors.amberText}
             bg={colors.amberBg}
           />
@@ -107,6 +136,26 @@ export default function AdminDashboardScreen() {
             onPress={() => navigation.navigate('AdminAlerts')}
           />
         )}
+        {proposals.length > 0 && (
+          <AlertStrip
+            icon="🗓️"
+            title={`${proposals.length} cleanup schedule${proposals.length === 1 ? '' : 's'} awaiting your approval`}
+            sub="Each was checked automatically for conflicts"
+            color={colors.blueText}
+            bg={colors.blueBg}
+            onPress={() => navigation.navigate('AdminApprovals')}
+          />
+        )}
+        {cp.missed + cp.issue > 0 && (
+          <AlertStrip
+            icon="🌊"
+            title={[cp.missed ? `${cp.missed} missed checkpoint${cp.missed === 1 ? '' : 's'}` : '', cp.issue ? `${cp.issue} issue${cp.issue === 1 ? '' : 's'} detected` : ''].filter(Boolean).join(' · ') + ' today'}
+            sub="See today's checkpoints below"
+            color={colors.redText}
+            bg={colors.redBg}
+            onPress={() => tabNav.navigate('AdminHistory')}
+          />
+        )}
         {trips.length > 0 && (
           <AlertStrip
             icon="🚚"
@@ -118,14 +167,68 @@ export default function AdminDashboardScreen() {
           />
         )}
 
+        <SectionHead title={`Citizen reports · ${reports.length} total`} />
         <StatStrip
           items={[
-            { value: pending, label: 'To review', color: colors.amber },
-            { value: inProgress, label: 'In progress', color: colors.blue },
+            { value: pending, label: 'To verify', color: colors.amber },
+            { value: verified, label: 'Verified', color: colors.blue },
+            { value: rejectedReports, label: 'Rejected', color: colors.red },
             { value: critical + high, label: 'Urgent', color: colors.critical, onPress: () => navigation.navigate('AdminAlerts') },
-            { value: resolved, label: 'Resolved', color: colors.green },
           ]}
         />
+
+        <SectionHead title="Cleanup schedules" action="Approvals" onAction={() => navigation.navigate('AdminApprovals')} />
+        <StatStrip
+          items={[
+            { value: proposals.length, label: 'To approve', color: colors.amber, onPress: () => navigation.navigate('AdminApprovals') },
+            { value: approvedTasks.length, label: 'Approved', color: colors.blue },
+            { value: declined + rejectedSchedules, label: 'Declined', color: colors.red },
+            { value: completedCleanups, label: 'Completed', color: colors.green },
+          ]}
+        />
+        {upcoming.length > 0 && (
+          <Card style={styles.listCard}>
+            {upcoming.map((t, i) => (
+              <ListRow
+                key={t.id}
+                first={i === 0}
+                accent={colors.teal}
+                title={`${formatDateKey(t.scheduledDate)} · ${formatHHmm(t.startTime)}–${formatHHmm(t.endTime)}`}
+                meta={`Upcoming · ${t.assignedTeamName} · ${t.location?.address || t.barangay}`}
+                onPress={() => navigation.navigate('CleanupTaskDetail', { taskId: t.id })}
+              />
+            ))}
+          </Card>
+        )}
+
+        <SectionHead title={`Today's checkpoints · ${cp.done}/${cp.dueToday} inspected`} action="Reports" onAction={() => tabNav.navigate('AdminHistory')} />
+        <StatStrip
+          items={[
+            { value: cp.pending + cp.ongoing, label: 'Pending', color: colors.amber },
+            { value: cp.completed, label: 'Completed', color: colors.green },
+            { value: cp.missed, label: 'Missed', color: colors.red },
+            { value: cp.issue, label: 'Issues', color: colors.redText },
+          ]}
+        />
+        {flagged.length > 0 && (
+          <Card style={styles.listCard}>
+            {flagged.map((c, i) => {
+              const st = monitor.statuses.get(c.id) ?? 'pending';
+              return (
+                <ListRow
+                  key={c.id}
+                  first={i === 0}
+                  accent={st === 'missed' ? colors.red : colors.redText}
+                  title={`${c.name} · ${CHECKPOINT_STATUS_LABELS[st]}`}
+                  meta={st === 'missed'
+                    ? `Due ${formatCheckpointTime(c.time)} · ${c.assignedNames.join(', ') || 'any official'}`
+                    : `Condition ${c.lastCondition ?? '-'} · by ${c.lastInspectedByName ?? 'an official'}`}
+                  onPress={() => tabNav.navigate('AdminHistory')}
+                />
+              );
+            })}
+          </Card>
+        )}
 
         <SectionHead title="Priority reports" action={priorityReports.length ? 'All alerts' : undefined} onAction={() => navigation.navigate('AdminAlerts')} />
         {priorityReports.length === 0 ? (
@@ -146,23 +249,6 @@ export default function AdminDashboardScreen() {
           </Card>
         )}
 
-        {busiest.length > 0 && (
-          <>
-            <SectionHead title="Open reports by barangay" action="Analytics" onAction={() => tabNav.navigate('AdminAnalytics')} />
-            <Card style={{ gap: 12 }}>
-              {busiest.map((b) => (
-                <View key={b.name} style={styles.barRow}>
-                  <Text style={styles.barLabel} numberOfLines={1}>{b.name}</Text>
-                  <View style={styles.barTrack}>
-                    <View style={[styles.barFill, { width: `${(b.open / maxOpen) * 100}%` as never, backgroundColor: b.critical ? colors.critical : colors.blue }]} />
-                  </View>
-                  <Text style={styles.barValue}>{b.open}</Text>
-                </View>
-              ))}
-            </Card>
-          </>
-        )}
-
         {features.mapView && (
           <>
             <SectionHead title="Hotspot map" action="Open map" onAction={() => navigation.navigate('Map', {})} />
@@ -170,13 +256,31 @@ export default function AdminDashboardScreen() {
           </>
         )}
 
+        <SectionHead title="Activity log" />
+        {activity.length === 0 ? (
+          <EmptyNote title="No activity yet" text="Verifications, schedule decisions and inspections in your barangay are recorded here." />
+        ) : (
+          <Card style={styles.listCard}>
+            {activity.map((a, i) => (
+              <ListRow
+                key={a.id}
+                first={i === 0}
+                accent={colors.grayMid}
+                title={String(a.details?.summary ?? a.action.replace(/_/g, ' '))}
+                meta={`${a.userName} · ${formatPH(a.timestamp)}`}
+              />
+            ))}
+          </Card>
+        )}
+
         <SectionHead title="Manage" />
         <ActionGrid
           tiles={[
+            { icon: '🗓️', label: 'Cleanup approvals', sub: 'Approve or reject schedules', tint: colors.blueText, tintBg: colors.blueBg, onPress: () => navigation.navigate('AdminApprovals'), badge: proposals.length },
             { icon: '🔔', label: 'Alerts', sub: 'High and critical reports', tint: colors.redText, tintBg: colors.redBg, onPress: () => navigation.navigate('AdminAlerts'), badge: critical + high },
             { icon: '📊', label: 'Analytics', sub: 'Trends and export', tint: colors.blueText, tintBg: colors.blueBg, onPress: () => tabNav.navigate('AdminAnalytics') },
             { icon: '✅', label: 'Checkpoint reports', sub: 'Verify barangay inspections', tint: colors.tealDark, tintBg: colors.tealLight, onPress: () => tabNav.navigate('AdminHistory') },
-            { icon: '⏰', label: 'Checkpoint alarms', sub: 'Daily reminder per barangay', tint: colors.brgyDark, tintBg: colors.brgyLight, onPress: () => navigation.navigate('AdminCheckpointAlarms') },
+            { icon: '⏰', label: 'Checkpoint alarms', sub: 'Daily reminder for your officials', tint: colors.brgyDark, tintBg: colors.brgyLight, onPress: () => navigation.navigate('AdminCheckpointAlarms') },
           ]}
         />
       </ScrollView>

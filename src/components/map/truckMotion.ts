@@ -13,6 +13,8 @@ export interface TruckTarget {
   /** Road corners to pass through on the way here (may be empty). */
   via: LatLng[];
   durationMs: number;
+  /** The truck has come to a stop here: ease into it rather than halting at full speed. */
+  stopped: boolean;
 }
 
 /** What to remember about the last update, to plan the next glide. */
@@ -25,7 +27,11 @@ const MAX_GLIDE_MS = 5000;
 const MAX_TRACE_M = 1500;
 
 // A new route (after a wrong turn) means distances along the old one no longer apply.
-const routeKey = (t: CrewTracking) => `${Math.round(t.routeDistanceM)}:${t.route.length}`;
+const routeKey = (t: CrewTracking) =>
+  t.routeVersion != null ? `v${t.routeVersion}` : `${Math.round(t.routeDistanceM)}:${t.route.length}`;
+
+// Slower than this (m/s) is standing still (traffic light, loading).
+const STOPPED_MPS = 1.2;
 
 export function nextMotion(prev: MotionMemo | undefined, t: CrewTracking): { target: TruckTarget; memo: MotionMemo } {
   const key = routeKey(t);
@@ -39,7 +45,10 @@ export function nextMotion(prev: MotionMemo | undefined, t: CrewTracking): { tar
     }
   }
   return {
-    target: { latitude: t.latitude, longitude: t.longitude, heading: t.heading, via, durationMs },
+    target: {
+      latitude: t.latitude, longitude: t.longitude, heading: t.heading, via, durationMs,
+      stopped: t.speed != null && t.speed < STOPPED_MPS,
+    },
     memo: { routeKey: key, alongM: t.onRoute ? t.alongM : undefined, atMs: t.updatedAtMs },
   };
 }
