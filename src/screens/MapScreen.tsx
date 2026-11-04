@@ -256,7 +256,7 @@ function LiveTruckMarker({ trip, onPress }: { trip: CrewTracking; onPress: (task
 export default function MapScreen({ navigation }: Props) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { reports, loading, counts, total } = useMapReports();
+  const { reports, loading, counts, total, error: reportsError, hiddenCount } = useMapReports();
   const [filter, setFilter] = useState('All');
   const viewer = useAppSelector((s) => s.auth.user);
   const [trips, setTrips] = useState<CrewTracking[]>([]);
@@ -445,6 +445,18 @@ export default function MapScreen({ navigation }: Props) {
           <MapLegend styles={styles} />
         )}
 
+        {/* Why the map is empty, instead of a silent "0 reports" */}
+        {!loading && (reportsError || total === 0) && !selected && (
+          <View style={[styles.mapNote, reportsError ? styles.mapNoteError : null]}>
+            <Text style={[styles.mapNoteText, reportsError ? styles.mapNoteErrorText : null]}>
+              {reportsError
+                ?? (viewer?.barangayId
+                  ? `No open reports in Brgy. ${viewer.barangay ?? 'your barangay'} right now.${hiddenCount > 0 ? ` ${hiddenCount} cleaned-up report${hiddenCount === 1 ? ' is' : 's are'} hidden.` : ''} New reports appear here as they come in.`
+                  : 'Your account has no barangay, so there are no barangay reports to show. Your own reports still appear here.')}
+            </Text>
+          </View>
+        )}
+
         {/* Live badge, with trucks on the road for officials and the Admin */}
         <View style={styles.liveBadge}>
           <View style={styles.liveDot} />
@@ -576,6 +588,16 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   sheetNote: { fontSize: 11, color: Colors.textSecondary, lineHeight: 16 },
   sheetBtn: { backgroundColor: Colors.teal, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
   sheetBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+
+  // Empty / error note over the map
+  mapNote: {
+    position: 'absolute', top: 56, left: 12, right: 12, borderRadius: 12, padding: 10,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 3,
+  },
+  mapNoteError: { backgroundColor: '#FEF2F2' },
+  mapNoteText: { fontSize: 12, color: '#1A1A18', lineHeight: 17 },
+  mapNoteErrorText: { color: '#A32D2D', fontWeight: '600' },
 
   // Legend
   legend: {

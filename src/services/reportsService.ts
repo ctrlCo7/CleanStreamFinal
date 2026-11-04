@@ -422,6 +422,7 @@ export const subscribeToReports = (
 export const subscribeToBarangayReports = (
   barangayId: string,
   callback: (reports: WasteReport[]) => void,
+  onError?: (e: Error) => void,
 ) => {
   const q = query(
     collection(db, 'reports'),
@@ -437,8 +438,9 @@ export const subscribeToBarangayReports = (
     // Without this a failed query (no connection, rules, missing index) would leave the map
     // stuck on "Loading map data…" with nothing to show.
     (e) => {
-      console.warn('[Reports] Map reports query failed:', e);
+      console.warn('[Reports] Barangay reports query failed:', e);
       callback([]);
+      onError?.(e);
     },
   );
 };
@@ -458,6 +460,8 @@ export const ON_MAP_STATUSES: ReportStatus[] = ['pending', 'verified', 'assigned
 export const subscribeToMapReports = (
   barangayId: string,
   callback: (reports: WasteReport[]) => void,
+  /** Called when even the fallback query fails, with the reason (shown on the map). */
+  onError?: (e: Error) => void,
 ) => {
   let fallbackUnsub: (() => void) | null = null;
   const q = query(
@@ -473,11 +477,25 @@ export const subscribeToMapReports = (
     (e) => {
       console.warn('[Reports] Map query failed, using the plain barangay query:', e);
       fallbackUnsub = subscribeToBarangayReports(barangayId, (reports) =>
-        callback(reports.filter((r) => r.status !== 'completed')));
+        callback(reports.filter((r) => r.status !== 'completed')), onError);
     },
   );
   return () => { unsub(); fallbackUnsub?.(); };
 };
+
+/**
+ * The signed-in person's own reports, live, whatever barangay they were saved under (older
+ * reports may have none). A plain filter with no ordering, so it needs no extra index.
+ */
+export const subscribeToMyReports = (
+  userId: string,
+  callback: (reports: WasteReport[]) => void,
+  onError?: (e: Error) => void,
+) => onSnapshot(
+  query(collection(db, 'reports'), where('userId', '==', userId), limit(100)),
+  (snap) => callback(snap.docs.map((d) => normalizeReport(d.id, d.data()))),
+  (e) => { console.warn('[Reports] Own reports query failed:', e); callback([]); onError?.(e); },
+);
 
 export const subscribeToCriticalReports = (callback: (reports: WasteReport[]) => void) => {
   const q = query(
