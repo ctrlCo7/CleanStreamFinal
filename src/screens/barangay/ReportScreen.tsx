@@ -148,7 +148,7 @@ export default function BarangayReportScreen() {
             type: data.type || '—',
             condition: data.condition || '—',
             barangay: data.barangay || '—',
-            date: ts.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+            date: ts.toLocaleString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
           };
         }),
       );
@@ -390,7 +390,7 @@ export default function BarangayReportScreen() {
                 : geoStatus === 'detecting' ? 'Detecting…' : 'Unavailable',
             },
             { k: 'Officer', v: user ? `${user.firstName} ${user.lastName}` : 'Barangay Official' },
-            { k: 'Date/Time', v: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+            { k: 'Date/Time', v: new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
           ].map((row) => (
             <View key={row.k} style={styles.infoRow}>
               <Text style={styles.infoKey}>{row.k}</Text>

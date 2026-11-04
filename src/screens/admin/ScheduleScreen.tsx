@@ -34,7 +34,7 @@ function suggestScheduleDate(severity: string): string {
   const daysOffset = severity === 'critical' ? 1 : severity === 'high' ? 2 : 4;
   const d = new Date(now);
   d.setDate(d.getDate() + daysOffset);
-  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 export default function AdminScheduleScreen({ navigation, route }: Props) {

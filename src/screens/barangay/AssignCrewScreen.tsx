@@ -358,10 +358,10 @@ export default function AssignCrewScreen({ navigation, route }: Props) {
           {stepper('End', formatHHmm(toHHmm(endMin)), () => stepEnd(-STEP_MINUTES), () => stepEnd(STEP_MINUTES))}
           {!timeOk && <Text style={styles.error}>The end time must be after the start time.</Text>}
           {stepper(
-            'Workers (optional)',
+            selectedCrew?.crewSize ? `Workers (crew has ${selectedCrew.crewSize})` : 'Workers (optional)',
             workers === 0 ? 'Not set' : String(workers),
             () => setWorkers((w) => Math.max(0, w - 1)),
-            () => setWorkers((w) => Math.min(50, w + 1)),
+            () => setWorkers((w) => Math.min(selectedCrew?.crewSize ?? 50, w + 1)),
           )}
         </View>
 

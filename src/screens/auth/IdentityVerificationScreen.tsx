@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemeColors } from '../../constants/theme';
 import { useTheme } from '../../hooks/useTheme';
 import { detectFaces } from '../../services/faceDetection';
-import { CapturedPhoto, captureIdPhoto, captureSelfie, toDataUri } from '../../services/identityCapture';
+import { CapturedPhoto, captureIdPhoto, captureSelfie, discardPhotos, toDataUri } from '../../services/identityCapture';
 import {
   ID_IMAGE_MAX_CHARS, ID_IMAGE_MAX_SIDE, ID_TYPES, SELFIE_MAX_CHARS, SELFIE_MAX_SIDE, SELFIE_PROMPTS,
   evaluateIdPhoto, evaluateSelfie, looksLikeIdText, nameOnId,
@@ -122,11 +122,16 @@ export default function IdentityVerificationScreen({ navigation, route }: Props)
     };
   };
 
+  // The submission carries the photos as text; the camera files themselves are deleted so no
+  // identity image stays on the phone.
+  const discardShots = () => discardPhotos([idShot, ...Object.values(selfies)].map((sh) => (sh ? { uri: sh.previewUri, width: 0, height: 0 } : null)));
+
   const finish = async () => {
     const ev = evidence();
     if (!ev) return;
     if (mode === 'signup') {
       setIdentityDraft(ev);
+      discardShots();
       navigation.goBack();
       return;
     }
@@ -134,6 +139,7 @@ export default function IdentityVerificationScreen({ navigation, route }: Props)
     setBusy(true);
     try {
       await resubmitIdentity(user.uid, user.role, ev);
+      discardShots();
       Alert.alert('Submitted', 'Thanks. Your new photos are with the Super Admin for review.');
       navigation.goBack();
     } catch (e) {

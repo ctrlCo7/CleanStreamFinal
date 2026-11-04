@@ -240,6 +240,17 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
                 {rain.level !== 'none' && <Text style={styles.factHint}>{t('result.rainAmount', { mm: Math.round(rain.next24hMm) })}</Text>}
               </View>
             )}
+            {/* No forecast (offline, or the weather service didn't answer): say so, rather than
+                show a flood risk that silently ignores the weather. */}
+            {!rain && (
+              <View style={[styles.rainRow, { backgroundColor: colors.grayBg }]}>
+                <Text style={styles.rainIcon}>❔</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.factLabel}>{t('result.rain')}</Text>
+                  <Text style={styles.factHint}>{t('result.rainUnavailable')}</Text>
+                </View>
+              </View>
+            )}
             <View style={styles.riskList}>
               {risks.map((r) => (
                 <View key={r.label} style={styles.riskRow}>
@@ -427,7 +438,7 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
           <View style={{ flex: 1 }}>
             <Text style={styles.doneTitle}>{t('result.submitted')}</Text>
             <Text style={styles.doneSub}>
-              {t('result.capturedInApp')} · {report.location?.accuracy != null ? `GPS ±${Math.round(report.location.accuracy)} m` : t('result.locationRecorded')} · {new Date(report.capturedAt ?? report.createdAt).toLocaleString(locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+              {t('result.capturedInApp')} · {report.location?.accuracy != null ? `GPS ±${Math.round(report.location.accuracy)} m` : t('result.locationRecorded')} · {new Date(report.capturedAt ?? report.createdAt).toLocaleString(locale, { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
             </Text>
           </View>
         </View>

@@ -9,6 +9,7 @@ import { BackIcon } from '../../components/common/TabIcons';
 import { useAppSelector } from '../../store/hooks';
 import { subscribeToNotifications, markNotificationRead, markAllNotificationsRead } from '../../services/notificationService';
 import { Notification, NotificationType, RootStackParamList } from '../../types';
+import { notificationTarget } from '../../services/notificationRouting';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -72,7 +73,9 @@ export default function CitizenNotificationsScreen() {
 
   const handlePress = (notif: Notification) => {
     if (!notif.read) markNotificationRead(notif.id).catch(() => null);
-    if (notif.reportId) navigation.navigate('CitizenDetail', { reportId: notif.reportId });
+    // The right screen for this person's role (an official opens the review, the Captain the approvals...).
+    const target = notificationTarget(notif, user?.role);
+    if (target) (navigation.navigate as (s: string, p?: object) => void)(target.screen, target.params);
   };
 
   const sections: Array<'Today' | 'Yesterday' | 'Earlier'> = ['Today', 'Yesterday', 'Earlier'];

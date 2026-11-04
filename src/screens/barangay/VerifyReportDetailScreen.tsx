@@ -177,7 +177,7 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
           <Image source={{ uri: report.photoURL }} style={styles.photo} resizeMode="cover" />
         ) : (
           <View style={styles.photoPlaceholder}>
-            <Text style={{ color: colors.textHint, fontSize: 12 }}>No photo available</Text>
+            <Text style={{ color: colors.textHint, fontSize: 12 }}>{report.photoPending ? 'Photo still uploading from the reporter’s phone. Check again shortly before verifying.' : 'No photo available'}</Text>
           </View>
         )}
 

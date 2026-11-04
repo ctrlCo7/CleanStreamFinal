@@ -18,20 +18,27 @@ export function toJsDate(value: unknown): Date | null {
   return null;
 }
 
+// Shown in Philippine Standard Time (UTC+8, no daylight saving), whatever the phone's own
+// time zone is set to, so every user sees the same dates and times.
+const PH = (d: Date) => new Date(d.getTime() + 8 * 3600000);
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** "Oct 20, 2026" */
+/** "Oct 20, 2026" (Philippine date) */
 export function formatDay(value: unknown): string {
   const d = toJsDate(value);
-  return d ? `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}` : '-';
+  if (!d) return '-';
+  const p = PH(d);
+  return `${MONTHS[p.getUTCMonth()]} ${p.getUTCDate()}, ${p.getUTCFullYear()}`;
 }
 
-/** "2:30 PM" */
+/** "2:30 PM" (Philippine time) */
 export function formatClock(value: unknown): string {
   const d = toJsDate(value);
   if (!d) return '-';
-  const h = d.getHours();
-  return `${h % 12 === 0 ? 12 : h % 12}:${String(d.getMinutes()).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  const p = PH(d);
+  const h = p.getUTCHours();
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(p.getUTCMinutes()).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
 /** "Oct 20, 2026, 2:30 PM" */
@@ -47,9 +54,10 @@ export function formatHHmm(hhmm: string | undefined): string {
   return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
-/** Local calendar date as "YYYY-MM-DD" (what tasks and events store in scheduledDate / eventDate). */
+/** The Philippine calendar date of an instant, "YYYY-MM-DD" (what tasks and events store in scheduledDate / eventDate). */
 export function toDateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const p = PH(d);
+  return `${p.getUTCFullYear()}-${String(p.getUTCMonth() + 1).padStart(2, '0')}-${String(p.getUTCDate()).padStart(2, '0')}`;
 }
 
 /** True only for a real calendar date written as YYYY-MM-DD (rejects 2026-02-31). */

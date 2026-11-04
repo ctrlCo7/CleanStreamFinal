@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Circle, Marker } from 'react-native-maps';
 import { useTheme } from '../hooks/useTheme';
 import { ThemeColors } from '../constants/theme';
 import { CrewTracking, RootStackParamList, WasteReport, SeverityLevel } from '../types';
@@ -19,7 +19,10 @@ import { BackIcon } from '../components/common/TabIcons';
 import { useMapReports } from '../hooks/useMapReports';
 import { MapErrorBoundary } from '../components/common/MapErrorBoundary';
 import { useMapEngine } from '../hooks/useMapFallback';
-import { OsmMapView, OsmMarker } from '../components/common/OsmMapView';
+import { OsmArea, OsmMapView, OsmMarker } from '../components/common/OsmMapView';
+import { findHotspots, HOTSPOT_RADIUS_M } from '../services/reportProximity';
+
+const HOTSPOT_COLOR = '#DC2626';
 import { formatVolume } from '../utils/units';
 import { nativeMapLook } from '../components/map/mapTheme';
 import { TruckIcon } from '../components/map/MapIcons';
@@ -212,6 +215,10 @@ const MapLegend = memo(({ styles }: { styles: ReturnType<typeof createStyles> })
         <Text style={styles.legendText}>{SEVERITY_LABELS[sev]}</Text>
       </View>
     ))}
+    <View style={styles.legendItem}>
+      <View style={[styles.legendRing, { borderColor: HOTSPOT_COLOR }]} />
+      <Text style={styles.legendText}>Hotspot (3+ in 100 m)</Text>
+    </View>
   </View>
 ));
 
@@ -301,6 +308,16 @@ export default function MapScreen({ navigation }: Props) {
     [trips],
   );
 
+  // Dumping hotspots, live: 3+ open reports within 100 m in the last 90 days (reportProximity.ts).
+  const hotspots = useMemo(() => findHotspots(reports.map((r) => ({
+    id: r.id, latitude: r.location.latitude, longitude: r.location.longitude, status: r.status,
+    createdAt: new Date(r.createdAt), approximate: !!r.location.address?.includes('(approximate'),
+  }))), [reports]);
+  const osmAreas: OsmArea[] = useMemo(
+    () => hotspots.map((h, i) => ({ id: `hs${i}`, latitude: h.latitude, longitude: h.longitude, radiusM: HOTSPOT_RADIUS_M, color: HOTSPOT_COLOR })),
+    [hotspots],
+  );
+
   const osmMarkers: OsmMarker[] = useMemo(
     () =>
       filtered.map((report) => ({
@@ -369,6 +386,7 @@ export default function MapScreen({ navigation }: Props) {
             region={CEBU}
             markers={osmMarkers}
             trucks={osmTrucks}
+            areas={osmAreas}
             onMarkerPress={handleSelect}
             onTruckPress={openTask}
             style={styles.map}
@@ -394,6 +412,17 @@ export default function MapScreen({ navigation }: Props) {
                   report={report}
                   selected={report.id === selectedId}
                   onSelect={handleSelect}
+                />
+              ))}
+              {hotspots.map((h, i) => (
+                <Circle
+                  key={`hs${i}-${h.count}`}
+                  center={{ latitude: h.latitude, longitude: h.longitude }}
+                  radius={HOTSPOT_RADIUS_M}
+                  strokeColor={HOTSPOT_COLOR}
+                  strokeWidth={2}
+                  fillColor="rgba(220,38,38,0.16)"
+                  zIndex={0}
                 />
               ))}
               {trips.map((trip) => <LiveTruckMarker key={trip.taskId} trip={trip} onPress={openTask} />)}
@@ -441,6 +470,7 @@ export default function MapScreen({ navigation }: Props) {
       <View style={styles.bottomBar}>
         <Text style={styles.bottomTotal}>
           {filtered.length} of {total} report{total !== 1 ? 's' : ''} shown
+          {hotspots.length > 0 ? ` · ${hotspots.length} hotspot${hotspots.length === 1 ? '' : 's'}` : ''}
         </Text>
         <Text style={styles.bottomSub}>Live · cleaned-up sites drop off</Text>
       </View>
@@ -562,6 +592,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   legendTitle: { fontSize: 9, fontWeight: '700', color: '#6B6A64', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
   legendItem:  { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendEmoji: { fontSize: 11 },
+  legendRing:  { width: 12, height: 12, borderRadius: 6, borderWidth: 2, backgroundColor: 'rgba(220,38,38,0.16)' },
   legendText:  { fontSize: 10, color: '#1A1A18', fontWeight: '500' },
 
   // Live badge

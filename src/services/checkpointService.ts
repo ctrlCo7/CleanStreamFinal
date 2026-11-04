@@ -189,6 +189,7 @@ export const recordMissedCheckpoints = async (
     const who = new Set([...captains, ...cp.assignedUserIds]);
     await Promise.all([...who].map((uid) => setDoc(doc(db, 'notifications', `missed_${cp.id}_${day}_${uid}`), {
       userId: uid,
+      senderId: reporter.uid,
       type: 'checkpoint_missed',
       title: `Missed checkpoint: ${cp.name}`,
       body: `${cp.name} (${cp.waterway || 'waterway'}) was due at ${formatCheckpointTime(cp.time)} today and hasn't been inspected.`,

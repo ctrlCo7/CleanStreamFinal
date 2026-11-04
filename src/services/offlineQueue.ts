@@ -13,6 +13,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { ConcernType, GeoLocation, UserRole, WaterContext } from '../types';
 import { createReport, newReportId } from './reportsService';
 import { analyzeAndSaveReport } from './reportSubmission';
+import { retryPendingPhotos, uploadPhotoForReport } from './photoRetry';
 
 const STORAGE_KEY = 'cleanstream_offline_reports_v1';
 const PHOTO_DIR = 'offline-reports';
@@ -125,18 +126,24 @@ export function syncOfflineReports(userId: string, force = false): Promise<numbe
   if (running) return running;
   running = (async () => {
     const queued = (await read()).filter((i) => i.userId === userId && (force || i.attempts < MAX_AUTO_ATTEMPTS));
-    if (queued.length === 0 || !(await isOnline())) return 0;
+    if (!(await isOnline())) return 0;
+    // Photos of reports sent earlier whose upload failed go up first.
+    await retryPendingPhotos().catch((e) => console.warn('[Offline] Photo retry failed:', e));
+    if (queued.length === 0) return 0;
     emit({ syncing: true });
     let sent = 0;
     for (const item of queued) {
       try {
+        // The photo is uploaded FIRST: a report only counts as sent once its photo is stored.
+        // If the upload fails, the report stays queued (with its photo) and is retried.
+        const photoURL = await uploadPhotoForReport(item.photoUri, item.id);
         const { reportId, reportNumber } = await createReport(
           item.userId, item.userRole, item.userName, item.photoUri, item.location, item.notes,
           undefined, item.location.barangayId, item.location.barangay,
-          { reportId: item.id, capturedAt: item.capturedAt, concernType: item.concernType, incidentDate: item.incidentDate },
+          { reportId: item.id, capturedAt: item.capturedAt, concernType: item.concernType, incidentDate: item.incidentDate, photoURL },
         );
-        // The photo must stay until createReport's background upload has read it, so it is
-        // removed on a later sync (cleanupOrphanPhotos), not here.
+        // Report and photo are both stored: only now does it leave the queue. The photo file is
+        // kept until the AI below has read it, then removed by cleanupOrphanPhotos.
         await write((await read()).filter((i) => i.id !== item.id));
         sent++;
         await analyzeAndSaveReport({

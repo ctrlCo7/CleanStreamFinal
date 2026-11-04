@@ -18,18 +18,21 @@ import { CleanupTask, CleanupTaskStatus, SeverityLevel } from '../types';
 
 const COL = 'cleanupTasks';
 
-export const createCleanupTask = async (
-  data: Omit<CleanupTask, 'id' | 'createdAt' | 'updatedAt' | 'beforePhotoURLs' | 'afterPhotoURLs'>,
-): Promise<string> => {
-  const ref = await addDoc(collection(db, COL), {
-    ...data,
-    beforePhotoURLs: [],
-    afterPhotoURLs: [],
-    // The status given (proposed, declined, or assigned for a Captain's own approved schedule).
-    status: (data.status ?? 'proposed') as CleanupTaskStatus,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+export type NewTaskData = Omit<CleanupTask, 'id' | 'createdAt' | 'updatedAt' | 'beforePhotoURLs' | 'afterPhotoURLs'>;
+
+/** The document written for a new cleanup task (used directly inside transactions too). */
+export const newTaskDoc = (data: NewTaskData) => ({
+  ...data,
+  beforePhotoURLs: [],
+  afterPhotoURLs: [],
+  // The status given (proposed, declined, or assigned for a Captain's own approved schedule).
+  status: (data.status ?? 'proposed') as CleanupTaskStatus,
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+});
+
+export const createCleanupTask = async (data: NewTaskData): Promise<string> => {
+  const ref = await addDoc(collection(db, COL), newTaskDoc(data));
   return ref.id;
 };
 

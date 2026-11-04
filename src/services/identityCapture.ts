@@ -1,5 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import { SaveFormat, manipulateAsync } from 'expo-image-manipulator';
+import { File } from 'expo-file-system';
 
 export interface CapturedPhoto { uri: string; width: number; height: number }
 
@@ -35,7 +36,28 @@ export async function toDataUri(photo: CapturedPhoto, maxSide: number, maxChars:
     : [];
   for (const quality of [0.6, 0.5, 0.4, 0.3]) {
     const out = await manipulateAsync(photo.uri, actions, { compress: quality, format: SaveFormat.JPEG, base64: true });
+    // The resized copy is only needed as text: remove the file so no ID image stays on the phone.
+    discardFile(out.uri);
     if (out.base64 && out.base64.length <= maxChars) return `data:image/jpeg;base64,${out.base64}`;
   }
   throw new Error('That photo is too large to upload. Try again with the camera a little further away.');
+}
+
+function discardFile(uri: string | undefined): void {
+  if (!uri) return;
+  try {
+    const f = new File(uri);
+    if (f.exists) f.delete();
+  } catch (e) {
+    console.warn('[Identity] Could not delete a temporary photo (non-fatal):', e);
+  }
+}
+
+/**
+ * Deletes the ID and selfie photos the camera left in the app's cache. Called once the
+ * submission is sent, so identity images never stay on the phone (the server copies are
+ * deleted by the Super Admin portal when it records a decision).
+ */
+export function discardPhotos(photos: Array<CapturedPhoto | null | undefined>): void {
+  photos.forEach((p) => discardFile(p?.uri));
 }

@@ -1,7 +1,8 @@
 import { SeverityLevel } from '../types';
 
 // ─── Spec-exact severity colours ─────────────────────────────────────────────
-// AI Score 0–25 → low | 26–50 → moderate | 51–75 → high | 76–100 → critical
+// AI Score 0–24 → low | 25–49 → moderate | 50–74 → high | 75–100 → critical
+// (the same thresholds as the on-device AI, wasteAnalysis.ts, and the Cloud Functions)
 
 export const SEVERITY_COLORS: Record<SeverityLevel, string> = {
   low:      '#22C55E',
@@ -46,12 +47,14 @@ export function getMarkerColor(severity: SeverityLevel | string | undefined): st
 
 /**
  * Derives the AI severity level from a numeric score (0–100).
- * Matches Cloud Functions computeSeverity thresholds.
+ * The SAME thresholds as the on-device AI (wasteAnalysis.ts) and the Cloud Functions
+ * computeSeverity: 75+ critical, 50+ high, 25+ moderate. (This used to say 76/51/26, so a
+ * score of exactly 75, 50 or 25 got a different level here than from the AI.)
  */
 export function severityFromScore(score: number): SeverityLevel {
-  if (score >= 76) return 'critical';
-  if (score >= 51) return 'high';
-  if (score >= 26) return 'moderate';
+  if (score >= 75) return 'critical';
+  if (score >= 50) return 'high';
+  if (score >= 25) return 'moderate';
   return 'low';
 }
 

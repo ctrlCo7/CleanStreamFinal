@@ -44,6 +44,7 @@ export function AccountForm(props: CreateProps | EditProps) {
   const [employeeId, setEmployeeId] = useState(editing?.employeeId ?? '');
   const [agency, setAgency] = useState(editing?.agency ?? '');
   const [phone, setPhone] = useState(editing?.phone ?? '');
+  const [crewSize, setCrewSize] = useState(editing?.crewSize != null ? String(editing.crewSize) : '');
   const [password, setPassword] = useState(() => (props.mode === 'create' ? generatePassword() : ''));
   const [showPassword, setShowPassword] = useState(false);
   const [sendReset, setSendReset] = useState(true);
@@ -59,6 +60,7 @@ export function AccountForm(props: CreateProps | EditProps) {
       employeeId: employeeId || undefined,
       agency: agency || undefined,
       phone: usesPhone(role) ? phone || undefined : undefined,
+      crewSize: role === 'cleanup_team' && crewSize.trim() ? Number(crewSize) : undefined,
     };
     if (props.mode === 'create') {
       const input: NewAccountInput = { ...base, password };
@@ -133,6 +135,14 @@ export function AccountForm(props: CreateProps | EditProps) {
               {field('phone', requiresPhone(role) ? 'Contact number' : 'Contact number (optional)',
                 <input {...aria('phone')} type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0917 123 4567" autoComplete="off" />,
                 role === 'cleanup_team' ? 'Officials and the Barangay Captain call this number to reach the crew.' : 'Lets crews and the Barangay Captain reach this person.')}
+            </div>
+          )}
+
+          {role === 'cleanup_team' && (
+            <div>
+              {field('crewSize', 'Number of workers',
+                <input {...aria('crewSize')} type="number" inputMode="numeric" min={1} max={100} value={crewSize} onChange={(e) => setCrewSize(e.target.value)} placeholder="e.g. 6" />,
+                'A cleanup proposal needing more workers than this is refused.')}
             </div>
           )}
 

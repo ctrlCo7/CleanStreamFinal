@@ -67,3 +67,45 @@ export function findProximity(
   }
   return { duplicateOf: duplicate, nearbyCount: nearby, isHotspot: nearby >= HOTSPOT_MIN_REPORTS };
 }
+
+export interface Hotspot {
+  latitude: number;
+  longitude: number;
+  /** Open reports within HOTSPOT_RADIUS_M of the centre in the last HOTSPOT_WINDOW_DAYS. */
+  count: number;
+  reportIds: string[];
+}
+
+/**
+ * Hotspots for the map, computed live from the open reports shown (so they appear and
+ * disappear as reports are filed or cleaned up): an area where HOTSPOT_MIN_REPORTS or more
+ * open reports lie within HOTSPOT_RADIUS_M of one of them in the last HOTSPOT_WINDOW_DAYS.
+ * Areas are picked greedily, busiest first, and never share a report. Approximate locations
+ * (a barangay's centre point) and rejected/cancelled/completed reports don't count.
+ */
+export function findHotspots(
+  reports: Array<{ id: string; latitude: number; longitude: number; createdAt: Date; status: string; approximate?: boolean }>,
+  now: Date = new Date(),
+): Hotspot[] {
+  const windowMs = HOTSPOT_WINDOW_DAYS * 86400_000;
+  const live = reports.filter((r) => !r.approximate
+    && !['rejected', 'cancelled', 'completed'].includes(r.status)
+    && now.getTime() - r.createdAt.getTime() <= windowMs
+    && now.getTime() >= r.createdAt.getTime());
+  const near = live.map((c) => live.filter((o) => distanceM(c.latitude, c.longitude, o.latitude, o.longitude) <= HOTSPOT_RADIUS_M));
+  const order = live.map((_, i) => i).sort((a, b) => near[b].length - near[a].length);
+  const used = new Set<string>();
+  const out: Hotspot[] = [];
+  for (const i of order) {
+    const members = near[i].filter((o) => !used.has(o.id));
+    if (members.length < HOTSPOT_MIN_REPORTS || used.has(live[i].id)) continue;
+    members.forEach((m) => used.add(m.id));
+    out.push({
+      latitude: members.reduce((s, m) => s + m.latitude, 0) / members.length,
+      longitude: members.reduce((s, m) => s + m.longitude, 0) / members.length,
+      count: members.length,
+      reportIds: members.map((m) => m.id),
+    });
+  }
+  return out;
+}

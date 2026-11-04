@@ -73,7 +73,7 @@ export default function CitizenProfileScreen() {
           {[
             { icon: '📧', label: 'Email', val: user?.email || '—' },
             { icon: '📍', label: 'Barangay', val: user?.barangay ? `${user.barangay}, Cebu City` : 'Not set' },
-            { icon: '📅', label: 'Member since', val: user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '—' },
+            { icon: '📅', label: 'Member since', val: user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'long', year: 'numeric' }) : '—' },
           ].map((row) => (
             <View key={row.label} style={styles.infoRow}>
               <View style={[styles.infoIcon, { backgroundColor: colors.tealLight }]}>

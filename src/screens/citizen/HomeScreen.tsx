@@ -218,7 +218,7 @@ export default function CitizenHomeScreen() {
                     {report.aiAnalysis?.wasteTypes?.[0]?.label ?? t('home.wasteReport')} · {report.location?.barangay || 'Unknown'}
                   </Text>
                   <Text style={styles.reportMeta} numberOfLines={1}>
-                    {report.reportNumber} · {new Date(report.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                    {report.reportNumber} · {new Date(report.createdAt).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })}
                   </Text>
                 </View>
                 <Badge variant={report.status} />

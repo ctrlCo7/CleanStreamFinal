@@ -46,3 +46,7 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Backups and credentials (never commit)
+backups/
+*service-account*.json

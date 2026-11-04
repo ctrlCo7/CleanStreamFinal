@@ -66,7 +66,7 @@ export default function BarangayHistoryScreen() {
             condition: data.condition || 'Moderate',
             barangay: data.barangay || user?.barangay || '—',
             officer: data.userName || `${user?.firstName} ${user?.lastName}`,
-            date: ts.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+            date: ts.toLocaleString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
             status: (data.status || 'pending') as 'verified' | 'pending' | 'flagged',
           };
         }),

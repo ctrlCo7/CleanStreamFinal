@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import React, { useEffect, useRef, useState } from 'react';
+import { NavigationContainer, NavigationContainerRef, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import { useLiveNotifications } from '../hooks/useLiveNotifications';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthChange } from '../services/authService';
 import { restoreSession, setUser } from '../store/authSlice';
@@ -77,6 +78,9 @@ export default function RootNavigator() {
     else stopAppSettings();
   }, [isAuthenticated]);
   useEffect(() => { setNotificationPrefs(user?.notificationPrefs); }, [user?.notificationPrefs]);
+  // New notifications pop up on the phone and open the right screen when tapped (all roles).
+  const navRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+  useLiveNotifications(isAuthenticated ? user : null, navRef);
 
   if (initializing) return <LoadingScreen />;
 
@@ -97,7 +101,7 @@ export default function RootNavigator() {
   };
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer ref={navRef} theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
         {isAuthenticated && user && awaitingIdReview ? (
           <>

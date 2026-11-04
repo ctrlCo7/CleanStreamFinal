@@ -79,7 +79,7 @@ export default function AdminHistoryScreen() {
     displayStatus: toDisplayStatus(r.status),
     team: r.assignedTeamName || '—',
     date: r.createdAt
-      ? new Date(r.createdAt as unknown as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      ? new Date(r.createdAt as unknown as string).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })
       : '—',
     duration:
       r.resolvedAt && r.createdAt
@@ -158,7 +158,7 @@ export default function AdminHistoryScreen() {
                 {[
                   { k: 'Condition', v: cp.condition },
                   { k: 'Waste type', v: cp.wasteType },
-                  { k: 'Submitted', v: cp.createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+                  { k: 'Submitted', v: cp.createdAt.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) },
                   { k: 'Verified by', v: cp.verifiedByName || '—' },
                 ].map((m) => (
                   <View key={m.k} style={styles.metaPair}>

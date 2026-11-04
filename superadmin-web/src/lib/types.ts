@@ -35,6 +35,8 @@ export interface Account {
   employeeId?: string;
   agency?: string;
   phone?: string;
+  /** Cleanup crews: how many workers the crew has (checked when a cleanup is proposed). */
+  crewSize?: number;
   idVerification?: IdVerificationStatus;
   idRejectionReason?: string;
   isActive: boolean;

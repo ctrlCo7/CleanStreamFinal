@@ -1,3 +1,4 @@
+import { NotificationBell } from '../../components/common/NotificationBell';
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -141,7 +142,7 @@ export default function BarangayDashboardScreen() {
       <ScreenHeader
         title={`${greetingFor()}, ${user?.firstName || 'Official'}`}
         subtitle={`Brgy. ${myBarangay} · Barangay official`}
-        right={<Pill label="BSP" color={colors.brgyDark} bg={colors.brgyLight} />}
+        right={<NotificationBell />}
       />
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
@@ -276,7 +277,7 @@ export default function BarangayDashboardScreen() {
               <Card style={styles.listCard}>
                 {upcomingTasks.map((task, i) => {
                   const eventDate = task.eventDate
-                    ? new Date(task.eventDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+                    ? new Date(task.eventDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })
                     : '—';
                   const isJoined = task.participantIds?.includes(user?.uid ?? '');
                   return (

@@ -15,7 +15,7 @@ import { enqueueReport, isOnline } from '../../services/offlineQueue';
 import { analyzeAndSaveReport } from '../../services/reportSubmission';
 import { ThemeColors } from '../../constants/theme';
 import { ConcernType, RootStackParamList, WaterContext } from '../../types';
-import { addDaysKey, phDateKey } from '../../utils/phTime';
+import { addDaysKey, formatPH, phDateKey } from '../../utils/phTime';
 import { formatDateKey } from '../../utils/dates';
 
 const CONCERNS: ConcernType[] = ['clogged_drainage', 'garbage_accumulation', 'polluted_waterway', 'illegal_dumping', 'other'];
@@ -507,7 +507,7 @@ Is this where you are?`,
             </Svg>
             <View>
               <Text style={styles.geoLabel}>{t('report.timestamp')}</Text>
-              <Text style={styles.geoValue}>{new Date().toLocaleString()}</Text>
+              <Text style={styles.geoValue}>{formatPH(new Date())}</Text>
             </View>
           </View>
 

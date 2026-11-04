@@ -63,10 +63,10 @@ export default function BarangayProfileScreen() {
   const flaggedCount = checkpoints.filter((c) => c.status === 'flagged').length;
   const alertsIssued = checkpoints.filter((c) => c.type === 'Community alert').length;
   const lastCheckpoint = checkpoints[0]
-    ? checkpoints[0].createdAt.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    ? checkpoints[0].createdAt.toLocaleString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
     : 'No checkpoints yet';
   const activeSince = user?.createdAt
-    ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    ? new Date(user.createdAt).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'long', year: 'numeric' })
     : '—';
 
   const startEditPhone = () => {

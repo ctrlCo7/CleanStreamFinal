@@ -265,6 +265,8 @@ export interface WasteReport {
   location: GeoLocation;
   photoURL: string;
   thumbnailURL?: string;
+  /** The photo couldn't be uploaded yet; the reporter's phone keeps retrying (photoRetry.ts). */
+  photoPending?: boolean;
   notes?: string;
   checkpoint?: string;
   status: ReportStatus;

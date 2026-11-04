@@ -1,6 +1,8 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useTheme } from '../hooks/useTheme';
+import { useCleanupReminders } from '../hooks/useCleanupReminders';
+import { useAppSelector } from '../store/hooks';
 import { CleanupTabParamList } from '../types';
 
 import CleanupTasksScreen from '../screens/cleanup/CleanupTasksScreen';
@@ -14,6 +16,8 @@ const Tab = createBottomTabNavigator<CleanupTabParamList>();
 /** What a cleanup crew leader sees: their assigned tasks, and their profile. */
 export default function CleanupNavigator() {
   const { colors } = useTheme();
+  // "Cleanup tomorrow" and "in 1 hour" reminders for this crew's approved tasks.
+  useCleanupReminders(useAppSelector((st) => st.auth.user));
   return (
     <Tab.Navigator
       screenOptions={{

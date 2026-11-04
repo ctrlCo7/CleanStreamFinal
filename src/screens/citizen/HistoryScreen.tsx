@@ -1,3 +1,4 @@
+import { formatDay } from '../../utils/dates';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
@@ -120,7 +121,7 @@ export default function CitizenHistoryScreen() {
             <View style={styles.tlBody}>
               <Text style={styles.tlTitle}>{report.location?.barangay || 'Unknown'}</Text>
               <Text style={styles.tlSub}>
-                {new Date(report.createdAt).toLocaleDateString()} · {report.severity} ·{' '}
+                {formatDay(report.createdAt)} · {report.severity} ·{' '}
                 {report.aiAnalysis?.wasteTypes[0]?.label || ''} ·{' '}
                 <Text style={{ color: getStatusColor(report.status, colors), fontWeight: '500' }}>
                   {report.status.replace('_', ' ')}

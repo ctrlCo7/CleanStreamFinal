@@ -92,7 +92,7 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
           <Image source={{ uri: report.photoURL }} style={styles.photo} resizeMode="cover" />
         ) : (
           <View style={styles.photoPlaceholder}>
-            <Text style={{ color: colors.textHint, fontSize: 12 }}>No photo available</Text>
+            <Text style={{ color: colors.textHint, fontSize: 12 }}>{report.photoPending ? 'Your photo is still uploading. It will appear when you are back online.' : 'No photo available'}</Text>
           </View>
         )}
 

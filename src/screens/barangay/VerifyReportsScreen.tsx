@@ -79,7 +79,7 @@ export default function BarangayVerifyReportsScreen({ navigation }: Props) {
               <Image source={{ uri: report.photoURL }} style={styles.thumb} />
             ) : (
               <View style={[styles.thumb, styles.thumbPlaceholder]}>
-                <Text style={{ fontSize: 12, color: colors.textHint }}>No photo</Text>
+                <Text style={{ fontSize: 12, color: colors.textHint }}>{report.photoPending ? 'Uploading…' : 'No photo'}</Text>
               </View>
             )}
             <View style={{ flex: 1, gap: 3 }}>
@@ -93,7 +93,7 @@ export default function BarangayVerifyReportsScreen({ navigation }: Props) {
                 {[report.aiAnalysis?.waterway?.context ? CONTEXT[report.aiAnalysis.waterway.context] : null, report.location?.address].filter(Boolean).join(' · ') || report.reportNumber}
               </Text>
               <Text style={styles.cardMeta}>
-                {new Date(report.createdAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                {new Date(report.createdAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                 {report.aiAnalysis?.confidence ? ` · AI ${report.aiAnalysis.confidence}%` : ''}
               </Text>
               {(!!report.duplicateOfNumber || (report.nearbyReportCount ?? 0) >= 3) && (

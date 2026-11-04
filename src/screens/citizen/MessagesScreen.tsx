@@ -134,7 +134,7 @@ export default function CitizenMessagesScreen() {
               </View>
               <View style={styles.convMeta}>
                 <Text style={styles.convTime}>
-                  {conv.lastMessageTime ? new Date((conv.lastMessageTime as unknown as { seconds: number }).seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                  {conv.lastMessageTime ? new Date((conv.lastMessageTime as unknown as { seconds: number }).seconds * 1000).toLocaleTimeString([], { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' }) : ''}
                 </Text>
                 {isUnread && <View style={styles.unreadDot} />}
               </View>

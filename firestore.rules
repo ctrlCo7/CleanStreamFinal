@@ -97,7 +97,10 @@ service cloud.firestore {
     // citizens read own profile; admin reads all; barangay reads members;
     // only the Super Admin can create arbitrary accounts or change/remove anyone's.
     match /users/{userId} {
-      allow read: if isOwner(userId) || isSuperAdmin() || isAdmin() || isBarangayOfficer();
+      // Staff only see the people of their OWN barangay (crews, officials, the Captain, residents);
+      // personal details of other barangays' people stay private. The Super Admin sees everyone.
+      allow read: if isOwner(userId) || isSuperAdmin()
+                  || ((isAdmin() || isBarangayOfficer()) && inMyBarangay(resource.data.get('barangayId', null)));
       // Self sign-up can never grant itself approval or powers: it must start unverified and
       // active, and a Barangay Official or Admin must start with idVerification == 'pending'.
       allow create: if (isAuthenticated() && currentUid() == userId
@@ -166,11 +169,27 @@ service cloud.firestore {
                   || (isAuthenticated()
                       && (isOwner(resource.data.userId) || inMyBarangay(resource.data.barangayId)));
 
-      // Citizens and barangay officers can create reports
+      // Fields only staff set during verification, scheduling and closing. A new report can't
+      // arrive with them already filled in (e.g. pre-"verified", or with training labels).
+      function staffReportFields() {
+        return ['verifiedBy', 'verifiedByName', 'verifiedAt', 'assignedTeamId', 'assignedTeamName', 'assignedBarangayId',
+                'cleanupTaskId', 'assignedAt', 'resolvedAt', 'rejectionReason', 'groundTruthSeverity', 'groundTruthWasteType'];
+      }
+      // What the reporter's own phone writes after filing, while the report is still pending:
+      // the uploaded photo, the AI result, their answer about the waste, the duplicate check.
+      function ownerReportFields() {
+        return ['notes', 'photoURL', 'photoPending', 'thumbnailURL', 'aiAnalysis', 'severity', 'wasteTypes', 'citizenWasteType',
+                'nearbyReportCount', 'duplicateOf', 'duplicateOfNumber', 'duplicateDistanceM', 'updatedAt'];
+      }
+
+      // Citizens and barangay officers can create reports, always as themselves and always
+      // starting as 'pending' (waiting for verification).
       allow create: if isAuthenticated()
                     && (isCitizen() || isBarangayOfficer())
                     && request.resource.data.userId == currentUid()
-                    && request.resource.data.keys().hasAll(['userId', 'location', 'status', 'severity']);
+                    && request.resource.data.keys().hasAll(['userId', 'location', 'status', 'severity'])
+                    && request.resource.data.status == 'pending'
+                    && !request.resource.data.keys().hasAny(staffReportFields());
 
       // Status transitions — strict role-based write access.
       // For everyone, the Admin included: a report never moves to another barangay, and it can
@@ -180,25 +199,39 @@ service cloud.firestore {
                     && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assignedBarangayId'])
                         || request.resource.data.assignedBarangayId == resource.data.get('barangayId', null))
                     && (
-                      // Owner can only update notes/photos on pending reports
+                      // Owner: only their phone's own follow-up writes (photo, AI result, waste answer,
+                      // duplicate check), and only while the report is still pending. Once an official
+                      // has verified it, the reporter can no longer change its severity or analysis.
                       (isOwner(resource.data.userId)
                         && resource.data.status == 'pending'
-                        && !request.resource.data.diff(resource.data).affectedKeys()
-                            .hasAny(['status', 'severity', 'userId', 'aiAnalysis'])) ||
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(ownerReportFields())) ||
 
-                      // Barangay official: VERIFICATION ONLY -- verify or reject reports in their own
-                      // barangay. Scheduling (assigned) and closing (completed) are the Captain's.
+                      // Owner: finish a photo upload that failed earlier (photoPending), at any status.
+                      // Only while it is pending, so a report's photo can never be swapped afterwards.
+                      (isOwner(resource.data.userId)
+                        && resource.data.get('photoPending', false) == true
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoURL', 'photoPending', 'updatedAt'])) ||
+
+                      // Barangay official: VERIFICATION ONLY -- verify or reject a pending (or verified)
+                      // report in their own barangay, touching only the verification fields. Scheduling
+                      // (assigned) and closing (completed) are the Captain's.
                       (isBarangayOfficer()
                         && inMyBarangay(resource.data.barangayId)
-                        && request.resource.data.status in ['verified', 'rejected']) ||
-
-                      // Admin: any other change, only for their own barangay's reports
-                      (isAdmin() && inMyBarangay(resource.data.barangayId)) ||
-
-                      // AI service (server-side): update aiAnalysis field
-                      (isOwner(resource.data.userId)
+                        && resource.data.status in ['pending', 'verified']
+                        && request.resource.data.status in ['verified', 'rejected']
                         && request.resource.data.diff(resource.data).affectedKeys()
-                            .hasOnly(['aiAnalysis', 'severity', 'wasteTypes', 'updatedAt']))
+                            .hasOnly(['status', 'updatedAt', 'statusHistory', 'verifiedBy', 'verifiedByName', 'verifiedAt',
+                                      'rejectionReason', 'groundTruthSeverity', 'groundTruthWasteType'])) ||
+
+                      // The crew assigned to it marks it "in progress" when they start the cleanup.
+                      (isCleanupTeam()
+                        && resource.data.get('assignedTeamId', '') == currentUid()
+                        && resource.data.status == 'assigned'
+                        && request.resource.data.status == 'in_progress'
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'statusHistory'])) ||
+
+                      // Captain: any other change, only for their own barangay's reports
+                      (isAdmin() && inMyBarangay(resource.data.barangayId))
                     );
 
       allow delete: if isAdmin() && inMyBarangay(resource.data.barangayId);
@@ -320,6 +353,9 @@ service cloud.firestore {
                         && resource.data.assignedTeamId == currentUid()
                         && request.resource.data.assignedTeamId == resource.data.assignedTeamId
                         && request.resource.data.status in ['accepted', 'in_progress', 'completed', 'cancelled']
+                        // Finishing needs proof: at least one "after" photo.
+                        && (request.resource.data.status != 'completed'
+                            || request.resource.data.get('afterPhotoURLs', []).size() > 0)
                         && request.resource.data.diff(resource.data).affectedKeys()
                             .hasOnly(['status', 'declineReason', 'progressNotes', 'completionNotes',
                                       'actualStartTime', 'actualEndTime', 'completedAt',
@@ -396,11 +432,64 @@ service cloud.firestore {
       }
     }
 
+    // ─── Schedule locks (one per barangay and day) ─────────────────────────────
+    // Bumped inside the transaction that decides a cleanup schedule, so two decisions for the
+    // same barangay and day can't run at once (racing approvals can't both pass the conflict check).
+    match /scheduleLocks/{lockId} {
+      allow read: if isAdmin() || isBarangayOfficer();
+      allow create, update: if (isAdmin() || isBarangayOfficer())
+                            && inMyBarangay(request.resource.data.barangayId)
+                            && lockId == request.resource.data.barangayId + '_' + request.resource.data.date
+                            && request.resource.data.keys().hasOnly(['barangayId', 'date', 'version', 'by', 'updatedAt'])
+                            && request.resource.data.by == currentUid();
+      allow delete: if false;
+    }
+
+    // ─── Staff directory (who to notify in a barangay) ──────────────────────────
+    // Only account ids, no personal details. Officials and the Captain add only THEMSELVES,
+    // only in their own barangay, and can't remove anyone; the Super Admin maintains it.
+    match /barangayStaff/{barangayId} {
+      function listBefore(field) {
+        return resource == null ? [] : resource.data.get(field, []);
+      }
+      function addsOnlyMe(field) {
+        return request.resource.data.get(field, []).toSet().difference(listBefore(field).toSet()).hasOnly([currentUid()])
+            && listBefore(field).toSet().difference(request.resource.data.get(field, []).toSet()).size() == 0;
+      }
+      function unchanged(field) {
+        return request.resource.data.get(field, []) == listBefore(field);
+      }
+      allow read: if isAuthenticated();
+      allow create, update: if isSuperAdmin()
+                            || (inMyBarangay(barangayId)
+                                && request.resource.data.keys().hasOnly(['officials', 'captains', 'updatedAt'])
+                                && ((isBarangayOfficer() && addsOnlyMe('officials') && unchanged('captains'))
+                                    || (isAdmin() && addsOnlyMe('captains') && unchanged('officials'))));
+      allow delete: if isSuperAdmin();
+    }
+
+    // ─── Push tokens (so notifications reach phones even when the app is closed) ───
+    // Each person writes only their own, and can't claim to be staff. Staff tokens are
+    // readable by anyone signed in (residents notify their officials); residents' tokens only
+    // by staff (who send them report updates).
+    match /pushTokens/{uid} {
+      allow read: if isOwner(uid) || isSuperAdmin() || isAdmin() || isBarangayOfficer() || isCleanupTeam()
+                  || (isAuthenticated() && resource.data.get('staff', false) == true);
+      allow create, update: if isOwner(uid)
+                            && request.resource.data.keys().hasOnly(['token', 'platform', 'staff', 'muted', 'updatedAt'])
+                            && request.resource.data.token is string
+                            && request.resource.data.staff == (getUserData().role in ['barangay', 'admin', 'cleanup_team', 'superadmin']);
+      allow delete: if isOwner(uid) || isSuperAdmin();
+    }
+
     // ─── Notifications ──────────────────────────────────────────────────────────
     match /notifications/{notificationId} {
       // Users only see their own notifications
       allow read: if isOwner(resource.data.userId);
-      allow create: if isAuthenticated();
+      // Always signed with the sender (no anonymous or forged notices), and never pre-read.
+      allow create: if isAuthenticated()
+                    && request.resource.data.get('senderId', '') == currentUid()
+                    && request.resource.data.get('read', false) == false;
       allow update: if isOwner(resource.data.userId)
                     && request.resource.data.diff(resource.data).affectedKeys()
                         .hasOnly(['read', 'readAt']);
@@ -494,7 +583,9 @@ service cloud.firestore {
         allow create: if isAuthenticated()
                       && request.resource.data.senderId == currentUid()
                       && (currentUid() in conversation().participantIds || inboxOfficial(conversation()));
+        // Only people in the conversation mark messages read.
         allow update: if isAuthenticated()
+                      && (currentUid() in conversation().participantIds || inboxOfficial(conversation()))
                       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
         allow delete: if false;
       }

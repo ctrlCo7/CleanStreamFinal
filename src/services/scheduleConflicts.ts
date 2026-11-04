@@ -41,6 +41,36 @@ export interface ScheduleConflict {
   resources: string[];
 }
 
+/**
+ * Why a schedule can't be proposed at all, or null if it's valid: a real date and times,
+ * ending after it starts, and not in the past (Philippine date/time `today`/`nowMinutes`).
+ */
+export function scheduleInputProblem(
+  s: Pick<ScheduleSlot, 'scheduledDate' | 'startTime' | 'endTime'>,
+  today: string,
+  nowMinutes: number,
+): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.scheduledDate ?? '');
+  if (!m) return 'Pick a date for the cleanup.';
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (d.getUTCMonth() !== Number(m[2]) - 1 || d.getUTCDate() !== Number(m[3])) return 'That date does not exist.';
+  const start = hhmmToMinutes(s.startTime), end = hhmmToMinutes(s.endTime);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 'Pick a start and end time.';
+  if (end <= start) return 'The end time must be after the start time.';
+  if (s.scheduledDate < today) return 'The date has already passed.';
+  if (s.scheduledDate === today && start < nowMinutes) return 'That start time has already passed today.';
+  return null;
+}
+
+/**
+ * Worker availability: a cleanup can't ask for more workers than the crew has (the crew size
+ * the Super Admin set on the crew's account). Null when fine or when either number is unknown.
+ */
+export function workerProblem(needed: number | undefined, crewSize: number | undefined, crewName: string): string | null {
+  if (!needed || !crewSize || needed <= crewSize) return null;
+  return `${crewName} has ${crewSize} worker${crewSize === 1 ? '' : 's'}, but this cleanup needs ${needed}. Pick a bigger crew or fewer workers.`;
+}
+
 export function timesOverlap(a: Pick<ScheduleSlot, 'scheduledDate' | 'startTime' | 'endTime'>, b: Pick<ScheduleSlot, 'scheduledDate' | 'startTime' | 'endTime'>): boolean {
   if (a.scheduledDate !== b.scheduledDate) return false;
   const as = hhmmToMinutes(a.startTime), ae = hhmmToMinutes(a.endTime);

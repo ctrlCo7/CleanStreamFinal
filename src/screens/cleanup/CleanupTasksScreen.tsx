@@ -1,3 +1,4 @@
+import { NotificationBell } from '../../components/common/NotificationBell';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -157,12 +158,15 @@ export default function CleanupTasksScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.greeting}>Hello, {firstName}</Text>
-        <Text style={styles.subGreeting}>
-          {user?.barangay ? `${user.barangay} cleanup crew` : 'Cleanup crew'}
-          {newCount > 0 ? `  ·  ${newCount} new` : ''}
-        </Text>
+      <View style={[styles.header, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.greeting}>Hello, {firstName}</Text>
+          <Text style={styles.subGreeting}>
+            {user?.barangay ? `${user.barangay} cleanup crew` : 'Cleanup crew'}
+            {newCount > 0 ? `  ·  ${newCount} new` : ''}
+          </Text>
+        </View>
+        <NotificationBell />
       </View>
 
       <View style={styles.segments}>

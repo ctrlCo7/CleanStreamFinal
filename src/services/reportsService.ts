@@ -19,6 +19,7 @@ import { withTimeout } from '../utils/async';
 import { uploadToCloudinary } from './cloudinaryService';
 import { NearbyCandidate, ProximityResult, findProximity, isApproximateAddress } from './reportProximity';
 import { reportSeverity } from '../utils/mapUtils';
+import { queuePhotoRetry } from './photoRetry';
 import {
   WasteReport,
   ConcernType,
@@ -94,7 +95,11 @@ export const createReport = async (
   barangay?: string,
   // From the offline queue: a fixed ID (so a retry can never create a second report)
   // and the time the photo was really taken.
-  opts?: { reportId?: string; capturedAt?: string; concernType?: ConcernType; incidentDate?: string; fromCheckpointId?: string },
+  opts?: {
+    reportId?: string; capturedAt?: string; concernType?: ConcernType; incidentDate?: string; fromCheckpointId?: string;
+    /** Already uploaded (offline queue): saved with the report, no background upload. */
+    photoURL?: string;
+  },
 ): Promise<{ reportId: string; reportNumber: string }> => {
   if (opts?.reportId) {
     const existing = await getDoc(doc(db, 'reports', opts.reportId));
@@ -137,6 +142,7 @@ export const createReport = async (
     ...(opts?.concernType ? { concernType: opts.concernType } : {}),
     ...(opts?.incidentDate ? { incidentDate: opts.incidentDate } : {}),
     ...(opts?.fromCheckpointId ? { fromCheckpointId: opts.fromCheckpointId } : {}),
+    ...(opts?.photoURL ? { photoURL: opts.photoURL } : {}),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -152,6 +158,9 @@ export const createReport = async (
     writePromise.catch((err) => console.error('[Report] Queued write ultimately failed:', err));
   }
 
+  // The offline queue uploads the photo first and passes its URL: nothing more to do.
+  if (opts?.photoURL) return { reportId: docRef.id, reportNumber };
+
   // ── NON-CRITICAL: upload photo (runs in the background so AI analysis and
   // navigation don't wait on the network round trip) ─────────────────────────
   uploadReportPhoto(photoUri, docRef.id)
@@ -160,10 +169,13 @@ export const createReport = async (
       console.log('[Report] Photo uploaded successfully:', photoURL);
     })
     .catch(async (uploadErr) => {
-      console.error('[Report] Photo upload failed (non-fatal):', uploadErr);
-      // Store the local URI as a fallback so the rest of the app can still display
-      await updateDoc(docRef, { photoURL: photoUri }).catch((e) =>
-        console.warn('[Report] Could not set fallback photoURL:', e),
+      console.error('[Report] Photo upload failed, keeping it to retry:', uploadErr);
+      // Never point the report at a file on this phone (no one else could see it, and it
+      // can be cleared): keep a safe copy, upload it again on the next sync, and mark the
+      // report so officials see "photo uploading".
+      await queuePhotoRetry(docRef.id, photoUri).catch((e) => console.error('[Report] Could not keep the photo for retry:', e));
+      await updateDoc(docRef, { photoPending: true }).catch((e) =>
+        console.warn('[Report] Could not mark the photo as pending:', e),
       );
     });
 

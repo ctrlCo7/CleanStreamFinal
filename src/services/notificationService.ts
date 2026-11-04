@@ -14,7 +14,12 @@ import {
   serverTimestamp,
   limit,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { auth, db } from './firebase';
+import { staffOf } from './staffDirectory';
+import { sendPush } from './pushService';
+
+/** Every notification is signed with whoever sent it (the security rules require it). */
+const sender = () => auth.currentUser?.uid ?? '';
 import { Notification, NotificationType, SeverityLevel, UserRole } from '../types';
 
 const COL = 'notifications';
@@ -28,11 +33,13 @@ export const createNotification = async (
   // `severity` are declared as named params on callers like sendReportNotification,
   // so the key is always present here even when the caller didn't supply a value —
   // strip those before writing rather than let addDoc throw.
-  const payload: Record<string, unknown> = { ...data, read: false, createdAt: serverTimestamp() };
+  const payload: Record<string, unknown> = { ...data, senderId: sender(), read: false, createdAt: serverTimestamp() };
   for (const key of Object.keys(payload)) {
     if (payload[key] === undefined) delete payload[key];
   }
   const ref = await addDoc(collection(db, COL), payload);
+  // Also to the phone, even if the app is closed (when push is set up; see pushService.ts).
+  sendPush([data.userId], { title: data.title, body: data.body, type: data.type, data: { notificationId: ref.id, reportId: data.reportId, taskId: data.taskId, eventId: data.eventId } });
   return ref.id;
 };
 
@@ -135,11 +142,13 @@ export const sendBulkNotification = async (
       body,
       type,
       ...extraData,
+      senderId: sender(),
       read: false,
       createdAt: serverTimestamp(),
     });
   });
   await batch.commit();
+  sendPush(userIds, { title, body, type, data: { reportId: extraData?.reportId, taskId: extraData?.taskId, eventId: extraData?.eventId } });
 };
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
@@ -207,7 +216,16 @@ export const subscribeToNotifications = (
   return onSnapshot(q, (snap) => {
     // Kinds the person muted in Notification settings are left out of the list and badge.
     const prefs = notificationPrefs();
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Notification)).filter((n) => !isMuted(prefs, n.type)));
+    callback(snap.docs.map((d) => {
+      const data = d.data() as Record<string, unknown>;
+      // A notice written a moment ago has no server time yet; treat it as "now".
+      const ts = data.createdAt as { toDate?: () => Date } | string | null;
+      const createdAt = typeof ts === 'string' ? ts : ts?.toDate?.()?.toISOString() ?? new Date().toISOString();
+      return { id: d.id, ...data, createdAt } as Notification;
+    }).filter((n) => !isMuted(prefs, n.type)));
+  }, (e) => {
+    console.warn('[Notifications] Could not load notifications:', e);
+    callback([]);
   });
 };
 
@@ -235,6 +253,14 @@ export const getNotificationRecipientsByRole = async (
   if (barangayId) {
     q = query(collection(db, 'users'), where('role', 'in', roles), where('barangayId', '==', barangayId));
   }
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => d.id);
+  try {
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => d.id);
+  } catch (e) {
+    // Citizens may not read other people's profiles. To reach a barangay's officials or
+    // Captain (e.g. about their new report) they use the staff directory instead.
+    const staffRoles = roles.filter((r) => r === 'barangay' || r === 'admin');
+    if (barangayId && staffRoles.length) return staffOf(barangayId, staffRoles);
+    throw e;
+  }
 };

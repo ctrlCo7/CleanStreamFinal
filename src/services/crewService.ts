@@ -8,12 +8,12 @@
  * can record the work on their behalf (`recordWorkOnBehalf`). Notifications are best-effort: a
  * failed notification must never undo or block the work itself.
  */
-import { collection, doc, getDoc, getDocs, onSnapshot, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, onSnapshot, query, runTransaction, serverTimestamp, Transaction, updateDoc, where } from 'firebase/firestore';
 import { CleanupTask, NotificationType, ScheduleConflictInfo, User, WasteReport } from '../types';
-import { addTaskPhoto, createCleanupTask, getActiveTasksByBarangay, uploadTaskPhoto } from './cleanupTaskService';
+import { addTaskPhoto, getActiveTasksByBarangay, newTaskDoc, uploadTaskPhoto } from './cleanupTaskService';
 import { db } from './firebase';
 import { createNotification, getNotificationRecipientsByRole, sendReportNotification } from './notificationService';
-import { describeConflict, findScheduleConflicts, ScheduleConflict, ScheduleSlot, suggestFreeSlot } from './scheduleConflicts';
+import { describeConflict, findScheduleConflicts, scheduleInputProblem, workerProblem, ScheduleConflict, ScheduleSlot, suggestFreeSlot } from './scheduleConflicts';
 import { logBarangayActivity } from './activityLogService';
 import { addDaysKey, phDateKey, phMinutes } from '../utils/phTime';
 import { updateReportStatus } from './reportsService';
@@ -29,6 +29,8 @@ export interface CrewMember {
   phone?: string;
   barangayId?: string;
   barangay?: string;
+  /** Number of workers in the crew, when the Super Admin set it. */
+  crewSize?: number;
 }
 
 export const fullName = (u: Pick<User, 'firstName' | 'lastName' | 'email'>): string =>
@@ -40,6 +42,7 @@ const toCrew = (id: string, d: Record<string, unknown>): CrewMember => ({
   phone: typeof d.phone === 'string' ? d.phone : undefined,
   barangayId: typeof d.barangayId === 'string' ? d.barangayId : undefined,
   barangay: typeof d.barangay === 'string' ? d.barangay : undefined,
+  crewSize: typeof d.crewSize === 'number' && d.crewSize > 0 ? d.crewSize : undefined,
 });
 
 const isUsable = (d: Record<string, unknown>): boolean => d.isActive !== false && !d.deletedAt;
@@ -232,20 +235,40 @@ export const proposeCleanup = async (i: AssignCrewInput): Promise<ProposalResult
     isAiSuggested: false,
   };
 
-  // Automatic conflict check against every approved cleanup in the barangay.
-  const { conflicts, suggestion } = await checkScheduleConflicts(barangayId, toSlot({ ...base, id: undefined as unknown as string, status: 'proposed' }));
-  if (conflicts.length) {
-    const infos = conflicts.map(conflictInfo);
-    const taskId = await createCleanupTask({ ...base, ...declinedFields(infos, suggestion) });
-    await announceDeclined(taskId, { ...base }, infos, suggestion, assigner);
-    return { outcome: 'declined', taskId, conflicts: infos, suggestion };
-  }
+  // The schedule itself must make sense (date, times, not in the past -- Philippine time).
+  const invalid = scheduleInputProblem(i, phDateKey(), phMinutes())
+    ?? workerProblem(i.personnelCount, crew.crewSize, crew.name);
+  if (invalid) throw new Error(invalid);
 
-  if (isCaptain) {
-    const now = new Date().toISOString();
-    const taskId = await createCleanupTask({
-      ...base, status: 'assigned', approvedByUserId: assigner.uid, approvedByName: assignerName, approvedAt: now, decidedAt: now,
-    });
+  // Conflict check and decision happen together under the barangay's lock for that day, so two
+  // schedules sent at the same moment can't both slip through (see decideUnderLock).
+  type Decided =
+    | { outcome: 'declined'; taskId: string; conflicts: ScheduleConflictInfo[]; suggestion: CleanupTask['suggestedSlot'] | null }
+    | { outcome: 'approved' | 'proposed'; taskId: string };
+  const decided: Decided = await decideUnderLock(barangayId, i.scheduledDate, assigner, async (tx) => {
+    const { conflicts, suggestion } = await checkScheduleConflicts(barangayId, toSlot({ ...base, id: undefined as unknown as string, status: 'proposed' }));
+    const ref = doc(collection(db, TASKS));
+    if (conflicts.length) {
+      const infos = conflicts.map(conflictInfo);
+      tx.set(ref, newTaskDoc({ ...base, ...declinedFields(infos, suggestion) }));
+      return { outcome: 'declined', taskId: ref.id, conflicts: infos, suggestion };
+    }
+    if (isCaptain) {
+      const now = new Date().toISOString();
+      tx.set(ref, newTaskDoc({ ...base, status: 'assigned', approvedByUserId: assigner.uid, approvedByName: assignerName, approvedAt: now, decidedAt: now }));
+      return { outcome: 'approved', taskId: ref.id };
+    }
+    tx.set(ref, newTaskDoc({ ...base, status: 'proposed' }));
+    return { outcome: 'proposed', taskId: ref.id };
+  });
+
+  // Notifications and the log only once the decision is saved (never repeated on a retry).
+  const { taskId } = decided;
+  if (decided.outcome === 'declined') {
+    await announceDeclined(taskId, { ...base }, decided.conflicts, decided.suggestion, assigner);
+    return { outcome: 'declined', taskId, conflicts: decided.conflicts, suggestion: decided.suggestion };
+  }
+  if (decided.outcome === 'approved') {
     await announceApproved({ ...base, id: taskId, status: 'assigned' } as CleanupTask, assigner);
     logBarangayActivity({
       actor: assigner, barangayId, action: 'schedule_approved', entityType: 'task', entityId: taskId,
@@ -253,8 +276,6 @@ export const proposeCleanup = async (i: AssignCrewInput): Promise<ProposalResult
     });
     return { outcome: 'approved', taskId };
   }
-
-  const taskId = await createCleanupTask({ ...base, status: 'proposed' });
   await staffNote(await captainsOf(barangayId), {
     title: 'Cleanup schedule awaiting your approval',
     body: `${assignerName} proposed a cleanup for ${report.reportNumber ?? 'a report'} on ${i.scheduledDate}, ${i.startTime}–${i.endTime} with ${crew.name}.`,
@@ -268,24 +289,52 @@ export const proposeCleanup = async (i: AssignCrewInput): Promise<ProposalResult
 };
 
 /**
+ * Serialises schedule decisions per barangay and day. A Firestore transaction reads the
+ * lock document `scheduleLocks/{barangayId}_{date}`, runs `decide` (which checks conflicts
+ * and writes the decision), and bumps the lock. If two decisions for the same day run at
+ * once, Firestore refuses one of them and retries it; the retry's conflict check then sees
+ * the other's approved schedule. So two clashing schedules can never both be approved.
+ */
+const decideUnderLock = async <T>(barangayId: string, date: string, actor: User, decide: (tx: Transaction) => Promise<T>): Promise<T> =>
+  runTransaction(db, async (tx) => {
+    const lockRef = doc(db, 'scheduleLocks', `${barangayId}_${date}`);
+    const lock = await tx.get(lockRef);
+    const result = await decide(tx);
+    tx.set(lockRef, {
+      barangayId, date, version: (Number(lock.data()?.version) || 0) + 1, by: actor.uid, updatedAt: serverTimestamp(),
+    });
+    return result;
+  });
+
+/**
  * The Barangay Captain approves a proposed schedule. It is checked again first (another
- * cleanup may have been approved since): a clash declines it automatically instead.
+ * cleanup may have been approved since): a clash declines it automatically instead. The
+ * check and the approval happen under the day's lock, so racing approvals can't both pass.
  */
 export const approveCleanup = async (task: CleanupTask, captain: User): Promise<'approved' | 'declined'> => {
   if (captain.role !== 'admin') throw new Error('Only the Barangay Captain can approve cleanup schedules.');
   if (task.status !== 'proposed') throw new Error('This schedule is no longer waiting for approval.');
-  const { conflicts, suggestion } = await checkScheduleConflicts(task.barangayId, toSlot(task));
-  if (conflicts.length) {
-    const infos = conflicts.map(conflictInfo);
-    await updateDoc(doc(db, TASKS, task.id), { ...declinedFields(infos, suggestion), updatedAt: serverTimestamp() });
-    await announceDeclined(task.id, task, infos, suggestion, captain);
+  const taskRef = doc(db, TASKS, task.id);
+  const decided = await decideUnderLock(task.barangayId, task.scheduledDate, captain, async (tx) => {
+    const fresh = await tx.get(taskRef);
+    if (fresh.data()?.status !== 'proposed') throw new Error('This schedule is no longer waiting for approval.');
+    const { conflicts, suggestion } = await checkScheduleConflicts(task.barangayId, toSlot(task));
+    if (conflicts.length) {
+      const infos = conflicts.map(conflictInfo);
+      tx.update(taskRef, { ...declinedFields(infos, suggestion), updatedAt: serverTimestamp() });
+      return { outcome: 'declined' as const, infos, suggestion };
+    }
+    const now = new Date().toISOString();
+    tx.update(taskRef, {
+      status: 'assigned', approvedByUserId: captain.uid, approvedByName: fullName(captain), approvedAt: now, decidedAt: now,
+      updatedAt: serverTimestamp(),
+    });
+    return { outcome: 'approved' as const };
+  });
+  if (decided.outcome === 'declined') {
+    await announceDeclined(task.id, task, decided.infos, decided.suggestion, captain);
     return 'declined';
   }
-  const now = new Date().toISOString();
-  await updateDoc(doc(db, TASKS, task.id), {
-    status: 'assigned', approvedByUserId: captain.uid, approvedByName: fullName(captain), approvedAt: now, decidedAt: now,
-    updatedAt: serverTimestamp(),
-  });
   await announceApproved(task, captain);
   logBarangayActivity({
     actor: captain, barangayId: task.barangayId, action: 'schedule_approved', entityType: 'task', entityId: task.id,
@@ -332,6 +381,9 @@ export const respondToTask = async (task: CleanupTask, actor: User, accept: bool
 
 export const startTask = async (task: CleanupTask, actor: User): Promise<void> => {
   await updateDoc(doc(db, TASKS, task.id), { status: 'in_progress', actualStartTime: serverTimestamp(), updatedAt: serverTimestamp() });
+  // The reporter's timeline moves to "Cleanup in progress" (it used to stay at "assigned").
+  await updateReportStatus(task.reportId, 'in_progress', actor.uid, fullName(actor), { note: 'Cleanup started by the crew' })
+    .catch((e) => console.warn('[Crew] Could not mark the report in progress (non-fatal):', e));
   await notify(task.assignedByUserId, 'Cleanup started', `${fullName(actor)} has started ${task.title}.`, task, 'task_updated');
   if (task.reporterUserId) {
     try {

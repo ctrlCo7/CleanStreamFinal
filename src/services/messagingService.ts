@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Message, Conversation } from '../types';
+import { createNotification, getNotificationRecipientsByRole } from './notificationService';
 
 export const sendMessage = async (
   conversationId: string,
@@ -51,8 +52,22 @@ export const sendMessage = async (
     )).size + 1,
   });
 
+  // Tell the recipient (a phone notification too, when push is set up). A message to a
+  // barangay's shared inbox goes to every official of that barangay.
+  notifyNewMessage(conversationId, senderName, receiverId, content).catch((e) =>
+    console.warn('[Messages] New-message notification failed (non-fatal):', e));
+
   return msgRef.id;
 };
+
+async function notifyNewMessage(conversationId: string, senderName: string, receiverId: string, content: string): Promise<void> {
+  const inbox = receiverId.startsWith('brgy_') ? receiverId.slice('brgy_'.length) : null;
+  const recipients = inbox ? await getNotificationRecipientsByRole(['barangay'], inbox) : [receiverId];
+  const preview = content.length > 120 ? `${content.slice(0, 117)}…` : content;
+  await Promise.all(recipients.map((userId) => createNotification({
+    userId, type: 'message', title: `New message from ${senderName}`, body: preview, conversationId,
+  })));
+}
 
 export const getOrCreateConversation = async (
   userId1: string,

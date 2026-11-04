@@ -1,3 +1,4 @@
+import { NotificationBell } from '../../components/common/NotificationBell';
 import React, { useEffect, useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -105,10 +106,13 @@ export default function AdminDashboardScreen() {
         title={`${greetingFor()}, ${user?.firstName || 'Captain'}`}
         subtitle={`Barangay Captain · ${user?.barangay ? `Brgy. ${user.barangay}` : 'no barangay set'}`}
         right={(
-          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('AdminAlerts')} accessibilityLabel="Alerts">
-            <BellIcon color={colors.textSecondary} size={18} />
-            {(critical > 0 || high > 0) && <View style={styles.notifDot} />}
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate('AdminAlerts')} accessibilityLabel="Urgent report alerts">
+              <Text style={{ fontSize: 16 }}>🚨</Text>
+              {(critical > 0 || high > 0) && <View style={styles.notifDot} />}
+            </TouchableOpacity>
+            <NotificationBell />
+          </View>
         )}
       />
 

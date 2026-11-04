@@ -35,10 +35,14 @@ export interface OsmTruck {
   label: string;
 }
 
+/** A shaded circle on the map (e.g. a dumping hotspot). */
+export interface OsmArea { id: string; latitude: number; longitude: number; radiusM: number; color: string }
+
 interface OsmMapViewProps {
   region: OsmMapRegion;
   markers: OsmMarker[];
   trucks?: OsmTruck[];
+  areas?: OsmArea[];
   onMarkerPress?: (id: string) => void;
   onTruckPress?: (id: string) => void;
   /** Pan/zoom/tap enabled. Set false for a static preview widget. */
@@ -111,6 +115,27 @@ const buildHtml = (region: OsmMapRegion, interactive: boolean, dark: boolean): s
     Object.keys(trucks).forEach(function (id) { if (!seen[id]) { trucks[id].marker.remove(); delete trucks[id]; } });
   };
 
+  // Shaded circles (hotspots), drawn under the pins; re-added whenever a style loads.
+  var areasData = { type: 'FeatureCollection', features: [] };
+  function circle(a) {
+    var pts = [], k = Math.cos(a.latitude * Math.PI / 180);
+    for (var i = 0; i <= 48; i++) {
+      var t = i / 48 * 2 * Math.PI;
+      pts.push([a.longitude + (a.radiusM * Math.sin(t)) / (111320 * k), a.latitude + (a.radiusM * Math.cos(t)) / 111320]);
+    }
+    return { type: 'Feature', properties: { color: a.color }, geometry: { type: 'Polygon', coordinates: [pts] } };
+  }
+  csOnStyle(function () {
+    if (!map.getSource('cs-areas')) map.addSource('cs-areas', { type: 'geojson', data: areasData });
+    if (!map.getLayer('cs-areas-fill')) map.addLayer({ id: 'cs-areas-fill', type: 'fill', source: 'cs-areas', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.18 } });
+    if (!map.getLayer('cs-areas-line')) map.addLayer({ id: 'cs-areas-line', type: 'line', source: 'cs-areas', paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [2, 1.5] } });
+  });
+  window.csSetAreas = function (list) {
+    areasData = { type: 'FeatureCollection', features: list.map(circle) };
+    var src = map.getSource && map.getSource('cs-areas');
+    if (src) src.setData(areasData);
+  };
+
   window.csNavigate = function (id) { csPost('pin:' + id); };
   // Ask the app for the pins and trucks now that the functions above exist.
   csPost('ready');
@@ -126,7 +151,7 @@ const toJs = (value: unknown) => JSON.stringify(value).replace(/\u2028/g, '\\u20
  * Needs no Google Play Services, API key or account.
  */
 export function OsmMapView({
-  region, markers, trucks = [], onMarkerPress, onTruckPress, interactive = true, style,
+  region, markers, trucks = [], areas = [], onMarkerPress, onTruckPress, interactive = true, style,
 }: OsmMapViewProps) {
   const ref = useRef<WebView>(null);
   const { isDark } = useTheme();
@@ -146,6 +171,13 @@ export function OsmMapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markers, loaded]);
 
+  const sendAreas = () =>
+    ref.current?.injectJavaScript(`window.csSetAreas && window.csSetAreas(${toJs(areas)}); true;`);
+  useEffect(() => {
+    if (loaded) sendAreas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [areas, loaded]);
+
   useEffect(() => {
     if (loaded) sendTrucks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -158,6 +190,7 @@ export function OsmMapView({
       setLoaded(true);
       sendMarkers();
       sendTrucks();
+      sendAreas();
     } else if (msg.startsWith('pin:')) onMarkerPress?.(msg.slice(4));
     else if (msg.startsWith('truck:')) onTruckPress?.(msg.slice(6));
   };

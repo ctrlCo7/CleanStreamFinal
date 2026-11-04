@@ -1,5 +1,6 @@
 import { createUserWithEmailAndPassword, deleteUser, sendPasswordResetEmail } from 'firebase/auth';
 import {
+  arrayRemove,
   Timestamp, addDoc, collection, deleteField, doc, getDoc, limit, onSnapshot, orderBy, query, serverTimestamp,
   setDoc, updateDoc, writeBatch,
 } from 'firebase/firestore';
@@ -36,6 +37,7 @@ export const toAccount = (id: string, d: Record<string, unknown>): Account => ({
   employeeId: str(d.employeeId),
   agency: str(d.agency),
   phone: str(d.phone),
+  crewSize: typeof d.crewSize === 'number' && d.crewSize > 0 ? d.crewSize : undefined,
   // Older documents may predate these flags: treat a missing isActive as active.
   idVerification: (['pending', 'approved', 'rejected'] as const).find((v) => v === d.idVerification),
   idRejectionReason: str(d.idRejectionReason),
@@ -169,6 +171,7 @@ const profileFields = (input: AccountFormInput) => {
     employeeId: input.employeeId?.trim() || undefined,
     agency: input.agency?.trim() || undefined,
     phone: (input.phone && normalizePhone(input.phone)) || undefined,
+    crewSize: input.role === 'cleanup_team' && input.crewSize ? Math.round(input.crewSize) : undefined,
   };
 };
 
@@ -233,6 +236,7 @@ const diffSummary = (before: Account, after: ReturnType<typeof profileFields>): 
   cmp('employee ID', before.employeeId, after.employeeId);
   cmp('agency', before.agency, after.agency);
   cmp('phone', before.phone, after.phone);
+  cmp('crew size', before.crewSize != null ? String(before.crewSize) : undefined, after.crewSize != null ? String(after.crewSize) : undefined);
   return changes.join('; ');
 };
 
@@ -253,14 +257,32 @@ export const updateAccount = async (actor: Actor, target: Account, input: Accoun
     employeeId: fields.employeeId ?? deleteField(),
     agency: fields.agency ?? deleteField(),
     phone: fields.phone ?? deleteField(),
+    crewSize: fields.crewSize ?? deleteField(),
     updatedAt: serverTimestamp(),
   });
   await logAudit(actor, 'account.update', { ...target, firstName: fields.firstName, lastName: fields.lastName }, summary);
   return true;
 };
 
+/**
+ * Takes a deactivated or removed official/Captain off their barangay's notification list
+ * (barangayStaff); they add themselves back when they next open the app after reactivation.
+ */
+const leaveStaffDirectory = async (target: Account) => {
+  if (!target.barangayId || (target.role !== 'barangay' && target.role !== 'admin')) return;
+  try {
+    await updateDoc(doc(db, 'barangayStaff', target.barangayId), {
+      [target.role === 'barangay' ? 'officials' : 'captains']: arrayRemove(target.uid),
+    });
+  } catch (e) {
+    // No directory yet for that barangay: nothing to remove.
+    console.warn('[Accounts] Staff directory not updated (non-fatal):', e);
+  }
+};
+
 export const setAccountActive = async (actor: Actor, target: Account, active: boolean) => {
   await updateDoc(doc(db, 'users', target.uid), { isActive: active, updatedAt: serverTimestamp() });
+  if (!active) await leaveStaffDirectory(target);
   await logAudit(actor, active ? 'account.reactivate' : 'account.deactivate', target,
     active ? 'Account can sign in again' : 'Account blocked from signing in');
 };
@@ -280,6 +302,7 @@ export const removeAccount = async (actor: Actor, target: Account) => {
   await updateDoc(doc(db, 'users', target.uid), {
     isActive: false, deletedAt: serverTimestamp(), deletedBy: actor.uid, updatedAt: serverTimestamp(),
   });
+  await leaveStaffDirectory(target);
   await logAudit(actor, 'account.remove', target, 'Account removed (sign-in blocked, records kept)');
 };
 

@@ -124,3 +124,115 @@ describe('daily checkpoint alarms', () => {
     expect(planCheckpointAlarms([cp({})], 'me', now, 14).length).toBeGreaterThan(0);
   });
 });
+
+describe('QA regressions', () => {
+  it('maps a 0–100 severity score to the same level as the AI does (75/50/25)', async () => {
+    const { severityFromScore } = await import('../../utils/mapUtils');
+    expect([0, 24, 25, 49, 50, 74, 75, 100].map(severityFromScore))
+      .toEqual(['low', 'low', 'moderate', 'moderate', 'high', 'high', 'critical', 'critical']);
+  });
+
+  it('refuses schedules that are impossible or in the past (Philippine time)', async () => {
+    const { scheduleInputProblem } = await import('../scheduleConflicts');
+    const ok = { scheduledDate: '2026-11-05', startTime: '08:00', endTime: '10:00' };
+    expect(scheduleInputProblem(ok, '2026-11-04', 600)).toBeNull();
+    expect(scheduleInputProblem({ ...ok, endTime: '08:00' }, '2026-11-04', 600)).toContain('end time');
+    expect(scheduleInputProblem({ ...ok, scheduledDate: '2026-11-03' }, '2026-11-04', 600)).toContain('passed');
+    expect(scheduleInputProblem({ ...ok, scheduledDate: '2026-11-04' }, '2026-11-04', 9 * 60)).toContain('already passed today');
+    expect(scheduleInputProblem({ ...ok, scheduledDate: '2026-02-31' }, '2026-01-01', 0)).toContain('does not exist');
+    expect(scheduleInputProblem({ ...ok, startTime: '' }, '2026-11-04', 0)).toContain('start and end');
+  });
+
+  it('opens the right screen for each role when a notification is tapped', async () => {
+    const { notificationTarget } = await import('../notificationRouting');
+    expect(notificationTarget({ type: 'schedule_proposed', taskId: 't' }, 'admin')).toEqual({ screen: 'AdminApprovals' });
+    expect(notificationTarget({ type: 'schedule_declined', taskId: 't' }, 'barangay')).toEqual({ screen: 'CleanupTaskDetail', params: { taskId: 't' } });
+    expect(notificationTarget({ type: 'report_submitted', reportId: 'r' }, 'barangay')).toEqual({ screen: 'BarangayVerifyDetail', params: { reportId: 'r' } });
+    expect(notificationTarget({ type: 'report_forwarded', reportId: 'r' }, 'admin')).toEqual({ screen: 'AdminSchedule', params: { reportId: 'r' } });
+    expect(notificationTarget({ type: 'report_assigned', reportId: 'r', taskId: 't' }, 'citizen')).toEqual({ screen: 'CitizenDetail', params: { reportId: 'r' } });
+    expect(notificationTarget({ type: 'checkpoint_missed' }, 'admin')).toEqual({ screen: 'AdminTabs', params: { screen: 'AdminHistory' } });
+    expect(notificationTarget({ type: 'checkpoint_missed' }, 'barangay')).toEqual({ screen: 'BarangayTabs', params: { screen: 'BarangayReport' } });
+    expect(notificationTarget({ type: 'system' }, 'citizen')).toBeNull();
+  });
+
+  it('applies the duplicate (50 m, 24 h) and hotspot (100 m, 90 days, 3 reports) limits inclusively', async () => {
+    const { findProximity } = await import('../reportProximity');
+    const now = new Date(Date.UTC(2026, 10, 4));
+    const here = { latitude: 10.3, longitude: 123.9 };
+    const north = (m: number) => ({ latitude: 10.3 + m / 111195, longitude: 123.9 });
+    const mk = (id: string, m: number, hoursAgo: number, status = 'pending') => ({
+      id, reportNumber: id, ...north(m), createdAt: new Date(now.getTime() - hoursAgo * 3600000), status,
+    });
+    expect(findProximity(here, [mk('a', 49.9, 23.9)], 'self', now).duplicateOf?.id).toBe('a');
+    expect(findProximity(here, [mk('a', 50.5, 1)], 'self', now).duplicateOf).toBeUndefined();     // just beyond 50 m
+    expect(findProximity(here, [mk('a', 10, 24.1)], 'self', now).duplicateOf).toBeUndefined();    // just beyond 24 h
+    expect(findProximity(here, [mk('a', 10, 1, 'rejected')], 'self', now).duplicateOf).toBeUndefined();
+    const hot = findProximity(here, [mk('a', 99, 24 * 89), mk('b', 60, 5)], 'self', now);
+    expect(hot).toMatchObject({ nearbyCount: 3, isHotspot: true });
+    expect(findProximity(here, [mk('a', 99, 24 * 91), mk('b', 101, 5)], 'self', now).isHotspot).toBe(false); // outside 90 days / 100 m
+  });
+
+  it('shows dates and times in Philippine time, whatever the phone is set to', async () => {
+    const { formatClock, formatDay, toDateKey } = await import('../../utils/dates');
+    const late = new Date(Date.UTC(2026, 10, 3, 17, 30)); // 01:30 on Nov 4 in the Philippines
+    expect(formatClock(late)).toBe('1:30 AM');
+    expect(formatDay(late)).toBe('Nov 4, 2026');
+    expect(toDateKey(late)).toBe('2026-11-04');
+  });
+});
+
+describe('hotspots on the map', () => {
+  it('marks 3+ open reports within 100 m (last 90 days) as one hotspot, and updates as reports close', async () => {
+    const { findHotspots } = await import('../reportProximity');
+    const now = new Date(Date.UTC(2026, 10, 4));
+    const at = (id: string, northM: number, daysAgo = 1, status = 'pending') =>
+      ({ id, latitude: 10.3 + northM / 111195, longitude: 123.9, createdAt: new Date(now.getTime() - daysAgo * 864e5), status });
+    const three = [at('a', 0), at('b', 40), at('c', 80)];
+    const hs = findHotspots(three, now);
+    expect(hs).toHaveLength(1);
+    expect(hs[0].count).toBe(3);
+    // One cleaned up: no longer a hotspot. One too old or too far: not counted.
+    expect(findHotspots([at('a', 0), at('b', 40), at('c', 80, 1, 'completed')], now)).toEqual([]);
+    expect(findHotspots([at('a', 0), at('b', 40), at('c', 80, 91)], now)).toEqual([]);
+    expect(findHotspots([at('a', 0), at('b', 40), at('c', 250)], now)).toEqual([]);
+    // Two separate areas, each counted once.
+    const two = findHotspots([...three, at('d', 5000), at('e', 5050), at('f', 5090)], now);
+    expect(two.map((h) => h.count)).toEqual([3, 3]);
+  });
+});
+
+describe('worker availability', () => {
+  it('refuses a cleanup that needs more workers than the crew has', async () => {
+    const { workerProblem } = await import('../scheduleConflicts');
+    expect(workerProblem(8, 6, 'Team A')).toContain('Team A has 6 workers, but this cleanup needs 8');
+    expect(workerProblem(6, 6, 'Team A')).toBeNull();
+    expect(workerProblem(undefined, 6, 'Team A')).toBeNull(); // not specified
+    expect(workerProblem(8, undefined, 'Team A')).toBeNull(); // crew size not recorded yet
+  });
+});
+
+describe('message notifications', () => {
+  it('open the Messages tab of the right app', async () => {
+    const { notificationTarget } = await import('../notificationRouting');
+    expect(notificationTarget({ type: 'message' }, 'citizen')).toEqual({ screen: 'CitizenTabs', params: { screen: 'CitizenMessages' } });
+    expect(notificationTarget({ type: 'message' }, 'barangay')).toEqual({ screen: 'BarangayTabs', params: { screen: 'BarangayMessages' } });
+    expect(notificationTarget({ type: 'message' }, 'admin')).toEqual({ screen: 'AdminTabs', params: { screen: 'AdminMessages' } });
+  });
+});
+
+describe('upcoming cleanup reminders', () => {
+  it('remind the crew the evening before and an hour before, in Philippine time', async () => {
+    const { planCleanupReminders } = await import('../cleanupReminders');
+    const { phInstant } = await import('../../utils/phTime');
+    const now = new Date(Date.UTC(2026, 10, 4, 0, 0)); // Nov 4, 08:00 PHT
+    const task = { id: 't1', title: 'Cleanup: RPT-1', scheduledDate: '2026-11-06', startTime: '08:00', status: 'accepted' };
+    const plan = planCleanupReminders([task], now);
+    expect(plan.map((p) => p.id)).toEqual(['task-t1-eve', 'task-t1-1h']);
+    expect(plan[0].at.getTime()).toBe(phInstant('2026-11-05', '18:00').getTime());
+    expect(plan[1].at.getTime()).toBe(phInstant('2026-11-06', '07:00').getTime());
+    // Not approved yet, finished, or already past: no reminders.
+    expect(planCleanupReminders([{ ...task, status: 'proposed' }], now)).toEqual([]);
+    expect(planCleanupReminders([{ ...task, status: 'completed' }], now)).toEqual([]);
+    expect(planCleanupReminders([{ ...task, scheduledDate: '2026-11-04', startTime: '08:30' }], now)).toEqual([]);
+  });
+});

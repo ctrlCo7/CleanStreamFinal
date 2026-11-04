@@ -60,6 +60,8 @@ export interface AccountFormInput {
   employeeId?: string;
   agency?: string;
   phone?: string;
+  /** Cleanup crews only: number of workers. */
+  crewSize?: number;
 }
 export interface NewAccountInput extends AccountFormInput { password: string }
 
@@ -99,6 +101,10 @@ export const validateAccountForm = (input: AccountFormInput): Record<string, str
   if (usesPhone(input.role)) {
     if (phone && !normalizePhone(phone)) errors.phone = 'Enter a Philippine mobile or landline number, e.g. 0917 123 4567.';
     else if (!phone && requiresPhone(input.role)) errors.phone = 'A contact number is required for cleanup crews.';
+  }
+  if (input.role === 'cleanup_team' && input.crewSize != null
+    && (!Number.isInteger(input.crewSize) || input.crewSize < 1 || input.crewSize > 100)) {
+    errors.crewSize = 'Enter the number of workers in the crew (1 to 100).';
   }
   return errors;
 };
