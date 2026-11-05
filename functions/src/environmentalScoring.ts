@@ -25,7 +25,7 @@
  * Water body heuristic: if coverage > 15% and object count ≥ 3, assume waterway.
  */
 
-import { YOLOResult, EnvironmentalScore, SeverityLevel, YOLODetection } from './types';
+import { EnvironmentalScore, SeverityLevel, YOLODetection, YOLOResult } from './types';
 
 const HAZARDOUS_TYPES = new Set(['e_waste', 'cigarette_butt', 'hazardous']);
 
