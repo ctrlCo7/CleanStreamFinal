@@ -29,6 +29,7 @@ import {
 } from './routeMath';
 import * as Speech from 'expo-speech';
 import { distanceM } from './reportProximity';
+import { noteReceived, secondsSinceSeen } from '../components/map/trackingStatus';
 
 const COL = 'crewTracking';
 const OSRM = 'https://router.project-osrm.org/route/v1/driving';
@@ -36,8 +37,11 @@ const OSRM = 'https://router.project-osrm.org/route/v1/driving';
 // few seconds; viewers glide the truck along the road in between.
 const MIN_WRITE_MS = 2500;
 const MIN_MOVE_M = 6;
-// Even when stopped (traffic), refresh so viewers see the crew is still live.
-const HEARTBEAT_MS = 20000;
+// Even when stopped (traffic, loading the truck), refresh so viewers see the crew is still
+// live. Viewers say "Signal lost" after STALE_S (60 s) without one, i.e. four missed beats.
+const HEARTBEAT_MS = 15000;
+// How often the crew's phone checks whether a heartbeat is due (independent of GPS).
+const BEAT_CHECK_MS = 5000;
 
 // ─── Routing ─────────────────────────────────────────────────────────────────
 
@@ -247,6 +251,8 @@ export function watchLocalTrip(taskId: string, fn: (s: CrewTracking | null) => v
   const f = (s: CrewTracking | null) => fn(s && s.taskId === taskId ? s : null);
   listeners.add(f);
   f(trip?.state ?? null);
+  // The crew is looking at this trip: if the app was restarted mid-trip, start sending again.
+  loadTrip().then(() => { if (isTripActive(taskId)) resumeUpdates().catch(() => undefined); }).catch(() => undefined);
   return () => { listeners.delete(f); };
 }
 
@@ -256,7 +262,37 @@ const ping = (userId: string | undefined, s: CrewTracking, title: string, body: 
     .catch((e) => console.warn('[Tracking] Notification failed (non-fatal):', e));
 };
 
+// ─── Heartbeat ───────────────────────────────────────────────────────────────
+// Phones only report GPS when they move (and skip blurry fixes), so a parked truck, or one
+// waiting for its first good fix, would send nothing and look "lost" to everyone. This timer
+// keeps saying "still here" while the trip runs, whatever the GPS is doing.
+let beatTimer: ReturnType<typeof setInterval> | null = null;
+
+function beat(force = false): void {
+  const t = trip;
+  if (!t || t.state.status !== 'en_route') { stopHeartbeat(); return; }
+  if (auth.currentUser?.uid !== t.state.crewId) return;
+  const now = Date.now();
+  if (!force && now - t.lastWriteAt < HEARTBEAT_MS) return;
+  t.lastWriteAt = now;
+  t.state = { ...t.state, updatedAtMs: now };
+  publish();
+  updateDoc(doc(db, COL, t.state.taskId), { updatedAtMs: now })
+    .catch((e) => console.warn('[Tracking] Heartbeat failed (will retry):', e));
+  saveTrip();
+}
+
+function startHeartbeat(): void {
+  if (!beatTimer) beatTimer = setInterval(() => beat(), BEAT_CHECK_MS);
+}
+
+function stopHeartbeat(): void {
+  if (beatTimer) clearInterval(beatTimer);
+  beatTimer = null;
+}
+
 async function stopUpdates(): Promise<void> {
+  stopHeartbeat();
   foregroundSub?.remove();
   foregroundSub = null;
   clearNav();
@@ -291,7 +327,7 @@ async function handleLocation(loc: Location.LocationObject): Promise<void> {
   const fix: GpsFix = { latitude: loc.coords.latitude, longitude: loc.coords.longitude, accuracy: loc.coords.accuracy, timeMs: loc.timestamp || now };
   // A blurry fix (indoors, between tall buildings) or an impossible jump: skip it, like
   // ride-hailing apps do, instead of making the truck hop around.
-  if (!isPlausibleFix(fix, lastFix)) return;
+  if (!isPlausibleFix(fix, lastFix)) { beat(); return; }
   const prevFix = lastFix;
   lastFix = fix;
   const raw: LatLng = { latitude: fix.latitude, longitude: fix.longitude };
@@ -423,7 +459,10 @@ export type TripMode = 'background' | 'foreground';
 export async function startTrip(task: CleanupTask, crew: User, cb: TripCallbacks = {}): Promise<TripMode> {
   callbacks = cb;
   await loadTrip();
-  if (isTripActive(task.id)) return trip?.background ? 'background' : 'foreground';
+  if (isTripActive(task.id)) {
+    await resumeUpdates();
+    return trip?.background ? 'background' : 'foreground';
+  }
 
   const fg = await Location.requestForegroundPermissionsAsync();
   if (fg.status !== 'granted') {
@@ -485,10 +524,12 @@ export async function startTrip(task: CleanupTask, crew: User, cb: TripCallbacks
   ping(task.reporterUserId, state, '🚚 Cleanup crew on the way', body);
 
   lastFix = null;
+  startHeartbeat();
   const options: Location.LocationTaskOptions = {
     accuracy: Location.Accuracy.BestForNavigation,
     timeInterval: 2000,
-    distanceInterval: 5,
+    // 0, not 5: with a distance filter a parked truck gets no updates at all.
+    distanceInterval: 0,
     activityType: Location.ActivityType.AutomotiveNavigation,
     pausesUpdatesAutomatically: false,
     showsBackgroundLocationIndicator: true,
@@ -513,11 +554,35 @@ export async function startTrip(task: CleanupTask, crew: User, cb: TripCallbacks
       await saveTrip();
     }
   }
+  await startForegroundWatch();
+  return 'foreground';
+}
+
+async function startForegroundWatch(): Promise<void> {
+  startHeartbeat();
+  if (foregroundSub) return;
   foregroundSub = await watchPosition(
-    { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 2000, distanceInterval: 5 },
+    { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 2000, distanceInterval: 0 },
     (loc) => { handleLocation(loc); },
   );
-  return 'foreground';
+}
+
+/**
+ * The crew opened the app again during a trip (e.g. after Android closed it): make sure the
+ * phone is still sending. A background trip whose service was stopped, or a foreground-only
+ * trip (its GPS watch ends with the app), is restarted here.
+ */
+async function resumeUpdates(): Promise<void> {
+  const t = trip;
+  if (!t || t.state.status !== 'en_route' || auth.currentUser?.uid !== t.state.crewId) return;
+  startHeartbeat();
+  beat(true);
+  if (t.background) {
+    try {
+      if (await Location.hasStartedLocationUpdatesAsync(TRIP_TASK)) return;
+    } catch { /* fall through to the foreground watch */ }
+  }
+  await startForegroundWatch();
 }
 
 /**
@@ -542,7 +607,11 @@ export async function endTrip(taskId: string, status: 'arrived' | 'ended'): Prom
 
 // ─── Viewers' side ───────────────────────────────────────────────────────────
 
-const toTracking = (data: Record<string, unknown>): CrewTracking => data as unknown as CrewTracking;
+const toTracking = (data: Record<string, unknown>): CrewTracking => {
+  const t = data as unknown as CrewTracking;
+  noteReceived(t);
+  return t;
+};
 
 /** Official / Admin / crew: the trip for one task. */
 export function subscribeTracking(taskId: string, fn: (t: CrewTracking | null) => void): () => void {
@@ -570,7 +639,7 @@ export function subscribeTrackingForReport(reportId: string, reporterUserId: str
 }
 
 /** Seconds since the crew's phone last reported in. */
-export const secondsSinceUpdate = (t: CrewTracking, now = Date.now()) => Math.max(0, Math.round((now - t.updatedAtMs) / 1000));
+export const secondsSinceUpdate = secondsSinceSeen;
 
 /**
  * Trucks currently driving to a site, for the officials' and Admin's map. Both only see
