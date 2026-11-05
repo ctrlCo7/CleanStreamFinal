@@ -434,3 +434,9 @@ export const locationFromPlaceResult = async (r: PlaceResult): Promise<GeoLocati
   );
   return loc;
 };
+
+/** The street address and barangay for a spot the reporter pinned on the map. */
+export const locationAtPoint = async (latitude: number, longitude: number): Promise<GeoLocation> => {
+  const { loc } = await enrichPosition({ latitude, longitude, accuracy: null }, Date.now());
+  return { ...loc, source: 'pin' };
+};

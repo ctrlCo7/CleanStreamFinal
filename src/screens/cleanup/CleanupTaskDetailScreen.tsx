@@ -24,6 +24,7 @@ import { formatVolume } from '../../utils/units';
 import { endTrip, isTripActive, startTrip, subscribeTracking, watchLocalTrip } from '../../services/crewTrackingService';
 import { lacksPlayServices } from '../../services/devicePosition';
 import { CrewTrackingCard } from '../../components/map/CrewTrackingCard';
+import { isApproximate, precisionLabel } from '../../utils/locationPrecision';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CleanupTaskDetail'>;
 type Phase = 'before' | 'after';
@@ -367,6 +368,14 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
             <Text style={styles.sectionTitle}>Location</Text>
             <Text style={styles.body2}>{task.location.address || 'No street address'}</Text>
             <Text style={styles.muted}>{task.location.barangay || task.barangay}</Text>
+            <Text style={styles.muted}>
+              {task.location.latitude.toFixed(5)}°N, {task.location.longitude.toFixed(5)}°E · {precisionLabel(task.location)}
+            </Text>
+            {isApproximate(task.location) && (
+              <Text style={[styles.body2, { color: colors.amberText }]}>
+                This report has no exact spot. Look for the waste around the area or contact the barangay.
+              </Text>
+            )}
             <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={openMaps} accessibilityRole="button">
               <Text style={[styles.btnText, { color: colors.textPrimary }]}>Open in Maps</Text>
             </TouchableOpacity>

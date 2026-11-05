@@ -26,6 +26,8 @@ import { loadLocalModel } from '../../services/aiService';
 import { createReport } from '../../services/reportsService';
 import { GeoLocation } from '../../types';
 import { LocationSearchModal } from '../../components/common/LocationSearchModal';
+import { PinLocationModal } from '../../components/common/PinLocationModal';
+import { isApproximate, needsPin, precisionLabel } from '../../utils/locationPrecision';
 import { BarangayChoice, BarangayPickerSheet } from '../../components/common/BarangayPickerSheet';
 import { BackIcon, CameraIcon, CheckIcon } from '../../components/common/TabIcons';
 import Svg, { Path, Circle, Rect } from 'react-native-svg';
@@ -68,6 +70,14 @@ export default function CitizenReportScreen() {
   // boundary). GPS keeps refining the position, but the report goes to this barangay.
   const chosenBarangayRef = useRef<BarangayChoice | null>(null);
   const [pickingBarangay, setPickingBarangay] = useState(false);
+  // The reporter's latest real GPS fix (kept even after the report point is pinned or locked).
+  const [gpsFix, setGpsFix] = useState<GeoLocation | null>(null);
+  // Once the photo is taken (or a pin placed), the report point stays put: walking away
+  // afterwards must not drag the waste location along with the phone.
+  const lockedRef = useRef(false);
+  const [pinPicker, setPinPicker] = useState<{ reason?: string; then?: 'submit' } | null>(null);
+  const pinCheckedRef = useRef(false);
+  const pendingSubmitRef = useRef(false);
   const withChosenBarangay = (loc: GeoLocation): GeoLocation => {
     const b = chosenBarangayRef.current;
     return b ? { ...loc, barangay: b.name, barangayId: b.id } : loc;
@@ -89,6 +99,7 @@ export default function CitizenReportScreen() {
     stopWatching();
     gotFixRef.current = false;
     pickedManuallyRef.current = false;
+    lockedRef.current = false;
     confirmPromptedRef.current = false;
     setGeoStatus('detecting');
 
@@ -101,6 +112,7 @@ export default function CitizenReportScreen() {
         [
           { text: 'Keep waiting', style: 'cancel' },
           { text: 'Search location', onPress: () => setShowSearch(true) },
+          { text: 'Pin on map', onPress: () => setPinPicker({ reason: 'GPS is not available yet.' }) },
         ],
       );
     }, 15000);
@@ -112,8 +124,10 @@ export default function CitizenReportScreen() {
     try {
       stopWatchRef.current = await watchLocation((loc) => {
         gotFixRef.current = true;
-        if (pickedManuallyRef.current) return;
-        setLocation(withChosenBarangay(loc));
+        const fix: GeoLocation = { ...loc, source: 'gps' };
+        setGpsFix(fix);
+        if (pickedManuallyRef.current || lockedRef.current) return;
+        setLocation(withChosenBarangay(fix));
         setGeoStatus('found');
         // First real fix: ask the user to confirm it before anything else, and only
         // offer the manual search if they say it's not where they are.
@@ -127,7 +141,7 @@ Barangay: ${loc.barangay ?? 'Unknown'}
 
 Is this where you are?`,
             [
-              { text: 'No, search instead', style: 'cancel', onPress: () => setShowSearch(true) },
+              { text: 'No, pin it on the map', style: 'cancel', onPress: () => setPinPicker({}) },
               { text: "Yes, that's right" },
             ],
             { cancelable: false },
@@ -138,6 +152,13 @@ Is this where you are?`,
       applyGpsFailureFallback();
     }
   };
+
+  useEffect(() => {
+    if (!pendingSubmitRef.current || location?.source !== 'pin') return;
+    pendingSubmitRef.current = false;
+    handleSubmit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
 
   useEffect(() => {
     startWatching();
@@ -161,6 +182,10 @@ Is this where you are?`,
       allowsEditing: false,
     });
     if (!result.canceled && result.assets[0]) {
+      if (location?.source === 'gps' && !pickedManuallyRef.current) {
+        lockedRef.current = true;
+        if (gpsFix) setLocation(withChosenBarangay(gpsFix));
+      }
       // Device cameras capture at full sensor resolution (often 12MP+). That
       // one file then gets used three ways at once -- on-screen preview,
       // Storage upload blob, on-device AI tensor decode -- and holding all
@@ -188,6 +213,29 @@ Is this where you are?`,
     if (!photoUri) { Alert.alert('Photo required', 'Please capture a photo first.'); return; }
     if (!location) { Alert.alert('Location needed', 'Waiting for GPS location...'); return; }
     if (!user) return;
+    if (needsPin(location) && !pinCheckedRef.current) {
+      // The crew is sent to this point, so a barangay centre can't be sent as the spot.
+      if (isApproximate(location)) {
+        Alert.alert(
+          'Pin the exact spot',
+          'GPS could not find your position, so the report is only at the centre of the barangay. Put the pin on the waste so the cleanup crew finds it.',
+          [{ text: 'Cancel', style: 'cancel' }, { text: 'Pin on map', onPress: () => setPinPicker({ then: 'submit' }) }],
+        );
+        return;
+      }
+      Alert.alert(
+        'Check the exact spot',
+        location.source === 'search'
+          ? 'A search result is the general place, not the waste itself. Put the pin on the waste so the cleanup crew goes to the right spot.'
+          : `GPS is only accurate to about ${Math.round(location.accuracy ?? 0)} m right now. Put the pin on the waste so the cleanup crew goes to the right spot.`,
+        [
+          { text: 'Send as is', onPress: () => { pinCheckedRef.current = true; handleSubmit(); } },
+          { text: 'Pin on map', onPress: () => setPinPicker({ then: 'submit' }) },
+        ],
+      );
+      return;
+    }
+    pinCheckedRef.current = false;
 
     const userName = `${user.firstName} ${user.lastName}`;
     setProcessing(true);
@@ -292,6 +340,7 @@ Is this where you are?`,
 
   const refreshLocation = () => {
     chosenBarangayRef.current = null;
+    pinCheckedRef.current = false;
     setLocation(null);
     startWatching();
   };
@@ -307,6 +356,7 @@ Is this where you are?`,
       barangay: b.name,
       barangayId: b.id,
       address: `${b.name} (approximate - GPS unavailable)`,
+      source: 'approximate',
     });
     setGeoStatus('manual');
   };
@@ -321,11 +371,27 @@ Is this where you are?`,
     else if (location) setLocation(withChosenBarangay(location));
   };
 
+  // The reporter placed the pin: this exact point is the report location (and the crew's destination).
+  const applyPin = (loc: GeoLocation) => {
+    const then = pinPicker?.then;
+    setPinPicker(null);
+    pickedManuallyRef.current = true;
+    lockedRef.current = true;
+    // A barangay chosen only because GPS failed gives way to the pinned spot's own barangay.
+    if (isApproximate(location)) chosenBarangayRef.current = null;
+    setLocation(withChosenBarangay(loc));
+    setGeoStatus('found');
+    if (then === 'submit') pendingSubmitRef.current = true;
+  };
+
   const applyGpsFailureFallback = () => {
     const registered = CEBU_BARANGAYS.find((b) => b.id === user?.barangayId);
     if (registered) applyBarangay(registered);
     else setGeoStatus('error');
   };
+
+  const home = CEBU_BARANGAYS.find((b) => b.id === user?.barangayId) ?? CEBU_BARANGAYS[0];
+  const homeCentre = home ? { latitude: home.lat, longitude: home.lng } : null;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -465,7 +531,7 @@ Is this where you are?`,
             <Text style={styles.geoCardTitle}>📍 {t('report.gpsTitle')}</Text>
             <View style={[styles.geoBadge, geoStatus === 'found' ? styles.geoBadgeOk : styles.geoBadgePending]}>
               <Text style={[styles.geoBadgeText, geoStatus === 'found' && styles.geoBadgeTextOk]}>
-                {geoStatus === 'found' ? `✓ ${t('report.gpsVerified')}` : t(geoStatus === 'detecting' ? 'report.gpsLocating' : geoStatus === 'manual' ? 'report.gpsManual' : 'report.gpsNone')}
+                {location?.source === 'pin' ? '✓ Pinned on map' : geoStatus === 'found' ? `✓ ${t('report.gpsVerified')}` : t(geoStatus === 'detecting' ? 'report.gpsLocating' : geoStatus === 'manual' ? 'report.gpsManual' : 'report.gpsNone')}
               </Text>
             </View>
           </View>
@@ -510,6 +576,23 @@ Is this where you are?`,
               <Text style={styles.geoValue}>{formatPH(new Date())}</Text>
             </View>
           </View>
+
+          {!!location && (
+            <Text style={[styles.geoHint, needsPin(location) && { color: colors.amberText }]}>
+              {precisionLabel(location)}
+              {lockedRef.current && location.source === 'gps' ? ' · saved where the photo was taken' : ''}
+            </Text>
+          )}
+          <TouchableOpacity
+            style={[styles.chooseBrgyBtn, { marginTop: 8 }]}
+            onPress={() => setPinPicker({})}
+            activeOpacity={0.85}
+            accessibilityLabel="Place or adjust the pin on the exact spot of the waste"
+          >
+            <Text style={styles.chooseBrgyText}>
+              {location?.source === 'pin' ? '📍 Adjust the pin' : '📍 Pin the exact spot on the map'}
+            </Text>
+          </TouchableOpacity>
 
           {geoStatus !== 'found' && (
             <TouchableOpacity style={styles.searchLocationBtn} onPress={() => setShowSearch(true)}>
@@ -580,9 +663,21 @@ Is this where you are?`,
         onClose={() => setShowSearch(false)}
         onSelect={(loc) => {
           pickedManuallyRef.current = true;
-          setLocation(withChosenBarangay(loc));
+          const picked: GeoLocation = { ...loc, source: 'search' };
+          setLocation(withChosenBarangay(picked));
           setGeoStatus('manual');
+          // A search finds the street or landmark; let the reporter put the pin on the waste itself.
+          setShowSearch(false);
+          setTimeout(() => setPinPicker({ reason: 'Found the place.' }), 350);
         }}
+      />
+      <PinLocationModal
+        visible={!!pinPicker}
+        start={location ?? gpsFix ?? homeCentre}
+        gps={gpsFix}
+        reason={pinPicker?.reason}
+        onClose={() => { setPinPicker(null); pendingSubmitRef.current = false; }}
+        onConfirm={applyPin}
       />
       <BarangayPickerSheet
         visible={pickingBarangay}

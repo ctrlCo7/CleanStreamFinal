@@ -17,6 +17,7 @@ import { HOTSPOT_MIN_REPORTS } from '../../services/reportProximity';
 import { WASTE_TYPE_LABELS } from '../../services/wasteAnalysis';
 import { canViewReport } from '../../services/assignmentRules';
 import { explainWriteError } from '../../utils/firestoreErrors';
+import { precisionLabel } from '../../utils/locationPrecision';
 import { notifyReportRejected, notifyReportVerified } from '../../services/workflowNotifications';
 
 const OTHER_BARANGAY = 'This report belongs to another barangay. Only its own barangay can view it and take action.';
@@ -193,7 +194,8 @@ export default function BarangayVerifyReportDetailScreen({ navigation, route }: 
             { k: 'Concern', v: report.concernType ? CONCERN_LABELS[report.concernType] : '—' },
             { k: 'Incident date', v: report.incidentDate ? formatDateKey(report.incidentDate) : '—' },
             { k: 'Submitted', v: formatPH(report.createdAt) },
-            { k: 'GPS location', v: report.location ? `${report.location.latitude.toFixed(4)}°N, ${report.location.longitude.toFixed(4)}°E` : '—' },
+            { k: 'GPS location', v: report.location ? `${report.location.latitude.toFixed(5)}°N, ${report.location.longitude.toFixed(5)}°E` : '—' },
+            { k: 'Spot accuracy', v: report.location ? precisionLabel(report.location) : '—' },
             { k: 'Primary waste', v: report.aiAnalysis?.wasteTypes?.[0]?.label || '—' },
             { k: 'Severity', v: report.severity, badge: true },
             { k: 'Hazardous', v: report.aiAnalysis?.hazardousDetected ? 'Yes' : 'No', red: report.aiAnalysis?.hazardousDetected },

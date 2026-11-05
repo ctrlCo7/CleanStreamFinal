@@ -74,10 +74,14 @@ export type WasteCategory =
   | 'recyclable' | 'non_recyclable' | 'organic' | 'hazardous' | 'electronic'
   | 'waterway_pollution' | 'severe_pollution' | 'moderate_pollution' | 'low_pollution';
 
+export type LocationSource = 'gps' | 'pin' | 'search' | 'approximate';
+
 export interface GeoLocation {
   latitude: number;
   longitude: number;
   accuracy?: number;
+  /** How the spot was set: live GPS, a pin the reporter placed on the map, a place search, or a barangay centre (approximate). */
+  source?: LocationSource;
   timestamp: number;
   barangayId?: string;
   barangay?: string;
