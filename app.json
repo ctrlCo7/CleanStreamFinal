@@ -62,7 +62,13 @@
       ],
       "expo-status-bar",
       "expo-web-browser",
-      "react-native-maps",
+      [
+        "react-native-maps",
+        {
+          "androidGoogleMapsApiKey": "AIzaSyA9Q5o9e9Q2b_mxUErEM6LV-MD-tACvWas",
+          "iosGoogleMapsApiKey": "AIzaSyA9Q5o9e9Q2b_mxUErEM6LV-MD-tACvWas"
+        }
+      ],
       [
         "expo-location",
         {
