@@ -39,7 +39,11 @@
  */
 
 import * as tf from '@tensorflow/tfjs';
-import { decodeJpeg } from '@tensorflow/tfjs-react-native';
+// tfjs-react-native is loaded on first use (not at app start), so the app still starts where
+// its native pieces aren't available (e.g. Expo Go); the AI then falls back as designed.
+const decodeJpeg = (bytes: Uint8Array): tf.Tensor3D =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  (require('@tensorflow/tfjs-react-native') as typeof import('@tensorflow/tfjs-react-native')).decodeJpeg(bytes) as tf.Tensor3D;
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
 import * as mobilenetLib from '@tensorflow-models/mobilenet';
 import { File } from 'expo-file-system';

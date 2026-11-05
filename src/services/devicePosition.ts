@@ -1,6 +1,16 @@
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
-import Geolocation, { GeolocationResponse } from '@react-native-community/geolocation';
+import type { GeolocationResponse } from '@react-native-community/geolocation';
+
+// Loaded only when needed (phones without Google Play services): its native module throws as
+// soon as it is imported where it isn't built in, e.g. in Expo Go, which would stop the app.
+type GeolocationApi = typeof import('@react-native-community/geolocation').default;
+let geo: GeolocationApi | null = null;
+const loadGeolocation = (): GeolocationApi => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  if (!geo) geo = (require('@react-native-community/geolocation') as { default: GeolocationApi }).default;
+  return geo;
+};
 
 // expo-location on Android only works through Google Play services. Phones without them
 // (Huawei, some Chinese-market phones) fail with "LocationServices.API is not available".
@@ -19,6 +29,7 @@ const isPlayServicesError = (e: unknown) =>
 export const lacksPlayServices = () => noPlayServices;
 
 const plainAndroid = () => {
+  const Geolocation = loadGeolocation();
   if (!configured) {
     Geolocation.setRNConfiguration({ skipPermissionRequests: true, locationProvider: 'android' });
     configured = true;
@@ -77,7 +88,7 @@ export async function watchPosition(
         interval: options.timeInterval ?? 5000,
       },
     );
-    return { remove: () => Geolocation.clearWatch(id) };
+    return { remove: () => loadGeolocation().clearWatch(id) };
   };
   if (noPlayServices) return androidWatch();
 

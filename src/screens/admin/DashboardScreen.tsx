@@ -119,7 +119,7 @@ export default function AdminDashboardScreen() {
       <ScrollView
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.blue} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => { load(); }} tintColor={colors.blue} />}
       >
         {!barangayId && (
           <AlertStrip

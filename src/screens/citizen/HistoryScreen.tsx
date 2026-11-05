@@ -72,7 +72,7 @@ export default function CitizenHistoryScreen() {
       <ScrollView
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => user?.uid && dispatch(fetchUserReports(user.uid))} tintColor={colors.teal} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => { if (user?.uid) dispatch(fetchUserReports(user.uid)); }} tintColor={colors.teal} />}
       >
         {/* Stats */}
         <View style={styles.statsRow}>

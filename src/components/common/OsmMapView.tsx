@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
-import { WebView, WebViewMessageEvent } from 'react-native-webview';
+import { WebView, WebViewMessageEvent } from './WebViewCompat';
 import { useTheme } from '../../hooks/useTheme';
 import { TRUCK_SVG, teardropPinHtml } from '../map/mapIconsHtml';
 import { glideJs, mapHead, mapInitJs, zoomForDelta } from '../map/openFreeMap';

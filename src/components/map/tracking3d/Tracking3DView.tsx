@@ -1,6 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Platform, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
-import { WebView, WebViewMessageEvent } from 'react-native-webview';
+import { WebView, WebViewMessageEvent } from '../../common/WebViewCompat';
 import { CameraState, Frame3D, Page3DCommand, Page3DMessage, tracking3dHtml } from './tracking3dPage';
 
 export interface Tracking3DHandle { command: (c: Page3DCommand) => void }
