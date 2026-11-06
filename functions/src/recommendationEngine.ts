@@ -1,4 +1,4 @@
-import { WasteType, WasteCategory, DisposalRecommendation, YOLODetection, SeverityLevel, EnvironmentalScore } from './types';
+import { DisposalRecommendation, EnvironmentalScore, SeverityLevel, WasteCategory, WasteType, YOLODetection } from './types';
 
 // ─── Disposal recommendation database (all 12 waste types) ───────────────────
 
