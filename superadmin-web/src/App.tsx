@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Layout, ROUTES, Route } from './components/Layout';
 import { LogoMark } from './components/Icons';
 import { useAuth } from './lib/auth';
@@ -15,6 +15,9 @@ import { Overview } from './pages/Overview';
 import { Reports } from './pages/Reports';
 import { SystemSettings } from './pages/SystemSettings';
 import { Training } from './pages/Training';
+
+// The map library is big: load it only when the City map is opened.
+const CityMap = lazy(() => import('./pages/CityMap').then((m) => ({ default: m.CityMap })));
 
 // "#/checkpoints/guadalupe" opens the Checkpoints page filtered to one barangay.
 const readLocation = (): { route: Route; param?: string } => {
@@ -45,6 +48,7 @@ export function App() {
       <OpsDataProvider>
         <Layout route={route}>
           {route === 'overview' && <Overview go={go} />}
+          {route === 'map' && <Suspense fallback={<p className="muted">Loading map…</p>}><CityMap /></Suspense>}
           {route === 'reports' && <Reports />}
           {route === 'analytics' && <Analytics />}
           {route === 'accounts' && <Accounts />}

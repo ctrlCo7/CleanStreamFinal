@@ -7,12 +7,13 @@ import {
   UsersIcon,
 } from './Icons';
 
-export type Route = 'overview' | 'reports' | 'analytics' | 'accounts' | 'approvals' | 'units' | 'checkpoints' | 'training' | 'settings' | 'audit';
+export type Route = 'overview' | 'map' | 'reports' | 'analytics' | 'accounts' | 'approvals' | 'units' | 'checkpoints' | 'training' | 'settings' | 'audit';
 
-export const ROUTES: Route[] = ['overview', 'reports', 'analytics', 'accounts', 'approvals', 'units', 'checkpoints', 'training', 'settings', 'audit'];
+export const ROUTES: Route[] = ['overview', 'map', 'reports', 'analytics', 'accounts', 'approvals', 'units', 'checkpoints', 'training', 'settings', 'audit'];
 
 const NAV: Array<{ route: Route; label: string; icon: ReactNode; group?: string }> = [
   { route: 'overview', label: 'Overview', icon: <OverviewIcon /> },
+  { route: 'map', label: 'City map', icon: <PinIcon /> },
   { route: 'reports', label: 'All reports', icon: <ReportsIcon /> },
   { route: 'analytics', label: 'Analytics', icon: <AnalyticsIcon /> },
   { route: 'accounts', label: 'Accounts', icon: <UsersIcon />, group: 'People' },

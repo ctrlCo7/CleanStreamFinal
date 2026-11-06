@@ -37,6 +37,8 @@ export interface Report {
   address?: string;
   latitude?: number;
   longitude?: number;
+  /** Only the barangay's centre point (GPS failed), not where the waste is. */
+  approximate: boolean;
   severity: Severity;
   status: ReportStatus;
   wasteGroup: WasteGroup;
@@ -211,6 +213,7 @@ export const toReport = (id: string, d: Record<string, unknown>): Report => {
     // 0,0 is what a failed GPS fix leaves behind, not a real place.
     latitude: lat && lng ? lat : undefined,
     longitude: lat && lng ? lng : undefined,
+    approximate: loc.source === 'approximate' || !!str(loc.address)?.includes('(approximate'),
     severity,
     status: REPORT_STATUSES.find((s) => s === d.status) ?? 'pending',
     wasteGroup: wasteGroupOf(rawType),
