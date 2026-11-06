@@ -13,6 +13,9 @@ import { REPORT_STATUS_LABELS, Report, SEVERITIES, Severity } from '../lib/opera
 import { OpsErrors, useOps } from '../lib/opsData';
 
 type Show = 'open' | 'all' | 'resolved';
+
+/** No update for this long: the trip was abandoned, not just out of signal. */
+const ABANDONED_S = 30 * 60;
 type Pinned = Report & { latitude: number; longitude: number };
 
 const RASTER_STYLE = (dark: boolean): maplibregl.StyleSpecification => ({
@@ -75,7 +78,9 @@ export function CityMap() {
     () => findHotspots(pinned.filter((r) => barangayId === 'all' || r.barangayId === barangayId)).sort((a, b) => b.count - a.count),
     [pinned, barangayId],
   );
-  const shownTrips = useMemo(() => trips.filter((t) => barangayId === 'all' || t.barangayId === barangayId), [trips, barangayId]);
+  // A trip silent for 30 minutes was never ended (phone died, app removed): it isn't on the way any more.
+  const activeTrips = useMemo(() => trips.filter((t) => secondsSinceSeen(t, now) <= ABANDONED_S), [trips, now]);
+  const shownTrips = useMemo(() => activeTrips.filter((t) => barangayId === 'all' || t.barangayId === barangayId), [activeTrips, barangayId]);
   const selected = useMemo(() => reports.find((r) => r.id === selectedId) ?? null, [reports, selectedId]);
   const noLocation = reports.length - pinned.length;
 
@@ -266,7 +271,7 @@ export function CityMap() {
   const openHotspot = (h: Hotspot) => { flyTo(h.latitude, h.longitude); setSelectedId(h.reportIds[0] ?? null); };
 
   const openCount = pinned.filter(isOpen).length;
-  const liveCount = trips.length;
+  const liveCount = activeTrips.length;
 
   return (
     <>
