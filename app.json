@@ -94,7 +94,8 @@
           "color": "#2E86DE",
           "sounds": []
         }
-      ]
+      ],
+      "./plugins/withReleaseShrinkingOff"
     ],
     "extra": {
       "eas": {
