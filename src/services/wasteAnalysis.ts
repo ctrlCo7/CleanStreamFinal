@@ -52,7 +52,9 @@ export interface RawClassification { className: string; probability: number }
 const COCO_TO_WASTE: Record<string, AIWasteType> = {
   'wine glass': 'glass_bottle',
   cup: 'mixed_waste',
-  bowl: 'food_waste',
+  // A bowl is a container (plastic, ceramic, foam), not food: on litter photos it was
+  // turning mixed waste into "food waste".
+  bowl: 'mixed_waste',
 
   fork: 'mixed_waste',
   knife: 'mixed_waste',
@@ -93,7 +95,7 @@ const COCO_TO_WASTE: Record<string, AIWasteType> = {
 
 // COCO detections of these are frequently wrong on litter photos, so they must
 // clear a higher confidence bar than the default.
-const LOW_TRUST_COCO = new Set(['cup', 'fork', 'knife', 'spoon', 'suitcase', 'backpack', 'handbag', 'chair', 'couch', 'bed']);
+const LOW_TRUST_COCO = new Set(['cup', 'bowl', 'keyboard', 'fork', 'knife', 'spoon', 'suitcase', 'backpack', 'handbag', 'chair', 'couch', 'bed']);
 
 function cocoMinScore(cocoClass: string): number {
   if (cocoClass === 'bottle') return 0.3;
@@ -141,15 +143,30 @@ const WASTE_TYPE_COLORS: Record<AIWasteType, string> = {
 // MobileNet's ImageNet classification on the same photo, which does have
 // material-specific bottle synsets. Falls back to plastic_bottle (the most
 // common litter case) when MobileNet gives no useful signal.
-function resolveBottleWasteType(mobileNetLabels: string[]): AIWasteType {
-  const joined = mobileNetLabels.join(' | ');
-  if (/wine bottle|beer bottle/.test(joined)) return 'glass_bottle';
-  if (/canteen|milk can|tin can/.test(joined)) return 'metal_can';
+/** Strongest probability among the guesses whose label matches. */
+const strongest = (classifications: RawClassification[], re: RegExp): number =>
+  Math.max(0, ...classifications.filter((c) => re.test(c.className.toLowerCase())).map((c) => c.probability));
+
+/**
+ * What a bottle COCO-SSD found is made of, from MobileNet's guesses on the same photo.
+ * Measured on official-labelled photos: every plastic bottle came with a strong
+ * "water bottle" guess and no glass bottle did, while glass bottles came as "beaker",
+ * "pitcher" or "wine/beer bottle". So "water bottle" wins; glassware means glass.
+ */
+export function resolveBottleWasteType(classifications: RawClassification[]): AIWasteType {
+  const plasticBottle = strongest(classifications, /water bottle/);
+  const glassware = strongest(classifications, /wine bottle|beer bottle|beaker|pitcher|red wine|goblet|beer glass/);
+  const can = strongest(classifications, /canteen|milk can|tin can|beer can|pop can/);
+  if (glassware >= 0.15 && plasticBottle < 0.3) return 'glass_bottle';
+  // A can guess stronger than the water-bottle guess: a metal container.
+  if (can >= 0.3 && can > plasticBottle) return 'metal_can';
+  if (plasticBottle >= 0.3) return 'plastic_bottle';
+  if (can >= 0.15) return 'metal_can';
   return 'plastic_bottle';
 }
 
-function resolveWasteType(cocoClass: string, mobileNetLabels: string[]): AIWasteType {
-  if (cocoClass === 'bottle') return resolveBottleWasteType(mobileNetLabels);
+function resolveWasteType(cocoClass: string, classifications: RawClassification[]): AIWasteType {
+  if (cocoClass === 'bottle') return resolveBottleWasteType(classifications);
   return COCO_TO_WASTE[cocoClass] ?? 'mixed_waste';
 }
 
@@ -166,7 +183,7 @@ const IMAGENET_TO_WASTE: Array<[RegExp, AIWasteType, number]> = [
   [/pill bottle|lighter|oil filter/, 'hazardous_waste', 0.3],
   [/hair spray/, 'hazardous_waste', 0.4], // looks like many ordinary pump/spray bottles
   [/water bottle|pop bottle|water jug/, 'plastic_bottle', 0.15],
-  [/beer bottle|wine bottle|whiskey jug/, 'glass_bottle', 0.15],
+  [/beer bottle|wine bottle|whiskey jug|beaker|beer glass|goblet|red wine/, 'glass_bottle', 0.15],
   [/milk can|tin can|beer can|pop can/, 'metal_can', 0.15],
   [/plastic bag/, 'plastic_bag', 0.15],
   [/packet|wrapper/, 'plastic_bag', 0.2],
@@ -175,7 +192,11 @@ const IMAGENET_TO_WASTE: Array<[RegExp, AIWasteType, number]> = [
   [/ashcan|trash can|garbage|dumpster|bucket|barrel/, 'mixed_waste', 0.15],
   [/cellular telephone|mobile phone|laptop|notebook|monitor|television|remote control|mouse|computer keyboard|hard disc|ipod|modem|router|joystick|printer/, 'e_waste', 0.3],
   // More electronics ImageNet knows: old appliances and gadgets dumped by waterways.
-  [/desktop computer|crt screen|loudspeaker|radio, wireless|electric fan|hand-held computer|cassette player|cd player|tape player|space heater|smoothing iron|power drill|vacuum cleaner|washing machine|dishwasher|digital clock|digital watch|calculator|electric switch|microwave|toaster|refrigerator|projector|dial telephone|pay-phone|oscilloscope/, 'e_waste', 0.3],
+  [/desktop computer|crt screen|loudspeaker|radio, wireless|electric fan|hand-held computer|cassette player|cd player|tape player|space heater|power drill|vacuum cleaner|washing machine|dishwasher|digital clock|digital watch|calculator|microwave|toaster|refrigerator|projector|dial telephone|pay-phone|oscilloscope/, 'e_waste', 0.15],
+  // A tangle of wire reads as "coil": dumped cables and cords.
+  [/^coil\b/, 'e_waste', 0.4],
+  // A clothes iron, only when the model is fairly sure: weak "iron" guesses come from any metal scrap.
+  [/smoothing iron/, 'e_waste', 0.4],
   [/banana|orange|lemon|strawberry|pineapple|pomegranate|granny smith|fig|jackfruit|custard apple|cucumber|zucchini|broccoli|cauliflower|head cabbage|bell pepper|mushroom|artichoke|cardoon|ear|acorn squash|butternut squash|spaghetti squash|guacamole|pizza|cheeseburger|hotdog|bagel|pretzel|dough|meat loaf|mashed potato|burrito|ice cream|carbonara/, 'food_waste', 0.2],
 ];
 
@@ -212,6 +233,10 @@ function classificationsToDetections(
       color: WASTE_TYPE_COLORS[wasteType],
     });
   }
+  // A carton and paper guessed together is a box: cardboard, unless paper is clearly stronger.
+  const paper = found.findIndex((d) => d.wasteType === 'paper_waste');
+  const box = found.findIndex((d) => d.wasteType === 'cardboard');
+  if (paper >= 0 && box >= 0 && found[box].confidence >= found[paper].confidence * 0.85) found.splice(paper, 1);
   return found;
 }
 
@@ -499,12 +524,11 @@ export function buildAnalysisResult(
   waterway?: { scene?: SceneStats; reporterContext?: WaterContext; rain?: RainOutlook; now?: Date; custom?: CustomModelOutput },
 ): AIAnalysisResult {
   const imageArea = imageWidth * imageHeight;
-  const mobileNetLabels = classifications.map((c) => c.className.toLowerCase());
   let mobileNetCategory: WasteCategory | null = null;
   let mobileNetConfidence = 0;
 
   const cocoObjects: DetectedObject[] = predictions.filter(isWasteDetection).map((p) => {
-    const wasteType = resolveWasteType(p.class.toLowerCase(), mobileNetLabels);
+    const wasteType = resolveWasteType(p.class.toLowerCase(), classifications);
     return {
       label: p.class,
       wasteType,

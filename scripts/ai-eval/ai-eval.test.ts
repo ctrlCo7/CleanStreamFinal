@@ -59,6 +59,48 @@ async function photo(item: Item): Promise<Buffer> {
   return buf;
 }
 
+/**
+ * The same model files the app downloads, saved on this PC after the first successful
+ * download, so a flaky connection can't spoil a run. Returns a loader TensorFlow.js accepts
+ * in place of a URL.
+ */
+async function cachedModel(name: string, modelJsonUrl: string, suffix = ''): Promise<tf.io.IOHandler> {
+  const dir = path.join(OUT, 'models', name);
+  const jsonFile = path.join(dir, 'model.json');
+  if (!fs.existsSync(jsonFile)) {
+    fs.mkdirSync(dir, { recursive: true });
+    const { json, base } = await retry(`${name} model.json`, async () => {
+      const res = await fetch(modelJsonUrl + suffix);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Weights sit next to model.json at the ORIGINAL address (TF Hub redirects model.json elsewhere).
+      return { json: await res.text(), base: modelJsonUrl.replace(/[^/]+$/, '') };
+    });
+    const manifest = JSON.parse(json) as tf.io.ModelJSON;
+    for (const group of manifest.weightsManifest) {
+      for (const p of group.paths) {
+        const buf = await retry(`${name} ${p}`, async () => {
+          const res = await fetch(base + p + suffix);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return Buffer.from(await res.arrayBuffer());
+        });
+        fs.writeFileSync(path.join(dir, path.basename(p)), buf);
+      }
+    }
+    fs.writeFileSync(jsonFile, json);
+  }
+  return {
+    load: async () => {
+      const manifest = JSON.parse(fs.readFileSync(jsonFile, 'utf8')) as tf.io.ModelJSON;
+      return tf.io.getModelArtifactsForJSON(manifest, async (weights) => {
+        const specs = weights.flatMap((g) => g.weights);
+        const parts = weights.flatMap((g) => g.paths).map((p) => fs.readFileSync(path.join(dir, path.basename(p))));
+        const all = Buffer.concat(parts);
+        return [specs, all.buffer.slice(all.byteOffset, all.byteOffset + all.byteLength)];
+      });
+    },
+  };
+}
+
 /** Same as the app: decode, shrink to at most 640 px, keep int32 for COCO-SSD. */
 function toTensor(buf: Buffer): tf.Tensor3D {
   const img = jpeg.decode(buf, { useTArray: true, formatAsRGBA: false, maxMemoryUsageInMB: 1024 });
@@ -87,8 +129,11 @@ describe('waste AI accuracy on official-labelled photos', () => {
     }
     await tf.ready();
     console.log(`TensorFlow backend: ${tf.getBackend()}`);
-    const coco = await retry('COCO-SSD model', () => cocoSsd.load({ base: 'mobilenet_v2' }));
-    const net = await retry('MobileNet model', () => mobilenet.load({ version: 2, alpha: 1.0 }));
+    // The same models the app loads (COCO-SSD mobilenet_v2, MobileNetV2 1.0), from the local cache.
+    const cocoFiles = await cachedModel('coco-ssd', 'https://storage.googleapis.com/tfjs-models/savedmodel/ssd_mobilenet_v2/model.json');
+    const netFiles = await cachedModel('mobilenet-v2', 'https://tfhub.dev/google/imagenet/mobilenet_v2_100_224/classification/2/model.json', '?tfjs-format=file');
+    const coco = await cocoSsd.load({ base: 'mobilenet_v2', modelUrl: cocoFiles as unknown as string });
+    const net = await mobilenet.load({ version: 2, alpha: 1.0, modelUrl: netFiles as unknown as string, inputRange: [0, 1] });
     const models = {
       detect: (img: tf.Tensor3D, n: number, s: number) => coco.detect(img, n, s),
       classify: (img: tf.Tensor3D, k: number) => net.classify(img, k),
@@ -96,11 +141,12 @@ describe('waste AI accuracy on official-labelled photos', () => {
 
     const summary: string[] = [];
     for (const name of RUN) {
-      const rows: Array<{ id: string; label: string; predicted: string; correct: boolean }> = [];
+      const rows: Array<{ id: string; label: string; predicted: string; correct: boolean; seen?: unknown }> = [];
       const perClass: Record<string, { n: number; ok: number }> = {};
       let missing = 0;
       for (const item of items) {
         let predicted = 'error';
+        let seen: unknown;
         try {
           const image = toTensor(await photo(item));
           try {
@@ -111,6 +157,12 @@ describe('waste AI accuracy on official-labelled photos', () => {
               { pictograms: detectHazardPictograms(pixels, w, h) },
               { scene: computeSceneStats(pixels, w, h), reporterContext: (item.waterContext ?? 'unknown') as WaterContext });
             predicted = result.wasteTypes[0]?.type ?? 'none';
+            // What the models saw, to understand the misses.
+            seen = {
+              objects: predictions.map((d) => `${d.class} ${Math.round(d.score * 100)}`),
+              guesses: classifications.slice(0, 8).map((c) => `${c.className.split(',')[0]} ${Math.round(c.probability * 100)}`),
+              types: result.wasteTypes.map((t) => `${t.type} ${t.percentage}`),
+            };
           } finally {
             image.dispose();
           }
@@ -120,7 +172,7 @@ describe('waste AI accuracy on official-labelled photos', () => {
         // A photo that no longer exists can't be scored either way.
         if (predicted.startsWith('error: HTTP 404')) { missing += 1; continue; }
         const correct = predicted === item.label;
-        rows.push({ id: item.id, label: item.label, predicted, correct });
+        rows.push({ id: item.id, label: item.label, predicted, correct, seen });
         perClass[item.label] ??= { n: 0, ok: 0 };
         perClass[item.label].n += 1;
         if (correct) perClass[item.label].ok += 1;
