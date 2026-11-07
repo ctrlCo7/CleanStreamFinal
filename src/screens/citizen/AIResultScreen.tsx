@@ -42,7 +42,9 @@ export default function CitizenAIResultScreen({ navigation, route }: Props) {
   const unavailable = ai?.analysisSource === 'unavailable';
   // Below the Super Admin's review threshold, the reporter is asked what the waste is.
   const { aiReviewThreshold } = useAppSettings();
-  const lowConf = !ai || unavailable || ai.confidence < aiReviewThreshold || !ai.detectedObjects?.length;
+  // A poor photo (dark, blurry) makes any answer doubtful, however sure the AI sounds.
+  const lowConf = !ai || unavailable || ai.confidence < aiReviewThreshold || !ai.detectedObjects?.length
+    || ai.photoQuality?.level === 'poor';
   const aiTopType = (ai?.wasteTypes?.[0]?.type as AIWasteType | undefined) ?? 'mixed_waste';
   const [choice, setChoice] = useState<AIWasteType | null>(report.citizenWasteType ?? null);
   const [pickerOpen, setPickerOpen] = useState(false);

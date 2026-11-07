@@ -53,6 +53,10 @@ import { PictogramHit, detectHazardPictograms, detectHazardText } from './hazard
 import { recognizeText } from './textRecognition';
 import { SceneStats, computeSceneStats } from './waterwayAssessment';
 import { classifyWithCustomModel, prepareCustomModel } from './customModel';
+import { IMPROVED_OPTIONS, runInference } from './aiInference';
+
+/** Inference settings phones use (see scripts/ai-eval for how each was measured). */
+const PHONE_INFERENCE_OPTIONS = IMPROVED_OPTIONS;
 import type { CustomModelOutput } from './wasteAnalysis';
 
 // ─── tfjs-react-native init (runs once, on first use) ─────────────────────────
@@ -182,10 +186,12 @@ export async function analyzeOnDevice(
   const customModel = await prepareCustomModel();
   tf.engine().startScope();
   try {
-    [predictions, classifications] = await Promise.all([
-      cocoModel.detect(tensor, 20, 0.25),
-      mobileNetModel.classify(tensor, 5),
-    ]);
+    // The whole photo plus zoomed-in parts of it (see aiInference.ts); measured with
+    // scripts/ai-eval before being switched on.
+    ({ predictions, classifications } = await runInference(tf, tensor, {
+      detect: (img, maxBoxes, minScore) => cocoModel.detect(img, maxBoxes, minScore),
+      classify: (img, topk) => mobileNetModel.classify(img, topk),
+    }, PHONE_INFERENCE_OPTIONS));
     // CleanStream's own trained classifier, when switched on in the Super Admin portal.
     custom = await classifyWithCustomModel(tensor, customModel);
     // Hazard warning symbols, photo quality and visible water: plain pixel analysis on

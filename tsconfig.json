@@ -15,6 +15,7 @@
   "exclude": [
     "node_modules",
     "superadmin-web",
-    "**/__tests__/**"
+    "**/__tests__/**",
+    "scripts/ai-eval"
   ]
 }

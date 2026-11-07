@@ -422,6 +422,7 @@ Is this where you are?`,
             <View style={styles.cameraInner}>
               <CameraIcon color="rgba(255,255,255,0.5)" size={36} />
               <Text style={styles.cameraTip}>{t('report.tapCamera')}</Text>
+              <Text style={[styles.cameraTip, styles.cameraHint]}>{t('report.photoHint')}</Text>
             </View>
           )}
         </TouchableOpacity>
@@ -728,6 +729,7 @@ const createStyles = (Colors: ThemeColors) => StyleSheet.create({
   liveBadgeText: { fontSize: 9, fontWeight: '600', color: '#fff', letterSpacing: 0.4 },
   cameraInner: { alignItems: 'center', gap: 4, zIndex: 1 },
   cameraTip: { fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 6 },
+  cameraHint: { color: 'rgba(255,255,255,0.75)', textAlign: 'center', paddingHorizontal: 24 },
   antiFake: {
     flexDirection: 'row', gap: 8, alignItems: 'flex-start',
     backgroundColor: Colors.greenBg, borderRadius: 10, padding: 9,

@@ -159,6 +159,13 @@ const STRONG_TERMS: Array<[RegExp, HazardKind]> = [
   [/\bAEROSOL\b|\bPRESSURI[SZ]ED\b|\bEXTREMELY FLAMMABLE\b|\bCONTENTS UNDER PRESSURE\b|\bDO NOT (PUNCTURE|INCINERATE)\b/, 'aerosol'],
   [/\bLITHIUM\b|\bLI-?ION\b|\bNI-?MH\b|\bNI-?CD\b|\bLEAD[- ]ACID\b|\bBATTERY ACID\b|\bBATTERIES\b/, 'battery'],
   [/\bRX ONLY\b|\bPRESCRIPTION\b/, 'medical'],
+  // Products sold in the Philippines whose name alone marks them as hazardous waste.
+  [/\bZONROX\b|\bCHLORINE\b|\bTOILET BOWL CLEANER\b|\bASIDO\b/, 'corrosive'],
+  [/\bBAYGON\b|\bMORTEIN\b|\bKATOL\b|\bRAID\b|\bLANNATE\b|\bROUNDUP\b/, 'pesticide'],
+  [/\bMOTOR OIL\b|\bENGINE OIL\b|\bUSED OIL\b|\bLUBRICANT\b|\bHELIX\b|\bCASTROL\b|\bPETRON\b|\bBOYSEN\b|\bDAVIES\b|\bLACQUER\b|\bENAMEL PAINT\b|\bPAINT THINNER\b/, 'chemical'],
+  [/\bLPG\b|\bSOLANE\b|\bGASUL\b|\bBUTANE\b/, 'flammable'],
+  [/\bMOTOLITE\b|\bEVEREADY\b|\bENERGIZER\b|\bDURACELL\b|\bCAR BATTERY\b/, 'battery'],
+  [/\bNAKAMAMATAY\b|\bMAPANGANIB NA KEMIKAL\b/, 'toxic'],
 ];
 
 const WEAK_TERMS = /\bDANGER\b|\bWARNING\b|\bCAUTION\b|\bHAZARD(OUS)?\b|\bPELIGRO\b|\bINGAT\b|\bDELIKADO\b|\bIRRITANT\b|\bHARMFUL\b|\bCHEMICAL\b|\bACID\b/g;

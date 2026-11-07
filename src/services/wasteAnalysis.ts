@@ -174,6 +174,8 @@ const IMAGENET_TO_WASTE: Array<[RegExp, AIWasteType, number]> = [
   [/paper towel|envelope|newspaper|menu/, 'paper_waste', 0.3],
   [/ashcan|trash can|garbage|dumpster|bucket|barrel/, 'mixed_waste', 0.15],
   [/cellular telephone|mobile phone|laptop|notebook|monitor|television|remote control|mouse|computer keyboard|hard disc|ipod|modem|router|joystick|printer/, 'e_waste', 0.3],
+  // More electronics ImageNet knows: old appliances and gadgets dumped by waterways.
+  [/desktop computer|crt screen|loudspeaker|radio, wireless|electric fan|hand-held computer|cassette player|cd player|tape player|space heater|smoothing iron|power drill|vacuum cleaner|washing machine|dishwasher|digital clock|digital watch|calculator|electric switch|microwave|toaster|refrigerator|projector|dial telephone|pay-phone|oscilloscope/, 'e_waste', 0.3],
   [/banana|orange|lemon|strawberry|pineapple|pomegranate|granny smith|fig|jackfruit|custard apple|cucumber|zucchini|broccoli|cauliflower|head cabbage|bell pepper|mushroom|artichoke|cardoon|ear|acorn squash|butternut squash|spaghetti squash|guacamole|pizza|cheeseburger|hotdog|bagel|pretzel|dough|meat loaf|mashed potato|burrito|ice cream|carbonara/, 'food_waste', 0.2],
 ];
 
