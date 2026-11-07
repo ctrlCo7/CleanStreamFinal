@@ -41,6 +41,7 @@ const WIPE = [
   'activityLogs',     // the Captain's activity log
   'scheduleLocks',    // per-day schedule locks (rebuilt automatically)
   'analytics',        // dashboard snapshots computed from reports
+  'crewRequests',     // cleanup team account requests (accounts already created are kept)
 ];
 if (args.has('--messages')) WIPE.push('conversations');
 
