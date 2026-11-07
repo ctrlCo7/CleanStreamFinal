@@ -44,13 +44,17 @@ export function useAccountActions() {
     }
   }, [toast]);
 
-  const create = useCallback(async (input: NewAccountInput, sendResetLink: boolean): Promise<boolean> => {
+  /** Creates the account; resolves to its uid, or null if it failed (the error is shown). */
+  const create = useCallback(async (input: NewAccountInput, sendResetLink: boolean): Promise<string | null> => {
     let resetEmailError: string | null = null;
+    let uid: string | null = null;
     const ok = await run('create', async () => {
-      resetEmailError = (await createAccount(actor, input, sendResetLink)).resetEmailError;
+      const r = await createAccount(actor, input, sendResetLink);
+      resetEmailError = r.resetEmailError;
+      uid = r.uid;
     }, `${input.firstName} ${input.lastName} created`);
     if (ok && resetEmailError) toast.error(`Account created, but the password-reset email failed: ${resetEmailError}`);
-    return ok;
+    return ok ? uid : null;
   }, [actor, run, toast]);
 
   const edit = useCallback(async (target: Account, input: AccountFormInput): Promise<boolean> => {

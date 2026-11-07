@@ -90,6 +90,8 @@ export const ACTION_LABELS: Record<AuditAction, string> = {
   'checkpoint.update': 'Changed checkpoint',
   'checkpoint.delete': 'Deleted checkpoint',
   'settings.update': 'Changed system settings',
+  'crew_request.approve': 'Created a crew account from a request',
+  'crew_request.decline': 'Declined a crew account request',
 };
 
 const logAudit = async (actor: Actor, action: AuditAction, target: Pick<Account, 'uid' | 'email' | 'firstName' | 'lastName'>, details: string) => {

@@ -117,7 +117,7 @@ export const createReport = async (
   };
 
   // ── CRITICAL: create the Firestore document ───────────────────────────────
-  console.log('[Report] Creating Firestore document...');
+  if (__DEV__) console.log('[Report] Creating Firestore document...');
   // Client-generated ID + setDoc (instead of addDoc) so a stalled server ack
   // can't block us from knowing the report's ID.
   const docRef = opts?.reportId ? doc(db, 'reports', opts.reportId) : doc(collection(db, 'reports'));
@@ -151,7 +151,7 @@ export const createReport = async (
     // connection that can take forever. The write stays queued and syncs when
     // the connection returns, so after a grace period just carry on.
     await withTimeout(writePromise, 15000, 'Report write');
-    console.log('[Report] Firestore document created:', docRef.id);
+    if (__DEV__) console.log('[Report] Firestore document created:', docRef.id);
   } catch (e) {
     if (!(e instanceof Error) || !e.message.includes('timed out')) throw e;
     console.warn('[Report] Server ack slow, continuing with queued write:', docRef.id);
@@ -166,7 +166,7 @@ export const createReport = async (
   uploadReportPhoto(photoUri, docRef.id)
     .then(async (photoURL) => {
       await updateDoc(docRef, { photoURL });
-      console.log('[Report] Photo uploaded successfully:', photoURL);
+      if (__DEV__) console.log('[Report] Photo uploaded successfully:', photoURL);
     })
     .catch(async (uploadErr) => {
       console.error('[Report] Photo upload failed, keeping it to retry:', uploadErr);

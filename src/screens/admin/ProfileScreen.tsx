@@ -1,3 +1,6 @@
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../types';
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert, Switch, TextInput, ActivityIndicator } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
@@ -10,6 +13,7 @@ import { rowsToCsv, exportCsv } from '../../utils/csvExport';
 import { AppSettingsSheet, EditProfileSheet, NotificationSettingsSheet, PrivacySheet } from '../../components/profile/AccountSheets';
 
 export default function AdminProfileScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const dispatch = useAppDispatch();
   const { colors, isDark, setMode } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -186,6 +190,7 @@ export default function AdminProfileScreen() {
           {[
             { label: 'Edit profile', onPress: () => setSheet('edit') },
             { label: 'Notification settings', onPress: () => setSheet('notifications') },
+            { label: 'Request a cleanup team account', onPress: () => navigation.navigate('RequestCrew') },
             { label: 'App settings', onPress: () => setSheet('app') },
             { label: 'Privacy & security', onPress: () => setSheet('privacy') },
             { label: 'Export my data', onPress: () => exportMyData() },

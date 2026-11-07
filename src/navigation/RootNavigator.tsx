@@ -46,6 +46,7 @@ import CitizenEventsScreen from '../screens/citizen/EventsScreen';
 import CitizenEventDetailScreen from '../screens/citizen/EventDetailScreen';
 import AdminCheckpointAlarmsScreen from '../screens/admin/CheckpointAlarmsScreen';
 import AdminApprovalsScreen from '../screens/admin/ApprovalsScreen';
+import RequestCrewScreen from '../screens/barangay/RequestCrewScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -149,6 +150,7 @@ export default function RootNavigator() {
             <Stack.Screen name="CitizenEventDetail" component={CitizenEventDetailScreen} />
             <Stack.Screen name="AdminCheckpointAlarms" component={AdminCheckpointAlarmsScreen} />
             <Stack.Screen name="AdminApprovals" component={AdminApprovalsScreen} />
+            <Stack.Screen name="RequestCrew" component={RequestCrewScreen} />
           </>
         ) : (
           <>

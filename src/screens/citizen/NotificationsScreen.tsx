@@ -36,6 +36,7 @@ function buildTypeColors(colors: ThemeColors): Record<NotificationType, string> 
     checkpoint_missed: colors.red,
     checkpoint_completed: colors.teal,
     checkpoint_issue: colors.amber,
+    crew_request: colors.blue,
   };
 }
 

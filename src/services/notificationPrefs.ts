@@ -15,7 +15,7 @@ export const CATEGORY_TYPES: Record<Exclude<NotificationCategory, 'dailyAlarm'>,
   tasks: ['task_assigned', 'task_updated', 'schedule_proposed', 'schedule_approved', 'schedule_rejected', 'schedule_declined'],
   community: ['event_reminder', 'announcement'],
   messages: ['message'],
-  alerts: ['system', 'checkpoint_missed', 'checkpoint_completed', 'checkpoint_issue'],
+  alerts: ['system', 'checkpoint_missed', 'checkpoint_completed', 'checkpoint_issue', 'crew_request'],
 };
 
 export function categoryOf(type: NotificationType): NotificationCategory {

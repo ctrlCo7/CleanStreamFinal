@@ -443,6 +443,43 @@ await check("another barangay's official can't read its messages", assertFails(g
 await check("another citizen can't read it", assertFails(getDoc(doc(as('vol2'), 'conversations', 'inbox1'))));
 await check('person-to-person chats still work', assertSucceeds(setDoc(doc(as('vol2'), 'conversations', 'p2p'), { participantIds: ['vol2', 'ad'], lastMessage: '' })));
 
+console.log('\n== Cleanup team account requests');
+const crewReq = (uid, role, barangayId, extra = {}) => ({
+  barangayId, barangay: barangayId, requestedBy: uid, requestedByName: uid, requestedByRole: role,
+  teamName: 'Crew Two', crewSize: 6, leaderName: null, leaderEmail: null, leaderPhone: null,
+  reason: 'Too many reports for one crew', status: 'pending', createdAt: serverTimestamp(), ...extra,
+});
+await check('an official requests a crew for their own barangay', assertSucceeds(setDoc(doc(as('bg'), 'crewRequests', 'cr1'), crewReq('bg', 'barangay', 'b1'))));
+await check('the Captain requests a crew for their own barangay', assertSucceeds(setDoc(doc(as('ad'), 'crewRequests', 'cr2'), crewReq('ad', 'admin', 'b1'))));
+await check("an official can't request one for another barangay", assertFails(setDoc(doc(as('bg'), 'crewRequests', 'cr3'), crewReq('bg', 'barangay', 'b2'))));
+await check("an official can't request in someone else's name", assertFails(setDoc(doc(as('bg'), 'crewRequests', 'cr4'), crewReq('ad', 'admin', 'b1'))));
+await check("an official can't pose as the Captain", assertFails(setDoc(doc(as('bg'), 'crewRequests', 'cr5'), crewReq('bg', 'admin', 'b1'))));
+await check("a request can't arrive already approved", assertFails(setDoc(doc(as('bg'), 'crewRequests', 'cr6'), crewReq('bg', 'barangay', 'b1', { status: 'approved' }))));
+await check("a request can't carry extra fields", assertFails(setDoc(doc(as('bg'), 'crewRequests', 'cr7'), crewReq('bg', 'barangay', 'b1', { accountEmail: 'x@y.co' }))));
+await check('the crew size must be a whole number from 1 to 100', assertFails(setDoc(doc(as('bg'), 'crewRequests', 'cr8'), crewReq('bg', 'barangay', 'b1', { crewSize: 0 }))));
+await check("a citizen can't request a crew", assertFails(setDoc(doc(as('vol1'), 'crewRequests', 'cr9'), crewReq('vol1', 'citizen', 'b1'))));
+await check("a crew can't request a crew", assertFails(setDoc(doc(as('cl'), 'crewRequests', 'cr10'), crewReq('cl', 'cleanup_team', 'b1'))));
+await check("an official whose ID isn't approved can't request", assertFails(setDoc(doc(as('bg_pend2'), 'crewRequests', 'cr11'), crewReq('bg_pend2', 'barangay', 'b1'))));
+await check("the barangay's Captain sees the official's request", assertSucceeds(getDoc(doc(as('ad'), 'crewRequests', 'cr1'))));
+await check('officials list their barangay\'s requests', assertSucceeds(getDocs(query(collection(as('bg'), 'crewRequests'), where('barangayId', '==', 'b1')))));
+await check("another barangay's official can't read it", assertFails(getDoc(doc(as('bg2'), 'crewRequests', 'cr1'))));
+await check("a citizen can't read it", assertFails(getDoc(doc(as('vol1'), 'crewRequests', 'cr1'))));
+await check('the Super Admin lists every request', assertSucceeds(getDocs(collection(as('sa'), 'crewRequests'))));
+await check("the official can't approve their own request", assertFails(updateDoc(doc(as('bg'), 'crewRequests', 'cr1'), { status: 'approved' })));
+await check("the Captain can't approve it either", assertFails(updateDoc(doc(as('ad'), 'crewRequests', 'cr1'), { status: 'approved', decidedBy: 'ad' })));
+await check("someone else can't cancel the official's request", assertFails(updateDoc(doc(as('ad'), 'crewRequests', 'cr1'), { status: 'cancelled' })));
+await check('the requester withdraws their own waiting request', assertSucceeds(updateDoc(doc(as('ad'), 'crewRequests', 'cr2'), { status: 'cancelled', cancelledAt: serverTimestamp() })));
+await check('the Super Admin approves it with the new account', assertSucceeds(updateDoc(doc(as('sa'), 'crewRequests', 'cr1'), {
+  status: 'approved', decidedAt: serverTimestamp(), decidedBy: 'sa', decidedByName: 'Super Admin', accountUid: 'newcrew', accountEmail: 'crew@x.co',
+})));
+await check("an answered request can't be changed again", assertFails(updateDoc(doc(as('sa'), 'crewRequests', 'cr1'), { status: 'declined', declineReason: 'oops' })));
+await check("a cancelled request can't be approved", assertFails(updateDoc(doc(as('sa'), 'crewRequests', 'cr2'), { status: 'approved' })));
+await check("a deactivated Super Admin can't answer requests", assertFails(getDocs(collection(as('sa_off'), 'crewRequests'))));
+await check("requests can't be deleted", assertFails(deleteDoc(doc(as('sa'), 'crewRequests', 'cr1'))));
+await check('the Super Admin notifies the requester', assertSucceeds(addDoc(collection(as('sa'), 'notifications'), {
+  userId: 'bg', senderId: 'sa', type: 'crew_request', title: 'Cleanup team account created', body: 'x', read: false,
+})));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup();
 process.exit(fail ? 1 : 0);

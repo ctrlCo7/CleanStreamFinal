@@ -529,7 +529,8 @@ export type NotificationType =
   | 'schedule_declined'
   | 'checkpoint_missed'
   | 'checkpoint_completed'
-  | 'checkpoint_issue';
+  | 'checkpoint_issue'
+  | 'crew_request';
 
 export interface Notification {
   id: string;
@@ -838,7 +839,38 @@ export type RootStackParamList = {
   BarangayAlarms: undefined;
   AdminCheckpointAlarms: undefined;
   AdminApprovals: undefined;
+  RequestCrew: undefined;
 };
+
+// ─── Cleanup team account requests ────────────────────────────────────────────
+// An official or the Captain asks the Super Admin for a cleanup crew account for their
+// barangay. The Super Admin (web portal) creates the account or declines with a reason.
+
+export type CrewRequestStatus = 'pending' | 'approved' | 'declined' | 'cancelled';
+
+export interface CrewRequest {
+  id: string;
+  barangayId: string;
+  barangay: string;
+  requestedBy: string;
+  requestedByName: string;
+  requestedByRole: 'admin' | 'barangay';
+  /** What the crew will be called, e.g. "Talamban Cleanup Crew 2". */
+  teamName: string;
+  crewSize: number;
+  /** Who will sign in for the crew (the crew leader), if already known. */
+  leaderName?: string;
+  leaderEmail?: string;
+  leaderPhone?: string;
+  reason: string;
+  status: CrewRequestStatus;
+  createdAt: string;
+  decidedAt?: string;
+  decidedByName?: string;
+  declineReason?: string;
+  /** The account the Super Admin created for this request. */
+  accountEmail?: string;
+}
 
 export type CitizenTabParamList = {
   CitizenHome: undefined;

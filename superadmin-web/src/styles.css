@@ -351,3 +351,10 @@ td.actions { text-align: right; width: 52px; }
   .citymap-side { max-height: none; min-height: 0; }
   .citymap-canvas { height: 62vh; min-height: 360px; }
 }
+
+/* ─── Cleanup team requests ────────────────────────────────────────────────── */
+.callout-info { background: var(--info-soft); color: var(--info); }
+.request-card { margin-bottom: 12px; list-style: none; }
+.request-card .card-head h2 { font-size: 15px; }
+.request-reason { margin: 10px 0 0; }
+.field textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); resize: vertical; }

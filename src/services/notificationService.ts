@@ -96,6 +96,7 @@ export const sendReportNotification = async (
     checkpoint_missed: { title: 'Missed checkpoint', body: 'A waterway checkpoint was not inspected on time.' },
     checkpoint_completed: { title: 'Checkpoint inspected', body: 'A waterway checkpoint inspection was completed.' },
     checkpoint_issue: { title: 'Issue detected at a checkpoint', body: 'An inspection found a problem at a waterway checkpoint.' },
+    crew_request: { title: 'Cleanup team request answered', body: 'The Super Admin answered your request for a cleanup team account.' },
   };
 
   const base = messages[type] ?? { title: 'Notification', body: '' };

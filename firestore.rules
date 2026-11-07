@@ -448,6 +448,36 @@ service cloud.firestore {
     // ─── Staff directory (who to notify in a barangay) ──────────────────────────
     // Only account ids, no personal details. Officials and the Captain add only THEMSELVES,
     // only in their own barangay, and can't remove anyone; the Super Admin maintains it.
+    // ─── Cleanup team account requests ──────────────────────────────────────────
+    // An official or the Captain asks the Super Admin for a crew account for THEIR barangay.
+    // Only the Super Admin answers (creates the account, or declines with a reason); the
+    // requester may withdraw their own request while it is still waiting. Never deleted.
+    match /crewRequests/{requestId} {
+      allow read: if isSuperAdmin() || (isAdminOrBarangay() && inMyBarangay(resource.data.barangayId));
+      allow create: if isAdminOrBarangay()
+                    && request.resource.data.requestedBy == currentUid()
+                    && inMyBarangay(request.resource.data.barangayId)
+                    && request.resource.data.requestedByRole == getUserData().role
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.keys().hasOnly(['barangayId', 'barangay', 'requestedBy', 'requestedByName', 'requestedByRole',
+                         'teamName', 'crewSize', 'leaderName', 'leaderEmail', 'leaderPhone', 'reason', 'status', 'createdAt'])
+                    && request.resource.data.teamName is string
+                    && request.resource.data.teamName.size() >= 3 && request.resource.data.teamName.size() <= 60
+                    && request.resource.data.crewSize is int
+                    && request.resource.data.crewSize >= 1 && request.resource.data.crewSize <= 100
+                    && request.resource.data.reason is string && request.resource.data.reason.size() <= 500
+                    && request.resource.data.createdAt == request.time;
+      allow update: if (resource.data.status == 'pending'
+                        && isAdminOrBarangay() && resource.data.requestedBy == currentUid()
+                        && request.resource.data.status == 'cancelled'
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt']))
+                    || (isSuperAdmin() && resource.data.status == 'pending'
+                        && request.resource.data.status in ['approved', 'declined']
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['status', 'decidedAt', 'decidedBy', 'decidedByName', 'declineReason', 'accountUid', 'accountEmail']));
+      allow delete: if false;
+    }
+
     match /barangayStaff/{barangayId} {
       function listBefore(field) {
         return resource == null ? [] : resource.data.get(field, []);

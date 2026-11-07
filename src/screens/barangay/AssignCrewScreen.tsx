@@ -303,6 +303,9 @@ export default function AssignCrewScreen({ navigation, route }: Props) {
             <Text style={styles.muted}>
               {`No cleanup crews in ${barangayName} yet. Ask the Super Admin to create a crew account for ${barangayName}. A crew without smartphones can still have an account; you record their work for them.`}
             </Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={() => navigation.navigate('RequestCrew')} accessibilityRole="button">
+              <Text style={styles.retryText}>Request a cleanup team account</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           crews.map((c) => {

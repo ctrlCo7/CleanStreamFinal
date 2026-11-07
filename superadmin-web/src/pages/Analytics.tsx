@@ -1,6 +1,11 @@
 import { useMemo } from 'react';
 import { useTick } from '../lib/feedback';
-import { WASTE_GROUPS, WASTE_LABELS } from '../lib/operations';
+import { REPORT_STATUS_LABELS, ReportStatus, SEVERITIES, WASTE_GROUPS, WASTE_LABELS } from '../lib/operations';
+import { SEVERITY_LABELS } from '../components/Pill';
+import { SEVERITY_COLORS } from '../lib/cityMap';
+
+/** The report workflow in order, from filed to closed. */
+const PIPELINE: ReportStatus[] = ['pending', 'verified', 'assigned', 'in_progress', 'completed', 'rejected', 'cancelled'];
 import { OpsErrors, useOps } from '../lib/opsData';
 import { findHotspots, formatHours, inspectionCompliance, reportStats } from '../lib/opsStats';
 import { relativeTime } from '../lib/format';
@@ -15,6 +20,8 @@ export function Analytics() {
   const maxMonth = Math.max(1, ...stats.monthly.map((m) => m.count));
   const maxWaste = Math.max(1, ...WASTE_GROUPS.map((g) => stats.waste[g]));
   const maxBarangay = Math.max(1, ...stats.byBarangay.map((b) => b.total));
+  const maxSeverity = Math.max(1, ...SEVERITIES.map((s) => stats.severity[s]));
+  const maxStatus = Math.max(1, ...PIPELINE.map((s) => stats.byStatus[s] ?? 0));
 
   if (loading.reports) return <p className="muted">Loading…</p>;
 
@@ -65,6 +72,34 @@ export function Analytics() {
               </li>
             ))}
           </ul>
+        </section>
+      </div>
+
+      <div className="two-col">
+        <section className="card">
+          <h2>Severity of open reports</h2>
+          <ul className="bars">
+            {SEVERITIES.map((s) => (
+              <li key={s}>
+                <span className="bars-label">{SEVERITY_LABELS[s]}</span>
+                <span className="bars-track"><span className="bars-fill" style={{ width: `${(stats.severity[s] / maxSeverity) * 100}%`, background: SEVERITY_COLORS[s] }} /></span>
+                <span className="bars-n">{stats.severity[s]}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section className="card">
+          <h2>Where reports are in the workflow</h2>
+          <ul className="bars">
+            {PIPELINE.map((st) => (
+              <li key={st}>
+                <span className="bars-label">{REPORT_STATUS_LABELS[st]}</span>
+                <span className="bars-track"><span className="bars-fill" style={{ width: `${((stats.byStatus[st] ?? 0) / maxStatus) * 100}%` }} /></span>
+                <span className="bars-n">{stats.byStatus[st] ?? 0}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="muted small">Cleanup completion: {stats.resolutionRate}% of all reports are cleaned up.</p>
         </section>
       </div>
 

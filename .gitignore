@@ -50,3 +50,6 @@ app-example
 # Backups and credentials (never commit)
 backups/
 *service-account*.json
+
+# APKs made by scripts/build-apk.ps1
+/builds

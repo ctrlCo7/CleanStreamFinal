@@ -213,7 +213,7 @@ export async function analyzeOnDevice(
   }, { scene, reporterContext, rain: await rain, custom });
 
   const mem = tf.memory() as tf.MemoryInfo & { numBytesInGPU?: number };
-  console.log(
+  if (__DEV__) console.log(
     `[onDeviceAI] Done in ${Date.now() - startMs}ms — ${result.objectCount} objects, severity=${result.severityLevel} — ` +
       `tensors=${mem.numTensors} gpuBytes=${mem.numBytesInGPU ?? 'n/a'}`,
   );

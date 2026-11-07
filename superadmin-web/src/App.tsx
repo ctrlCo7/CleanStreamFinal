@@ -4,6 +4,8 @@ import { LogoMark } from './components/Icons';
 import { useAuth } from './lib/auth';
 import { DataProvider } from './lib/data';
 import { OpsDataProvider } from './lib/opsData';
+import { CrewRequestsProvider } from './lib/crewRequestsData';
+import { CrewRequests } from './pages/CrewRequests';
 import { Accounts } from './pages/Accounts';
 import { Analytics } from './pages/Analytics';
 import { Approvals } from './pages/Approvals';
@@ -46,6 +48,7 @@ export function App() {
   return (
     <DataProvider>
       <OpsDataProvider>
+      <CrewRequestsProvider>
         <Layout route={route}>
           {route === 'overview' && <Overview go={go} />}
           {route === 'map' && <Suspense fallback={<p className="muted">Loading map…</p>}><CityMap /></Suspense>}
@@ -53,12 +56,14 @@ export function App() {
           {route === 'analytics' && <Analytics />}
           {route === 'accounts' && <Accounts />}
           {route === 'approvals' && <Approvals />}
+          {route === 'requests' && <CrewRequests />}
           {route === 'units' && <BarangayUnits openCheckpoints={(id) => go('checkpoints', id)} />}
           {route === 'checkpoints' && <Checkpoints key={param ?? 'all'} initialBarangayId={param} />}
           {route === 'training' && <Training />}
           {route === 'settings' && <SystemSettings />}
           {route === 'audit' && <AuditLog />}
         </Layout>
+      </CrewRequestsProvider>
       </OpsDataProvider>
     </DataProvider>
   );

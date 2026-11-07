@@ -1,3 +1,6 @@
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../types';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert, Switch, TextInput, ActivityIndicator } from 'react-native';
 import { collection, query, where, orderBy, onSnapshot, limit } from 'firebase/firestore';
@@ -18,6 +21,7 @@ interface FieldCheckpoint {
 }
 
 export default function BarangayProfileScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const dispatch = useAppDispatch();
   const { colors, isDark, setMode } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -216,6 +220,7 @@ export default function BarangayProfileScreen() {
           {[
             { label: 'Edit profile', onPress: () => setSheet('edit') },
             { label: 'Notification settings', onPress: () => setSheet('notifications') },
+            { label: 'Request a cleanup team account', onPress: () => navigation.navigate('RequestCrew') },
             { label: 'Privacy & security', onPress: () => setSheet('privacy') },
             { label: 'Report a problem', onPress: () => Alert.alert('Support', 'Contact CENRO admin') },
           ].map((item, i, arr) => (

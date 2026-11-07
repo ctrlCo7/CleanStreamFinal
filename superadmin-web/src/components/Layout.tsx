@@ -1,15 +1,16 @@
 import { ReactNode } from 'react';
 import { statusOf } from '../lib/accountRules';
 import { useAuth } from '../lib/auth';
+import { useCrewRequests } from '../lib/crewRequestsData';
 import { useData } from '../lib/data';
 import {
-  AnalyticsIcon, ApprovalsIcon, HistoryIcon, LogoMark, LogoutIcon, ModelIcon, OverviewIcon, PinIcon, ReportsIcon, SettingsIcon, UnitsIcon,
+  AnalyticsIcon, ApprovalsIcon, HistoryIcon, LogoMark, LogoutIcon, ModelIcon, OverviewIcon, PinIcon, ReportsIcon, SettingsIcon, TruckIcon, UnitsIcon,
   UsersIcon,
 } from './Icons';
 
-export type Route = 'overview' | 'map' | 'reports' | 'analytics' | 'accounts' | 'approvals' | 'units' | 'checkpoints' | 'training' | 'settings' | 'audit';
+export type Route = 'overview' | 'map' | 'reports' | 'analytics' | 'accounts' | 'approvals' | 'requests' | 'units' | 'checkpoints' | 'training' | 'settings' | 'audit';
 
-export const ROUTES: Route[] = ['overview', 'map', 'reports', 'analytics', 'accounts', 'approvals', 'units', 'checkpoints', 'training', 'settings', 'audit'];
+export const ROUTES: Route[] = ['overview', 'map', 'reports', 'analytics', 'accounts', 'approvals', 'requests', 'units', 'checkpoints', 'training', 'settings', 'audit'];
 
 const NAV: Array<{ route: Route; label: string; icon: ReactNode; group?: string }> = [
   { route: 'overview', label: 'Overview', icon: <OverviewIcon /> },
@@ -18,6 +19,7 @@ const NAV: Array<{ route: Route; label: string; icon: ReactNode; group?: string 
   { route: 'analytics', label: 'Analytics', icon: <AnalyticsIcon /> },
   { route: 'accounts', label: 'Accounts', icon: <UsersIcon />, group: 'People' },
   { route: 'approvals', label: 'Approvals', icon: <ApprovalsIcon /> },
+  { route: 'requests', label: 'Crew requests', icon: <TruckIcon /> },
   { route: 'units', label: 'Barangay units', icon: <UnitsIcon />, group: 'Field operations' },
   { route: 'checkpoints', label: 'Checkpoints', icon: <PinIcon /> },
   { route: 'training', label: 'Training data', icon: <ModelIcon />, group: 'System' },
@@ -29,6 +31,7 @@ export function Layout({ route, children }: { route: Route; children: ReactNode 
   const { state, logOut } = useAuth();
   const { accounts, error } = useData();
   const pending = accounts.filter((a) => statusOf(a) === 'pending').length;
+  const waitingRequests = useCrewRequests().pending.length;
   const email = state.status === 'ready' ? state.actor.email : '';
 
   return (
@@ -45,6 +48,7 @@ export function Layout({ route, children }: { route: Route; children: ReactNode 
               {n.icon}
               <span>{n.label}</span>
               {n.route === 'approvals' && pending > 0 && <span className="badge" aria-label={`${pending} waiting`}>{pending}</span>}
+              {n.route === 'requests' && waitingRequests > 0 && <span className="badge" aria-label={`${waitingRequests} requests waiting`}>{waitingRequests}</span>}
             </a>,
           ])}
         </nav>

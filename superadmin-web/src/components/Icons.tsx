@@ -6,6 +6,9 @@ const base = (props: SVGProps<SVGSVGElement>) => ({
   'aria-hidden': true, ...props,
 });
 
+export const TruckIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7" /><circle cx="7" cy="17.5" r="1.8" /><circle cx="17" cy="17.5" r="1.8" /></svg>
+);
 export const OverviewIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></svg>
 );

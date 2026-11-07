@@ -1,10 +1,12 @@
 import { barangayById } from './barangays';
-import { Checkpoint, DAYS, Day, Inspection, Report, WASTE_GROUPS, WasteGroup } from './operations';
+import { Checkpoint, DAYS, Day, Inspection, Report, ReportStatus, SEVERITIES, Severity, WASTE_GROUPS, WasteGroup } from './operations';
 
 // Pure calculations behind the Overview, Analytics and Barangay Units pages.
 // `now` is a parameter everywhere so the figures can be tested with a fixed clock.
 
 const HOUR = 3_600_000;
+/** Year and month of a moment in Philippine time (UTC+8, no daylight saving). */
+const phMonth = (d: Date) => { const p = new Date(d.getTime() + 8 * HOUR); return { y: p.getUTCFullYear(), m: p.getUTCMonth() }; };
 const DAY_MS = 24 * HOUR;
 
 /** Local calendar day, e.g. "2026-10-24". */
@@ -127,12 +129,23 @@ export const reportStats = (reports: Report[], now: Date) => {
   const times = reports.map(responseHours).filter((h): h is number => h !== null);
   const confidences = reports.map((r) => r.aiConfidence).filter((c): c is number => c !== undefined);
 
-  // Last six calendar months, oldest first.
-  const months = Array.from({ length: 6 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - 5 + i, 1));
-  const monthly = months.map((m) => ({
-    label: m.toLocaleString('en-PH', { month: 'short' }),
-    count: reports.filter((r) => r.createdAt && r.createdAt.getFullYear() === m.getFullYear() && r.createdAt.getMonth() === m.getMonth()).length,
-  }));
+  // Last six calendar months in Philippine time (whatever the viewer's computer clock says), oldest first.
+  const ph = phMonth(now);
+  const monthly = Array.from({ length: 6 }, (_, i) => {
+    const first = new Date(Date.UTC(ph.y, ph.m - 5 + i, 1));
+    const y = first.getUTCFullYear();
+    const m = first.getUTCMonth();
+    return {
+      label: first.toLocaleString('en-PH', { month: 'short', timeZone: 'UTC' }),
+      count: reports.filter((r) => { if (!r.createdAt) return false; const p = phMonth(r.createdAt); return p.y === y && p.m === m; }).length,
+    };
+  });
+
+  // Open reports by severity, and every report by where it is in the workflow.
+  const severity = Object.fromEntries(SEVERITIES.map((s) => [s, 0])) as Record<Severity, number>;
+  for (const r of reports) if (isOpen(r)) severity[r.severity] += 1;
+  const byStatus = {} as Record<ReportStatus, number>;
+  for (const r of reports) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
 
   const waste = Object.fromEntries(WASTE_GROUPS.map((g) => [g, 0])) as Record<WasteGroup, number>;
   for (const r of reports) waste[r.wasteGroup] += 1;
@@ -147,6 +160,11 @@ export const reportStats = (reports: Report[], now: Date) => {
     total: reports.length,
     open: reports.filter(isOpen).length,
     resolved,
+    pending: byStatus.pending ?? 0,
+    verified: byStatus.verified ?? 0,
+    ongoing: (byStatus.assigned ?? 0) + (byStatus.in_progress ?? 0),
+    byStatus,
+    severity,
     critical: reports.filter((r) => r.severity === 'critical' && isOpen(r)).length,
     hazardous: reports.filter((r) => r.hazardous).length,
     thisWeek: reports.filter((r) => r.createdAt && now.getTime() - r.createdAt.getTime() < 7 * DAY_MS).length,

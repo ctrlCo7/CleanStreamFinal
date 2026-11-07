@@ -5,10 +5,13 @@ import {
   updateReportStatus,
 } from '../services/reportsService';
 import { ReportStatus, WasteReport } from '../types';
+import { login, logout, restoreSession } from './authSlice';
 
 interface ReportsState {
   reports: WasteReport[];
   userReports: WasteReport[];
+  /** Whose reports `userReports` holds. Another account must never see them. */
+  userReportsOwner: string | null;
   selectedReport: WasteReport | null;
   loading: boolean;
   error: string | null;
@@ -17,6 +20,7 @@ interface ReportsState {
 const initialState: ReportsState = {
   reports: [],
   userReports: [],
+  userReportsOwner: null,
   selectedReport: null,
   loading: false,
   error: null,
@@ -77,8 +81,17 @@ const reportsSlice = createSlice({
         state.loading = false;
         state.error = action.error.message || 'Failed to load reports';
       })
-      .addCase(fetchUserReports.pending, (state) => { state.loading = true; })
+      // Another account's list is dropped at once, not shown until the new one arrives.
+      .addCase(fetchUserReports.pending, (state, action) => {
+        state.loading = true;
+        if (state.userReportsOwner !== action.meta.arg) {
+          state.userReports = [];
+          state.userReportsOwner = action.meta.arg;
+        }
+      })
       .addCase(fetchUserReports.fulfilled, (state, action) => {
+        // A slow answer for the previous account (it signed out meanwhile) is thrown away.
+        if (action.meta.arg !== state.userReportsOwner) return;
         state.loading = false;
         state.userReports = action.payload;
       })
@@ -86,6 +99,11 @@ const reportsSlice = createSlice({
         state.loading = false;
         state.error = action.error.message ?? 'Failed to load reports';
       })
+      // Signing out, or a different person signing in on this phone, starts from nothing.
+      .addCase(logout.fulfilled, () => initialState)
+      .addCase(logout.rejected, () => initialState)
+      .addCase(login.fulfilled, (state, action) => (action.payload?.uid === state.userReportsOwner ? state : initialState))
+      .addCase(restoreSession.fulfilled, (state, action) => (action.payload?.uid === state.userReportsOwner ? state : initialState))
       .addCase(changeReportStatus.fulfilled, (state, action) => {
         const { reportId, status } = action.payload;
         const r = state.reports.find((x) => x.id === reportId);

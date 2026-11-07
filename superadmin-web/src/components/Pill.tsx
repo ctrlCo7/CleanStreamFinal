@@ -17,7 +17,7 @@ export const RolePill = ({ role }: { role: Role }) => (
   <span className={`pill pill-role pill-role-${role}`}>{ROLE_LABELS[role]}</span>
 );
 
-const SEVERITY_LABELS: Record<Severity, string> = { critical: 'Critical', high: 'High', moderate: 'Moderate', low: 'Low' };
+export const SEVERITY_LABELS: Record<Severity, string> = { critical: 'Critical', high: 'High', moderate: 'Moderate', low: 'Low' };
 
 export const SeverityPill = ({ severity }: { severity: Severity }) => (
   <span className={`pill pill-sev-${severity}`}>{SEVERITY_LABELS[severity]}</span>

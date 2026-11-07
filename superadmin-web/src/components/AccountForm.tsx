@@ -20,8 +20,17 @@ const barangayHint = (typed: string): string => {
     : `Barangay ${r.name}.`;
 };
 
+/** Starting values for a new account, e.g. from a barangay's cleanup team request. */
+export interface AccountPrefill {
+  email?: string; firstName?: string; lastName?: string; role?: Role;
+  barangayName?: string; phone?: string; crewSize?: number;
+  /** Shown at the top of the form, e.g. what was requested. */
+  note?: string;
+}
+
 interface CreateProps extends BaseProps {
   mode: 'create';
+  prefill?: AccountPrefill;
   onSubmit: (input: NewAccountInput, sendResetEmail: boolean) => void;
 }
 interface EditProps extends BaseProps {
@@ -34,17 +43,20 @@ interface EditProps extends BaseProps {
 
 export function AccountForm(props: CreateProps | EditProps) {
   const editing = props.mode === 'edit' ? props.account : null;
-  const [email, setEmail] = useState(editing?.email ?? '');
-  const [firstName, setFirstName] = useState(editing?.firstName ?? '');
-  const [lastName, setLastName] = useState(editing?.lastName ?? '');
-  const [role, setRole] = useState<Role>(editing?.role ?? 'barangay');
+  const pre = props.mode === 'create' ? props.prefill : undefined;
+  const [email, setEmail] = useState(editing?.email ?? pre?.email ?? '');
+  const [firstName, setFirstName] = useState(editing?.firstName ?? pre?.firstName ?? '');
+  const [lastName, setLastName] = useState(editing?.lastName ?? pre?.lastName ?? '');
+  const [role, setRole] = useState<Role>(editing?.role ?? pre?.role ?? 'barangay');
   // Typed, with the known barangays offered as suggestions; a name not on the list is added as a new barangay.
-  const [barangayName, setBarangayName] = useState(editing?.barangay ?? barangayById(editing?.barangayId)?.name ?? '');
+  const [barangayName, setBarangayName] = useState(editing?.barangay ?? barangayById(editing?.barangayId)?.name ?? pre?.barangayName ?? '');
   useData(); // re-render when newly registered barangays arrive, so they show up as suggestions
   const [employeeId, setEmployeeId] = useState(editing?.employeeId ?? '');
   const [agency, setAgency] = useState(editing?.agency ?? '');
-  const [phone, setPhone] = useState(editing?.phone ?? '');
-  const [crewSize, setCrewSize] = useState(editing?.crewSize != null ? String(editing.crewSize) : '');
+  const [phone, setPhone] = useState(editing?.phone ?? pre?.phone ?? '');
+  const [crewSize, setCrewSize] = useState(
+    editing?.crewSize != null ? String(editing.crewSize) : pre?.crewSize != null ? String(pre.crewSize) : '',
+  );
   const [password, setPassword] = useState(() => (props.mode === 'create' ? generatePassword() : ''));
   const [showPassword, setShowPassword] = useState(false);
   const [sendReset, setSendReset] = useState(true);
@@ -91,6 +103,7 @@ export function AccountForm(props: CreateProps | EditProps) {
     <Dialog title={props.mode === 'create' ? 'Create account' : 'Edit account'} onClose={props.onClose}>
       <form onSubmit={submit} noValidate>
         <div className="dialog-body form-grid">
+          {pre?.note && <p className="callout callout-info span-2">{pre.note}</p>}
           {field('firstName', 'First name', <input {...aria('firstName')} value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="off" autoFocus />)}
           {field('lastName', 'Last name', <input {...aria('lastName')} value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="off" />)}
 
