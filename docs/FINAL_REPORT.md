@@ -25,6 +25,7 @@ was used on a device; anything else is listed as not fully verified.
 | Portal Analytics | Added: severity of open reports, report workflow pipeline with completion rate. Monthly trend now grouped in Philippine time. |
 | Portal City map | Map tiles were blocked by the hosting security policy; policy updated (deployed earlier). Trips silent for 30 minutes are hidden. |
 | One-command APK build | `npm run build:apk` builds a release APK on this PC; verified twice (APK produced; the same build was installed and run). |
+| Email confirmation | Citizens, officials and Captains who sign themselves up get a confirmation email and see a "Confirm your email" screen (resend with a 60-second wait, automatic check on returning to the app). The security rules refuse reports and staff powers until the email is confirmed. Accounts from before this change and accounts the Super Admin creates are not affected. 10 rule tests. |
 | Debug output | Remaining debug logging limited to development builds. |
 | Documentation | `DEPLOYMENT.md` updated for SDK 58 and local builds; this report. |
 
@@ -47,7 +48,7 @@ All numbers below are from runs on 7 November 2026.
 | App unit tests | `cd superadmin-web && npm run test:mobile-ai` | **126 passed, 0 failed** (11 files) |
 | Portal type check | `cd superadmin-web && npx tsc --noEmit` | 0 errors |
 | Portal unit tests | `cd superadmin-web && npx vitest run` | **74 passed, 0 failed** (8 files) |
-| Security rules (Firestore emulator) | `cd superadmin-web && npm run test:rules` | **332 passed, 0 failed** (306 existing + 26 new) |
+| Security rules (Firestore emulator) | `cd superadmin-web && npm run test:rules` | **342 passed, 0 failed** (306 existing + 26 crew requests + 10 email confirmation) |
 | Portal production build | `cd superadmin-web && npm run build` | Built successfully |
 | App JavaScript bundle | `npx expo export --platform android` | Built successfully |
 | Release APK | `npm run build:apk` | See the build result added at the end of section C |
@@ -73,7 +74,9 @@ The five workflows in the brief were not each run through on phones in this roun
 | Android APK | `builds/CleanStream-<date>-<commit>.apk` | `npm run build:apk`; install by Google Drive, USB copy, or `npm run build:apk -- -Install` |
 | Environment | No secret keys in the app. Firebase web config is public by design; Cloudinary uses an unsigned preset. Service-account keys stay outside the project folder and are git-ignored. |
 
-**Database changes:** one new collection, `crewRequests`, created on first use. No migration of existing data is needed and no existing data is changed.
+**Database changes:** one new collection, `crewRequests`, created on first use, and a new profile field `emailVerificationRequired` set only on new self sign-ups. No migration of existing data is needed and no existing data is changed.
+
+**Order matters:** install the new APK on phones before or right after deploying the rules. Once the new rules are live, sign-ups from the **old** APK are refused (it doesn't set the email confirmation field).
 
 **Deploy status:** the rules, indexes and portal for this round are **not deployed yet**. The deploy needs your Firebase sign-in:
 
@@ -181,7 +184,7 @@ Real reports filed through the app, not seeded fakes:
 ## F. Final status
 
 ### COMPLETE AND VERIFIED
-- Security rules for every role and barangay, including crew requests: 332 of 332 rule tests.
+- Security rules for every role and barangay, including crew requests and email confirmation: 342 of 342 rule tests.
 - App launches, signs in and shows Google maps on phones with Google services (emulator and team phones).
 - Report isolation between accounts on one phone: regression tests.
 - Live-tracking status logic, notification routing, request validation, schedule-conflict and crew-size logic, hotspot and duplicate rules: unit tests (126 app, 74 portal).
@@ -191,6 +194,7 @@ Real reports filed through the app, not seeded fakes:
 
 ### IMPLEMENTED BUT NOT FULLY VERIFIED
 - Cleanup team requests end to end on real devices (code and rules tested; the live rules are not deployed yet).
+- Email confirmation on a real phone and inbox (rules tested; the email itself depends on Firebase's sender and may land in spam).
 - New Overview and Analytics figures in the browser (builds and unit tests pass; not looked at with live data).
 - Full five-workflow chain across four phones (report → verify → approve → track → complete; checkpoint issue; conflict; offline sync).
 - Background location on iPhone and on Huawei phones (permissions and fallbacks are in place; not tested on those devices).

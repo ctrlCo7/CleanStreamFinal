@@ -101,7 +101,7 @@ await check("citizen can't un-remove self (deletedAt)", assertFails(updateDoc(do
 await check("unverified user can't approve self", assertFails(updateDoc(doc(as('ct2'), 'users', 'ct2'), { isVerified: true })));
 await check("citizen can't edit others", assertFails(updateDoc(doc(ct, 'users', 'victim'), { firstName: 'X' })));
 const fresh = env.authenticatedContext('brand_new').firestore();
-await check('self-signup as citizen works', assertSucceeds(setDoc(doc(fresh, 'users', 'brand_new'), { uid: 'brand_new', email: 'n@x.co', firstName: 'N', lastName: 'W', role: 'citizen' })));
+await check('self-signup as citizen works', assertSucceeds(setDoc(doc(fresh, 'users', 'brand_new'), { uid: 'brand_new', email: 'n@x.co', firstName: 'N', lastName: 'W', role: 'citizen', emailVerificationRequired: true })));
 const fresh2 = env.authenticatedContext('brand_new2').firestore();
 await check('self-signup as barangay without the ID check is refused', assertFails(setDoc(doc(fresh2, 'users', 'brand_new2'), { uid: 'brand_new2', email: 'n2@x.co', firstName: 'N', lastName: 'W', role: 'barangay' })));
 const fresh3 = env.authenticatedContext('brand_new3').firestore();
@@ -188,7 +188,7 @@ await check('approved barangay official can verify a report', assertSucceeds(upd
 await check('existing barangay official (no field) still works', assertSucceeds(getDoc(doc(as('bg'), 'users', 'cl'))));
 
 console.log('\n== Identity verification: self sign-up cannot skip the check');
-const su = (uid, data) => setDoc(doc(env.authenticatedContext(uid).firestore(), 'users', uid), { uid, email: uid + '@x.co', firstName: 'N', lastName: 'W', ...data });
+const su = (uid, data) => setDoc(doc(env.authenticatedContext(uid).firestore(), 'users', uid), { uid, email: uid + '@x.co', firstName: 'N', lastName: 'W', emailVerificationRequired: true, ...data });
 await check('admin sign-up with idVerification pending is accepted', assertSucceeds(su('n_ad', { role: 'admin', idVerification: 'pending', isVerified: false, isActive: true })));
 await check('barangay sign-up with idVerification pending is accepted', assertSucceeds(su('n_bg', { role: 'barangay', idVerification: 'pending', isVerified: false, isActive: true })));
 await check('admin sign-up WITHOUT idVerification is refused', assertFails(su('n_ad2', { role: 'admin', isVerified: false })));
@@ -479,6 +479,26 @@ await check("requests can't be deleted", assertFails(deleteDoc(doc(as('sa'), 'cr
 await check('the Super Admin notifies the requester', assertSucceeds(addDoc(collection(as('sa'), 'notifications'), {
   userId: 'bg', senderId: 'sa', type: 'crew_request', title: 'Cleanup team account created', body: 'x', read: false,
 })));
+
+console.log('\n== Email confirmation for people who sign themselves up');
+await check('a self sign-up without email confirmation is refused', assertFails(su('ev_new', { role: 'citizen', emailVerificationRequired: false })));
+await check('a self sign-up that leaves the flag out is refused', assertFails(setDoc(doc(env.authenticatedContext('ev_new2').firestore(), 'users', 'ev_new2'), { uid: 'ev_new2', email: 'e@x.co', firstName: 'N', lastName: 'W', role: 'citizen' })));
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, 'users', 'ev_ct'), base('ev_ct', 'citizen', { barangayId: 'b1', emailVerificationRequired: true }));
+  await setDoc(doc(db, 'users', 'ev_bg'), base('ev_bg', 'barangay', { barangayId: 'b1', emailVerificationRequired: true, idVerification: 'approved' }));
+});
+const unconfirmed = (uid) => env.authenticatedContext(uid, { email_verified: false }).firestore();
+const confirmed = (uid) => env.authenticatedContext(uid, { email_verified: true }).firestore();
+const evReport = (uid) => ({ userId: uid, barangayId: 'b1', location: { latitude: 1, longitude: 2 }, status: 'pending', severity: 'low' });
+await check("a citizen who hasn't confirmed their email can't file a report", assertFails(setDoc(doc(unconfirmed('ev_ct'), 'reports', 'ev_r1'), evReport('ev_ct'))));
+await check('after confirming, the citizen can file a report', assertSucceeds(setDoc(doc(confirmed('ev_ct'), 'reports', 'ev_r2'), evReport('ev_ct'))));
+await check("an official who hasn't confirmed their email can't verify reports", assertFails(updateDoc(doc(unconfirmed('ev_bg'), 'reports', 'ev_r2'), { status: 'verified', verifiedBy: 'ev_bg' })));
+await check("...or request a cleanup team", assertFails(setDoc(doc(unconfirmed('ev_bg'), 'crewRequests', 'ev_cr'), crewReq('ev_bg', 'barangay', 'b1'))));
+await check('after confirming, the official can request a cleanup team', assertSucceeds(setDoc(doc(confirmed('ev_bg'), 'crewRequests', 'ev_cr2'), crewReq('ev_bg', 'barangay', 'b1'))));
+await check("a user can't remove the email confirmation requirement", assertFails(updateDoc(doc(unconfirmed('ev_ct'), 'users', 'ev_ct'), { emailVerificationRequired: false })));
+await check('accounts from before the check keep working without confirming', assertSucceeds(setDoc(doc(unconfirmed('vol1'), 'reports', 'ev_r3'), evReport('vol1'))));
+await check('accounts the Super Admin created keep working without confirming', assertSucceeds(updateDoc(doc(unconfirmed('bg'), 'reports', 'ev_r2'), { status: 'verified', verifiedBy: 'bg', verifiedByName: 'Official', verifiedAt: serverTimestamp(), updatedAt: serverTimestamp() })));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup();

@@ -17,6 +17,8 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import SignupScreen from '../screens/auth/SignupScreen';
 import IdentityVerificationScreen from '../screens/auth/IdentityVerificationScreen';
 import VerificationPendingScreen from '../screens/auth/VerificationPendingScreen';
+import VerifyEmailScreen from '../screens/auth/VerifyEmailScreen';
+import { needsEmailConfirmation } from '../services/authService';
 import MapScreen from '../screens/MapScreen';
 
 import CitizenNavigator from './CitizenNavigator';
@@ -88,6 +90,8 @@ export default function RootNavigator() {
   // Admin / Barangay Official applicants stay on the waiting screen until the Super Admin
   // approves their ID (the security rules give them no powers until then either).
   const awaitingIdReview = user?.idVerification === 'pending' || user?.idVerification === 'rejected';
+  // People who signed themselves up confirm their email first (the security rules require it too).
+  const awaitingEmail = needsEmailConfirmation(user);
 
   const navTheme = {
     ...(isDark ? DarkTheme : DefaultTheme),
@@ -104,7 +108,9 @@ export default function RootNavigator() {
   return (
     <NavigationContainer ref={navRef} theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
-        {isAuthenticated && user && awaitingIdReview ? (
+        {isAuthenticated && user && awaitingEmail ? (
+          <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+        ) : isAuthenticated && user && awaitingIdReview ? (
           <>
             <Stack.Screen name="VerificationPending" component={VerificationPendingScreen} />
             <Stack.Screen name="IdentityVerification" component={IdentityVerificationScreen} />

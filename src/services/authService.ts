@@ -2,6 +2,7 @@ import {
   createUserWithEmailAndPassword,
   User as FirebaseUser,
   onAuthStateChanged,
+  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
@@ -46,6 +47,8 @@ export const registerUser = async (
     agency,
     phone,
     ...(requiresIdentityCheck(role) ? { idVerification: 'pending' as const } : {}),
+    // Everyone who signs themselves up confirms their email (the security rules require it).
+    emailVerificationRequired: true,
     isActive: true,
     isVerified: false,
     createdAt: new Date().toISOString(),
@@ -60,6 +63,8 @@ export const registerUser = async (
   }
 
   await setDoc(doc(db, 'users', uid), firestorePayload);
+  // The confirmation link. If sending fails, the "Confirm your email" screen offers to resend.
+  await sendEmailVerification(credential.user).catch((e) => console.warn('[Auth] Confirmation email not sent:', e));
 
   if (evidence) {
     try {
@@ -105,6 +110,29 @@ export const loginUser = async (
   }
 
   return { firebaseUser: credential.user, userData };
+};
+
+/** True when this person must still confirm their email before using the app. */
+export const needsEmailConfirmation = (profile: Pick<User, 'emailVerificationRequired'> | null | undefined): boolean =>
+  !!profile?.emailVerificationRequired && !auth.currentUser?.emailVerified;
+
+/** Sends the confirmation link again. */
+export const resendConfirmationEmail = async (): Promise<void> => {
+  if (!auth.currentUser) throw new Error('Sign in again first.');
+  await sendEmailVerification(auth.currentUser);
+};
+
+/**
+ * Asks Firebase whether the email was confirmed (e.g. after tapping the link in another app),
+ * and refreshes the sign-in token so the security rules see it too.
+ */
+export const checkEmailConfirmed = async (): Promise<boolean> => {
+  const u = auth.currentUser;
+  if (!u) return false;
+  await u.reload();
+  if (!auth.currentUser?.emailVerified) return false;
+  await auth.currentUser.getIdToken(true);
+  return true;
 };
 
 export const logoutUser = async (): Promise<void> => {

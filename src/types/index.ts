@@ -24,6 +24,8 @@ export interface User {
   // Set only for Admin / Barangay Official sign-ups, which must have their ID and face
   // checked by the Super Admin. 'pending' and 'rejected' accounts have no staff powers.
   idVerification?: IdVerificationStatus;
+  /** Signed themselves up: must confirm their email before reporting or using staff powers. */
+  emailVerificationRequired?: boolean;
   idRejectionReason?: string;
   isActive: boolean;
   isVerified: boolean;
@@ -840,6 +842,7 @@ export type RootStackParamList = {
   AdminCheckpointAlarms: undefined;
   AdminApprovals: undefined;
   RequestCrew: undefined;
+  VerifyEmail: undefined;
 };
 
 // ─── Cleanup team account requests ────────────────────────────────────────────
