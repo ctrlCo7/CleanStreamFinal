@@ -8,7 +8,7 @@ plan is marked.
 
 | Part | Technology | Hosted on | Cost |
 |---|---|---|---|
-| Mobile app (citizens, officials, Captains, crews) | Expo SDK 57 / React Native | Built with EAS, installed as APK / App Store | Free (EAS free tier) |
+| Mobile app (citizens, officials, Captains, crews) | Expo SDK 58 / React Native 0.88 | Built on this PC (`npm run build:apk`) or with EAS; installed as APK / App Store | Free |
 | Super Admin portal | Vite + React (`superadmin-web/`) | Firebase Hosting | Free |
 | Sign-in | Firebase Authentication | Firebase | Free |
 | Database and access control | Cloud Firestore + `firestore.rules` | Firebase | Free within Spark quotas |
@@ -67,7 +67,21 @@ Edge, Firefox and Safari.
 
 ## 5. Building the mobile app
 
-Commit your changes first (EAS builds what is committed). Then:
+Build from the `upgrade/expo-sdk-58` branch. Both ways build what is **committed**.
+
+**On this PC (no Expo account, no monthly limit):**
+
+```
+npm run build:apk               # APK lands in builds/CleanStream-<date>-<commit>.apk
+npm run build:apk -- -Install   # also installs it on a phone plugged in by USB
+```
+
+Needs the Android SDK, the JDK in the Android Studio folder, and CMake + Ninja
+(`winget install --id Kitware.CMake -e`, `winget install --id Ninja-build.Ninja -e`). It builds in
+`C:\csb`, a short-path copy, because some libraries create file paths longer than Windows allows.
+Updates install over the previous APK (same signing key). See `scripts/build-apk.ps1`.
+
+**With EAS (free tier: limited Android builds per month):**
 
 ```
 npx eas-cli@latest login
