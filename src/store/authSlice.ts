@@ -6,6 +6,7 @@ import {
   registerUser,
 } from '../services/authService';
 import { IdentityEvidence, User, UserRole } from '../types';
+import { friendlyAuthError } from '../services/authMessages';
 
 interface AuthState {
   user: User | null;
@@ -28,7 +29,7 @@ export const login = createAsyncThunk(
       const { userData } = await loginUser(email, password);
       return userData;
     } catch (e: unknown) {
-      return rejectWithValue((e as Error).message);
+      return rejectWithValue(friendlyAuthError(e));
     }
   },
 );
@@ -66,7 +67,7 @@ export const register = createAsyncThunk(
         params.phone,
       );
     } catch (e: unknown) {
-      return rejectWithValue((e as Error).message);
+      return rejectWithValue(friendlyAuthError(e));
     }
   },
 );
@@ -81,7 +82,7 @@ export const restoreSession = createAsyncThunk(
     try {
       return await getUsableProfile(uid);
     } catch (e: unknown) {
-      return rejectWithValue((e as Error).message);
+      return rejectWithValue(friendlyAuthError(e));
     }
   },
 );
