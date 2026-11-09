@@ -151,7 +151,13 @@ export const getUserProfile = async (uid: string): Promise<User | null> => {
 
 /** Profile for a restored session, or an error (and sign-out) if the account may no longer use the app. */
 export const getUsableProfile = async (uid: string): Promise<User> => {
-  const profile = await getUserProfile(uid);
+  // Right after sign-up, Firebase reports the new sign-in a moment before the profile is
+  // saved. Wait briefly for it instead of treating the new account as having no profile.
+  let profile = await getUserProfile(uid);
+  for (let i = 0; !profile && i < 5; i++) {
+    await new Promise((ok) => setTimeout(ok, 800));
+    profile = await getUserProfile(uid);
+  }
   if (!profile) throw new Error('Profile not found');
   try {
     assertCanUseApp(profile);

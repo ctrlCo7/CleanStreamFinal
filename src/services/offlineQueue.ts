@@ -67,6 +67,9 @@ const write = async (items: QueuedReport[]) => {
 
 export const loadQueue = async () => emit({ items: await read() });
 
+/** Reports currently waiting on this phone (as last read). */
+export const queuedItems = (): QueuedReport[] => state.items;
+
 // ─── Connectivity ────────────────────────────────────────────────────────────
 
 /** True when the internet is actually reachable (not just Wi-Fi connected to nothing). */

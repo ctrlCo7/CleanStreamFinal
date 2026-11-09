@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer, NavigationContainerRef, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { useLiveNotifications } from '../hooks/useLiveNotifications';
+import { useOfflineSync } from '../hooks/useOfflineQueue';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthChange } from '../services/authService';
 import { restoreSession, setUser } from '../store/authSlice';
@@ -84,6 +85,9 @@ export default function RootNavigator() {
   // New notifications pop up on the phone and open the right screen when tapped (all roles).
   const navRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
   useLiveNotifications(isAuthenticated ? user : null, navRef);
+  // Officials file reports too (e.g. a problem found at a checkpoint): send theirs when back online.
+  // Citizens' are sent by CitizenNavigator, which also refreshes their report list.
+  useOfflineSync(isAuthenticated && user?.role === 'barangay' ? user.uid : undefined);
 
   if (initializing) return <LoadingScreen />;
 

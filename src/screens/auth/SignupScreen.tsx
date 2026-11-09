@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
-import { clearError, register, setUser } from '../../store/authSlice';
+import { clearError, register } from '../../store/authSlice';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { RootStackParamList, UserRole } from '../../types';
 import { CEBU_BARANGAYS } from '../../services/locationService';
@@ -106,11 +106,11 @@ export default function SignupScreen({ navigation }: Props) {
     );
     if (register.fulfilled.match(result)) {
       clearIdentityDraft();
-      dispatch(setUser(null));
+      // Stay signed in: the app now shows "Confirm your email" (and, for officials and
+      // Captains, the ID review screen after that). Nothing else to do here.
       if (needsId) {
-        Alert.alert('Account created', 'Your ID is now with the Super Admin for review. Sign in to see the status. You will get access once it is approved.');
+        Alert.alert('Account created', 'First confirm your email with the link we sent. Your ID is with the Super Admin for review, and you will get access once it is approved.');
       }
-      navigation.navigate('Login');
     } else {
       Alert.alert('Sign up failed', result.payload as string || 'Please try again.');
     }

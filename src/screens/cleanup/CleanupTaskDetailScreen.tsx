@@ -386,7 +386,7 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
             {[
               { k: 'Date', v: formatDateKey(task.scheduledDate) },
               { k: 'Time', v: `${formatHHmm(task.startTime)} - ${formatHHmm(task.endTime)}` },
-              { k: 'People needed', v: String(task.personnelCount) },
+              { k: 'People needed', v: task.personnelCount ? String(task.personnelCount) : 'Not specified' },
               { k: 'Equipment', v: task.equipmentNeeded.length > 0 ? task.equipmentNeeded.join(', ') : 'None listed' },
             ].map((row) => (
               <View key={row.k} style={styles.infoRow}>
