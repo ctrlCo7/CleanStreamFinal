@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
@@ -59,7 +59,8 @@ export default function ApprovalsScreen() {
   const barangayId = user?.barangayId ?? '';
   const [tasks, setTasks] = useState<CleanupTask[] | null>(null);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<Tab>('pending');
+  const route = useRoute<RouteProp<RootStackParamList, 'AdminApprovals'>>();
+  const [tab, setTab] = useState<Tab>(route.params?.tab ?? 'pending');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [remarks, setRemarks] = useState('');

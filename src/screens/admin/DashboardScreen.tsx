@@ -60,6 +60,8 @@ export default function AdminDashboardScreen() {
   const declined = tasks.filter((t) => t.status === 'declined').length;
   const rejectedSchedules = tasks.filter((t) => t.status === 'rejected').length;
   const completedCleanups = tasks.filter((t) => t.status === 'completed').length;
+  // Finished by the crew, waiting for the Captain to check the photos and close the report.
+  const toConfirm = tasks.filter((t) => t.status === 'completed' && !t.confirmedAt);
   // Checkpoints
   const cp = monitor.progress;
   const flagged = (monitor.checkpoints ?? []).filter((c) => ['missed', 'issue'].includes(monitor.statuses.get(c.id) ?? ''));
@@ -150,6 +152,18 @@ export default function AdminDashboardScreen() {
             onPress={() => navigation.navigate('AdminApprovals')}
           />
         )}
+        {toConfirm.length > 0 && (
+          <AlertStrip
+            icon="✅"
+            title={`${toConfirm.length} finished cleanup${toConfirm.length === 1 ? '' : 's'} waiting for your confirmation`}
+            sub="Check the after photos, then confirm to close the report"
+            color={colors.tealDark}
+            bg={colors.tealLight}
+            onPress={() => (toConfirm.length === 1
+              ? navigation.navigate('CleanupTaskDetail', { taskId: toConfirm[0].id })
+              : navigation.navigate('AdminApprovals', { tab: 'completed' }))}
+          />
+        )}
         {cp.missed + cp.issue > 0 && (
           <AlertStrip
             icon="🌊"
@@ -187,7 +201,7 @@ export default function AdminDashboardScreen() {
             { value: proposals.length, label: 'To approve', color: colors.amber, onPress: () => navigation.navigate('AdminApprovals') },
             { value: approvedTasks.length, label: 'Approved', color: colors.blue },
             { value: declined + rejectedSchedules, label: 'Declined', color: colors.red },
-            { value: completedCleanups, label: 'Completed', color: colors.green },
+            { value: completedCleanups, label: 'Completed', color: colors.green, onPress: () => navigation.navigate('AdminApprovals', { tab: 'completed' }) },
           ]}
         />
         {upcoming.length > 0 && (

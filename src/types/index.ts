@@ -840,7 +840,7 @@ export type RootStackParamList = {
   BarangayChat: { conversationId: string; participantName: string; reportTag?: string; receiverId?: string; inboxKey?: string };
   BarangayAlarms: undefined;
   AdminCheckpointAlarms: undefined;
-  AdminApprovals: undefined;
+  AdminApprovals: { tab?: 'pending' | 'approved' | 'rejected' | 'declined' | 'completed' } | undefined;
   RequestCrew: undefined;
   VerifyEmail: undefined;
 };

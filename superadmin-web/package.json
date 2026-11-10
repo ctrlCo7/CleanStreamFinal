@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:mobile-ai": "vitest run --root .. --dir ../src/services",
+    "test:workflow": "npx firebase-tools@latest emulators:exec --config ../firebase.json --only firestore --project cleanstream-b7942 \"node tests/workflow.e2e.mjs\"",
     "test:rules": "npx firebase-tools@latest emulators:exec --config ../firebase.json --only firestore --project cleanstream-b7942 \"node tests/rules.test.mjs\""
   },
   "dependencies": {

@@ -42,16 +42,21 @@ export const getCleanupTaskById = async (taskId: string): Promise<CleanupTask | 
   return { id: snap.id, ...snap.data() } as CleanupTask;
 };
 
+/** The task states a crew may see: approved by the Captain, and what followed. */
+export const CREW_VISIBLE_STATUSES: CleanupTaskStatus[] = ['assigned', 'accepted', 'in_progress', 'completed', 'cancelled'];
+
 export const getTasksByTeam = async (teamId: string): Promise<CleanupTask[]> => {
+  // A crew only ever sees schedules the Barangay Captain approved (not proposals, declined or
+  // rejected ones). The security rules enforce this, so the query must ask only for those.
   const q = query(
     collection(db, COL),
     where('assignedTeamId', '==', teamId),
-    orderBy('scheduledDate', 'asc'),
+    where('status', 'in', CREW_VISIBLE_STATUSES),
   );
   const snap = await getDocs(q);
-  // A crew only ever sees schedules the Barangay Captain approved (not proposals, declined or rejected ones).
+  // Sorted here: ordering in the query would need another composite index.
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as CleanupTask))
-    .filter((t) => t.status !== 'proposed' && t.status !== 'declined' && t.status !== 'rejected');
+    .sort((a, b) => String(a.scheduledDate).localeCompare(String(b.scheduledDate)));
 };
 
 export const getTasksByBarangay = async (

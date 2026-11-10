@@ -433,7 +433,16 @@ export const finishTask = async (task: CleanupTask, actor: User, input: FinishIn
     completedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  await notify(task.assignedByUserId, 'Cleanup finished', `${fullName(actor)} finished ${task.title}. Please review the photos and confirm.`, task, 'task_updated');
+  // Only the Barangay Captain can confirm and close it, so the Captain is told to review it; the
+  // official who proposed the schedule is kept informed. (Before, only the proposer was told,
+  // and a proposing official was asked to confirm something only the Captain can.)
+  const captains = await captainsOf(task.barangayId);
+  const reviewBody = `${fullName(actor)} finished ${task.title}. Please review the photos and confirm.`;
+  await Promise.all(captains.map((id) => notify(id, 'Cleanup finished: please confirm', reviewBody, task, 'task_updated')));
+  if (!captains.includes(task.assignedByUserId)) {
+    await notify(task.assignedByUserId, 'Cleanup finished',
+      `${fullName(actor)} finished ${task.title}. The Barangay Captain will review the photos and confirm.`, task, 'task_updated');
+  }
 };
 
 // ─── The official's / Admin's side ───────────────────────────────────────────

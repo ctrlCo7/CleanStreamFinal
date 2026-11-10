@@ -331,10 +331,11 @@ Is this where you are?`,
       Alert.alert(
         t('report.submittedTitle'),
         t(aiIssue === 'skipped' ? 'report.aiSkipped' : aiIssue === 'disabled' ? 'report.aiDisabled' : 'report.aiFailed'),
-        [{ text: t('report.viewReport'), onPress: () => navigation.navigate('CitizenAIResult', { report: reportPayload }) }],
+        [{ text: t('report.viewReport'), onPress: () => navigation.replace('CitizenAIResult', { report: reportPayload }) }],
       );
     } else {
-      navigation.navigate('CitizenAIResult', { report: reportPayload });
+      // Replace the form, so Back can't return to it and send the same report twice.
+      navigation.replace('CitizenAIResult', { report: reportPayload });
     }
   };
 

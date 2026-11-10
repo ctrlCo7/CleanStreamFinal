@@ -272,7 +272,11 @@ const enrichPosition = async (
     (await reverseGeocodeNative(latitude, longitude)) ??
     (await reverseGeocodeOsm(latitude, longitude));
 
-  const name = place?.name ?? nearest.name;
+  // Only trust a geocoded name if it is a real Cebu City barangay; otherwise use the GPS-nearest
+  // one. The name and the id must agree: the geocoder sometimes answers with the city ("Cebu"),
+  // and reports were then labelled "Cebu" while being filed under the nearest barangay.
+  const matched = place?.name ? findBarangayByName(place.name) : undefined;
+  const name = matched?.name ?? nearest.name;
   return {
     place,
     loc: {
@@ -281,9 +285,7 @@ const enrichPosition = async (
       ...(accuracy ? { accuracy } : {}),
       timestamp,
       barangay: name,
-      // Only trust a geocoded name for barangayId if it matches the canonical list;
-      // otherwise keep the GPS-nearest match so the report still links to a real barangay.
-      barangayId: findBarangayByName(name)?.id ?? nearest.id,
+      barangayId: matched?.id ?? nearest.id,
       address: place?.address ?? `${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E`,
     },
   };

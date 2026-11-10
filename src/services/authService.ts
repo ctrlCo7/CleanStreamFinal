@@ -7,6 +7,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { IdentityEvidence, User, UserRole } from '../types';
 import { auth, db } from './firebase';
@@ -109,6 +110,7 @@ export const loginUser = async (
     throw e;
   }
 
+  cacheProfile(userData);
   return { firebaseUser: credential.user, userData };
 };
 
@@ -136,6 +138,7 @@ export const checkEmailConfirmed = async (): Promise<boolean> => {
 };
 
 export const logoutUser = async (): Promise<void> => {
+  await clearCachedProfile();
   await signOut(auth);
 };
 
@@ -149,22 +152,59 @@ export const getUserProfile = async (uid: string): Promise<User | null> => {
   return userDoc.data() as User;
 };
 
-/** Profile for a restored session, or an error (and sign-out) if the account may no longer use the app. */
+const PROFILE_KEY = 'cleanstream.profile.v1';
+
+/** The last profile loaded on this phone, so a saved sign-in still opens when offline. */
+function cacheProfile(profile: User): void {
+  AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile)).catch(() => undefined);
+}
+async function cachedProfile(uid: string): Promise<User | null> {
+  try {
+    const raw = await AsyncStorage.getItem(PROFILE_KEY);
+    const p = raw ? (JSON.parse(raw) as User) : null;
+    return p?.uid === uid ? p : null;
+  } catch {
+    return null;
+  }
+}
+async function clearCachedProfile(): Promise<void> {
+  await AsyncStorage.removeItem(PROFILE_KEY).catch(() => undefined);
+}
+
+const isOfflineError = (e: unknown): boolean => {
+  const code = (e as { code?: string })?.code ?? '';
+  const msg = (e as { message?: string })?.message ?? '';
+  return code === 'unavailable' || code === 'auth/network-request-failed' || /offline|network/i.test(msg);
+};
+
+/**
+ * Profile for a saved or restored sign-in, or an error (and sign-out) if the account may no
+ * longer use the app. When the phone is offline, the copy saved on the phone is used instead.
+ */
 export const getUsableProfile = async (uid: string): Promise<User> => {
-  // Right after sign-up, Firebase reports the new sign-in a moment before the profile is
-  // saved. Wait briefly for it instead of treating the new account as having no profile.
-  let profile = await getUserProfile(uid);
-  for (let i = 0; !profile && i < 5; i++) {
-    await new Promise((ok) => setTimeout(ok, 800));
+  let profile: User | null;
+  try {
+    // Right after sign-up, Firebase reports the new sign-in a moment before the profile is
+    // saved. Wait briefly for it instead of treating the new account as having no profile.
     profile = await getUserProfile(uid);
+    for (let i = 0; !profile && i < 5; i++) {
+      await new Promise((ok) => setTimeout(ok, 800));
+      profile = await getUserProfile(uid);
+    }
+  } catch (e) {
+    const saved = isOfflineError(e) ? await cachedProfile(uid) : null;
+    if (saved) return saved;
+    throw e;
   }
   if (!profile) throw new Error('Profile not found');
   try {
     assertCanUseApp(profile);
   } catch (e) {
+    await clearCachedProfile();
     await signOut(auth);
     throw e;
   }
+  cacheProfile(profile);
   return profile;
 };
 

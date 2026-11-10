@@ -1,5 +1,7 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { getAuth, initializeAuth, inMemoryPersistence } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FirebaseAuth from 'firebase/auth';
+import { getAuth, initializeAuth, Persistence } from 'firebase/auth';
 import { getDatabase } from 'firebase/database';
 import { getFirestore, initializeFirestore } from 'firebase/firestore';
 
@@ -16,13 +18,17 @@ const firebaseConfig = {
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// In-memory persistence: the session lives only for the current app run, so
-// every fresh launch lands on the Login/Signup screen instead of auto-restoring
-// a previously signed-in account.
+// The sign-in is saved on the phone, so whoever signed in last is opened straight away the
+// next time the app starts, until they sign out. getReactNativePersistence only exists in
+// Firebase's React Native build (which Metro uses), so it is not in the default type files.
+const { getReactNativePersistence } = FirebaseAuth as unknown as {
+  getReactNativePersistence: (storage: typeof AsyncStorage) => Persistence;
+};
+
 let auth: ReturnType<typeof getAuth>;
 try {
   auth = initializeAuth(app, {
-    persistence: inMemoryPersistence,
+    persistence: getReactNativePersistence(AsyncStorage),
   });
 } catch {
   auth = getAuth(app);

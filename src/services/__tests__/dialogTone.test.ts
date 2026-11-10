@@ -10,6 +10,8 @@ describe('pop-up type from its title', () => {
     ['Request sent', 'success'],
     ['Account created', 'success'],
     ['Email sent', 'success'],
+    ['Task finished', 'success'],
+    ['Recorded', 'success'],
     ['Cancel this request?', 'warning'],
     ['Stop sharing your location?', 'warning'],
     ['Missing fields', 'warning'],

@@ -184,7 +184,8 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
 
   // Arriving or starting work ends the trip, so the crew's location stops being shared.
   const start = () => run(async () => {
-    if (tracking?.status === 'en_route') await endTrip(task.id, 'arrived');
+    // This phone's own trip, whatever the live view shows, so sharing never outlives the trip.
+    if (tracking?.status === 'en_route' || isTripActive(task.id)) await endTrip(task.id, 'arrived');
     await startTask(task, user);
   });
 
@@ -218,13 +219,13 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
   const finish = () => {
     const parsed = parseKg();
     if (!parsed.ok) return;
-    Alert.alert('Finish this task?', 'The official will be told and will check your photos.', [
+    Alert.alert('Finish this task?', 'The Barangay Captain will be told and will check your photos.', [
       { text: 'Not yet', style: 'cancel' },
       {
         text: 'Finish task',
         onPress: () => run(
           () => finishTask(task, user, { notes, wasteCollectedKg: parsed.value }),
-          { title: 'Task finished', body: 'Thank you! The official will review your photos and confirm.' },
+          { title: 'Task finished', body: 'Thank you! The Barangay Captain will review your photos and confirm.' },
         ),
       },
     ]);
@@ -460,13 +461,13 @@ export default function CleanupTaskDetailScreen({ navigation, route }: Props) {
                     <View style={styles.cmpRow}>
                       <View style={styles.cmpCol}>
                         <Text style={styles.cmpLabel}>Before{cmp.before?.source === 'report' ? ' (report)' : ''}</Text>
-                        <Text style={styles.cmpValue}>{cmp.before ? `${cmp.before.objectCount} items` : '—'}</Text>
+                        <Text style={styles.cmpValue}>{cmp.before ? `${cmp.before.objectCount} ${cmp.before.objectCount === 1 ? 'item' : 'items'}` : '—'}</Text>
                         <Text style={styles.cmpSub}>{cmp.before ? formatVolume(cmp.before.volumeM3) : ''}</Text>
                       </View>
                       <Text style={styles.cmpArrow}>→</Text>
                       <View style={styles.cmpCol}>
                         <Text style={styles.cmpLabel}>After</Text>
-                        <Text style={styles.cmpValue}>{cmp.after ? `${cmp.after.objectCount} items` : '—'}</Text>
+                        <Text style={styles.cmpValue}>{cmp.after ? `${cmp.after.objectCount} ${cmp.after.objectCount === 1 ? 'item' : 'items'}` : '—'}</Text>
                         <Text style={styles.cmpSub}>{cmp.after ? formatVolume(cmp.after.volumeM3) : ''}</Text>
                       </View>
                       {cmp.removedPct !== undefined && (

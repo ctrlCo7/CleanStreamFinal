@@ -308,7 +308,10 @@ service cloud.firestore {
                     isSuperAdmin() ||
                     (isAdmin() && inMyBarangay(resource.data.barangayId)) ||
                     (isBarangayOfficer() && sameBarangay(resource.data.barangayId)) ||
-                    (isCleanupTeam() && resource.data.assignedTeamId == currentUid())
+                    // Only once the Captain approved it: proposals, and declined or rejected
+                    // schedules, never reach the crew (also matches the app's crew queries).
+                    (isCleanupTeam() && resource.data.assignedTeamId == currentUid()
+                      && resource.data.status in ['assigned', 'accepted', 'in_progress', 'completed', 'cancelled'])
                   );
 
       // A cleanup stays inside the report's barangay: the task's barangay must be the report's,
@@ -387,8 +390,12 @@ service cloud.firestore {
       function trackedTask() {
         return get(/databases/$(database)/documents/cleanupTasks/$(taskId)).data;
       }
+      // A trip that hasn't started yet doesn't exist: reading it reveals nothing, and must be
+      // allowed, or a screen opened before "On my way" gets a permission error, its live
+      // listener closes, and it never sees the trip start.
       allow read: if isAuthenticated() && (
-                    resource.data.crewId == currentUid()
+                    resource == null
+                    || resource.data.crewId == currentUid()
                     || isSuperAdmin()
                     || ((isAdmin() || isBarangayOfficer()) && inMyBarangay(resource.data.barangayId))
                     || resource.data.reporterUserId == currentUid()
