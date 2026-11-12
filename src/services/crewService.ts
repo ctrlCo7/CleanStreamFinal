@@ -9,7 +9,7 @@
  * failed notification must never undo or block the work itself.
  */
 import { collection, doc, getDoc, getDocs, onSnapshot, query, runTransaction, serverTimestamp, Transaction, updateDoc, where } from 'firebase/firestore';
-import { CleanupTask, NotificationType, ScheduleConflictInfo, User, WasteReport } from '../types';
+import { CleanupResult, CleanupTask, NotificationType, ScheduleConflictInfo, User, WasteReport } from '../types';
 import { addTaskPhoto, getActiveTasksByBarangay, newTaskDoc, uploadTaskPhoto } from './cleanupTaskService';
 import { db } from './firebase';
 import { createNotification, getNotificationRecipientsByRole, sendReportNotification } from './notificationService';
@@ -193,6 +193,25 @@ const announceDeclined = async (
   });
 };
 
+/** Schedules that still hold a report: waiting for the Captain, or approved and not finished. */
+const OPEN_SCHEDULE_STATUSES = ['proposed', 'assigned', 'accepted', 'in_progress'];
+
+/** The report's schedule that is still waiting or approved, other than `exceptTaskId`, if any. */
+const openScheduleFor = async (reportId: string, barangayId: string, exceptTaskId?: string): Promise<CleanupTask | undefined> => {
+  // Filtered by barangay too: officials and the Captain may only query their own barangay's tasks.
+  const snap = await getDocs(query(collection(db, TASKS), where('barangayId', '==', barangayId), where('reportId', '==', reportId)));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as CleanupTask))
+    .find((t) => t.id !== exceptTaskId && OPEN_SCHEDULE_STATUSES.includes(t.status));
+};
+
+const describeOpenSchedule = (t: CleanupTask): string => {
+  const when = `${t.scheduledDate}, ${t.startTime}–${t.endTime}`;
+  return t.status === 'proposed'
+    ? `A schedule for this report (${t.assignedTeamName}, ${when}) is already waiting for the Barangay Captain's approval. Wait for the decision, or ask the Captain to reject it first.`
+    : `This report already has an approved cleanup (${t.assignedTeamName}, ${when}). A new schedule is only needed if that crew declines it.`;
+};
+
 /**
  * Proposes a cleanup schedule for a verified report. It is checked automatically against the
  * barangay's approved cleanups: a clash declines it at once (with the reason and a free time);
@@ -239,6 +258,11 @@ export const proposeCleanup = async (i: AssignCrewInput): Promise<ProposalResult
   const invalid = scheduleInputProblem(i, phDateKey(), phMinutes())
     ?? workerProblem(i.personnelCount, crew.crewSize, crew.name);
   if (invalid) throw new Error(invalid);
+
+  // One cleanup per report: not while another schedule waits for the Captain or is approved
+  // (a report whose crew declined, or whose schedule was rejected, can get a new one).
+  const open = await openScheduleFor(report.id, barangayId);
+  if (open) throw new Error(describeOpenSchedule(open));
 
   // Conflict check and decision happen together under the barangay's lock for that day, so two
   // schedules sent at the same moment can't both slip through (see decideUnderLock).
@@ -314,6 +338,13 @@ const decideUnderLock = async <T>(barangayId: string, date: string, actor: User,
 export const approveCleanup = async (task: CleanupTask, captain: User): Promise<'approved' | 'declined'> => {
   if (captain.role !== 'admin') throw new Error('Only the Barangay Captain can approve cleanup schedules.');
   if (task.status !== 'proposed') throw new Error('This schedule is no longer waiting for approval.');
+  // A schedule whose start has passed (even earlier today) would reach the crew too late.
+  if (scheduleInputProblem(task, phDateKey(), phMinutes())) {
+    throw new Error('This schedule\'s start time has already passed. Reject it so the official can propose a new time.');
+  }
+  // Another schedule for the same report may have been approved since this one was proposed.
+  const other = await openScheduleFor(task.reportId, task.barangayId, task.id);
+  if (other && other.status !== 'proposed') throw new Error(`${describeOpenSchedule(other)} Reject this one instead.`);
   const taskRef = doc(db, TASKS, task.id);
   const decided = await decideUnderLock(task.barangayId, task.scheduledDate, captain, async (tx) => {
     const fresh = await tx.get(taskRef);
@@ -348,9 +379,15 @@ export const rejectCleanup = async (task: CleanupTask, captain: User, remarks: s
   if (captain.role !== 'admin') throw new Error('Only the Barangay Captain can reject cleanup schedules.');
   if (!remarks.trim()) throw new Error('Please give a reason, so the official knows what to change.');
   const now = new Date().toISOString();
-  await updateDoc(doc(db, TASKS, task.id), {
-    status: 'rejected', rejectedByUserId: captain.uid, rejectedByName: fullName(captain), rejectionRemarks: remarks.trim(),
-    decidedAt: now, updatedAt: serverTimestamp(),
+  const taskRef = doc(db, TASKS, task.id);
+  // Only while it still waits: never turn an approved cleanup (that a crew may be doing) into "rejected".
+  await runTransaction(db, async (tx) => {
+    const fresh = await tx.get(taskRef);
+    if (fresh.data()?.status !== 'proposed') throw new Error('This schedule is no longer waiting for approval.');
+    tx.update(taskRef, {
+      status: 'rejected', rejectedByUserId: captain.uid, rejectedByName: fullName(captain), rejectionRemarks: remarks.trim(),
+      decidedAt: now, updatedAt: serverTimestamp(),
+    });
   });
   await staffNote([task.assignedByUserId], {
     title: 'Cleanup schedule rejected',
@@ -450,8 +487,23 @@ export const finishTask = async (task: CleanupTask, actor: User, input: FinishIn
 /** Confirms a finished cleanup: closes the report and tells the person who reported it. */
 export const confirmTaskCompleted = async (task: CleanupTask, actor: User): Promise<void> => {
   if (actor.role !== 'admin') throw new Error('Only the Barangay Captain can confirm a finished cleanup.');
+  const confirmedAt = new Date().toISOString();
+  // The saved task, not the copy on screen, so every photo the crew added is included.
+  const saved = (await getDoc(doc(db, TASKS, task.id))).data() as CleanupTask | undefined;
+  const t = saved ? { ...task, ...saved } : task;
   await updateReportStatus(task.reportId, 'completed', actor.uid, fullName(actor), { note: 'Cleanup confirmed' });
-  await updateDoc(doc(db, TASKS, task.id), { confirmedByUserId: actor.uid, confirmedAt: new Date().toISOString(), updatedAt: serverTimestamp() });
+  // The reporter can't read cleanup tasks, so the before/after photos go onto the report itself.
+  const cleanupResult: CleanupResult = {
+    beforePhotoURLs: t.beforePhotoURLs ?? [],
+    afterPhotoURLs: t.afterPhotoURLs ?? [],
+    confirmedAt,
+    ...(t.assignedTeamName ? { crewName: t.assignedTeamName } : {}),
+    ...(typeof t.wasteCollectedKg === 'number' ? { wasteCollectedKg: t.wasteCollectedKg } : {}),
+    ...(t.completionNotes ? { notes: t.completionNotes } : {}),
+  };
+  await updateDoc(doc(db, 'reports', task.reportId), { cleanupResult })
+    .catch((e) => console.warn('[Crew] Could not add the cleanup photos to the report (non-fatal):', e));
+  await updateDoc(doc(db, TASKS, task.id), { confirmedByUserId: actor.uid, confirmedAt, updatedAt: serverTimestamp() });
   if (task.reporterUserId) {
     try {
       await sendReportNotification(task.reporterUserId, 'report_completed', task.reportId, task.reportNumber ?? task.reportId);

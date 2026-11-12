@@ -9,14 +9,13 @@ import { BackIcon } from '../../components/common/TabIcons';
 import { TaskStatusPill } from '../../components/common/TaskStatusPill';
 import { useAppSelector } from '../../store/hooks';
 import { subscribeToBarangayTasks } from '../../services/cleanupTaskService';
+import { schedulesNeedingNewProposal } from '../../services/scheduleConflicts';
 import { formatDateKey, formatHHmm } from '../../utils/dates';
 import { telUrl } from '../../utils/phone';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BarangayCrewTasks'>;
 type Segment = 'approval' | 'needs' | 'progress' | 'done';
 
-// Declined automatically (conflict), rejected by the Captain, or the crew can't do it: propose again.
-const needsNewSchedule = (t: CleanupTask) => t.status === 'declined' || t.status === 'rejected' || t.status === 'cancelled';
 const isDone = (t: CleanupTask) => t.status === 'completed';
 
 const SEGMENTS: { key: Segment; label: string }[] = [
@@ -62,7 +61,8 @@ export default function CrewTasksScreen({ navigation }: Props) {
     const list = tasks ?? [];
     return {
       approval: list.filter((t) => t.status === 'proposed'),
-      needs: list.filter(needsNewSchedule),
+      // Only reports that don't already have a newer schedule, once each.
+      needs: schedulesNeedingNewProposal(list),
       progress: list.filter((t) => t.status === 'assigned' || t.status === 'accepted' || t.status === 'in_progress'),
       done: list.filter(isDone),
     };

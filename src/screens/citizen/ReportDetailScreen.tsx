@@ -16,6 +16,7 @@ import { reportBarangayId } from '../../services/assignmentRules';
 import { useAppSelector } from '../../store/hooks';
 import { subscribeTrackingForReport } from '../../services/crewTrackingService';
 import { CrewTrackingCard } from '../../components/map/CrewTrackingCard';
+import { CleanupResultCard } from '../../components/report/CleanupResultCard';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CitizenDetail'>;
 
@@ -101,6 +102,11 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
           <Text style={styles.title}>{report.location?.barangay || 'Unknown location'}</Text>
           <Badge variant={report.severity} />
         </View>
+
+        {/* The finished cleanup: what the "cleaned up" notification opens to */}
+        {report.status === 'completed' && (
+          <CleanupResultCard result={report.cleanupResult} fallbackBeforeURL={report.photoURL || undefined} />
+        )}
 
         {/* Live cleanup truck, while it is on the way */}
         {report.status !== 'completed' && <CrewTrackingCard tracking={tracking} />}

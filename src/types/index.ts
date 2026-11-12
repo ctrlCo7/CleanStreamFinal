@@ -260,6 +260,15 @@ export const CONCERN_LABELS: Record<ConcernType, string> = {
   other: 'Other concern',
 };
 
+export interface CleanupResult {
+  beforePhotoURLs: string[];
+  afterPhotoURLs: string[];
+  crewName?: string;
+  wasteCollectedKg?: number;
+  notes?: string;
+  confirmedAt: string;
+}
+
 export interface WasteReport {
   id: string;
   reportNumber: string;
@@ -289,6 +298,11 @@ export interface WasteReport {
   assignedAt?: string;
   resolvedAt?: string;
   rejectionReason?: string;
+  /**
+   * The finished cleanup, copied onto the report when the Captain confirms it, so the
+   * person who reported it can see the before and after photos (they can't read tasks).
+   */
+  cleanupResult?: CleanupResult;
   // Human-confirmed labels captured at verification time -- when a barangay official
   // verifies a report, they confirm or correct the AI's severity/waste-type call.
   // This is the ground truth ml-waste-detection's export script trains on; an

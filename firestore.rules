@@ -185,7 +185,8 @@ service cloud.firestore {
       // arrive with them already filled in (e.g. pre-"verified", or with training labels).
       function staffReportFields() {
         return ['verifiedBy', 'verifiedByName', 'verifiedAt', 'assignedTeamId', 'assignedTeamName', 'assignedBarangayId',
-                'cleanupTaskId', 'assignedAt', 'resolvedAt', 'rejectionReason', 'groundTruthSeverity', 'groundTruthWasteType'];
+                'cleanupTaskId', 'assignedAt', 'resolvedAt', 'rejectionReason', 'groundTruthSeverity', 'groundTruthWasteType',
+                'cleanupResult'];
       }
       // What the reporter's own phone writes after filing, while the report is still pending:
       // the uploaded photo, the AI result, their answer about the waste, the duplicate check.

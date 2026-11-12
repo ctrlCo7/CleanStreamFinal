@@ -18,6 +18,7 @@ import { subscribeToUpcomingEvents } from '../../services/cleanupEventService';
 import { getOrCreateAdminConversation } from '../../services/messagingService';
 import { subscribeToAnnouncements } from '../../services/announcementService';
 import { subscribeToBarangayTasks } from '../../services/cleanupTaskService';
+import { schedulesNeedingNewProposal } from '../../services/scheduleConflicts';
 import {
   ManagedCheckpoint, formatCheckpointTime, isInspectedToday, subscribeToBarangayCheckpoints, todayCheckpointDay,
 } from '../../services/checkpointService';
@@ -60,7 +61,8 @@ export default function BarangayDashboardScreen() {
     if (!myBarangayId) return;
     const unsub = subscribeToBarangayTasks(myBarangayId, (tasks) => {
       // Schedules that need a new proposal: declined for a conflict, rejected by the Captain, or turned down by the crew.
-      setNeedsYouCount(tasks.filter((t) => t.status === 'declined' || t.status === 'rejected' || t.status === 'cancelled').length);
+      // Only reports that don't already have a newer schedule, counted once each.
+      setNeedsYouCount(schedulesNeedingNewProposal(tasks).length);
     });
     return unsub;
   }, [myBarangayId]);

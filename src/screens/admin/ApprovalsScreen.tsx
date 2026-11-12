@@ -14,7 +14,7 @@ import { subscribeToBarangayTasks } from '../../services/cleanupTaskService';
 import { approveCleanup, rejectCleanup } from '../../services/crewService';
 import { APPROVED_STATUSES, describeConflict, findScheduleConflicts } from '../../services/scheduleConflicts';
 import { formatDateKey, formatHHmm } from '../../utils/dates';
-import { phDateKey } from '../../utils/phTime';
+import { hhmmToMinutes, phDateKey, phMinutes } from '../../utils/phTime';
 import { explainWriteError } from '../../utils/firestoreErrors';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -80,6 +80,7 @@ export default function ApprovalsScreen() {
   const counts = useMemo(() => Object.fromEntries(TABS.map((t) => [t.key, (tasks ?? []).filter((x) => inTab(x, t.key)).length])) as Record<Tab, number>, [tasks]);
   const approved = useMemo(() => (tasks ?? []).filter((t) => inTab(t, 'approved')), [tasks]);
   const today = phDateKey();
+  const nowMinutes = phMinutes();
 
   if (user?.role !== 'admin') {
     return (
@@ -100,6 +101,8 @@ export default function ApprovalsScreen() {
             const result = await approveCleanup(t, user);
             if (result === 'declined') {
               Alert.alert('Declined automatically', 'Another cleanup was approved for the same crew, place or equipment at that time, so this one clashes. The official has been told and can propose a different time.');
+            } else {
+              Alert.alert('Cleanup approved', `${t.assignedTeamName} has the task for ${formatDateKey(t.scheduledDate)}, ${formatHHmm(t.startTime)}–${formatHHmm(t.endTime)}. The crew, the official and the reporter have been notified.`);
             }
           } catch (e) {
             Alert.alert('Could not approve', e instanceof Error && !(e as { code?: string }).code ? e.message : explainWriteError(e, 'approve this schedule'));
@@ -148,7 +151,8 @@ export default function ApprovalsScreen() {
               : list.map((t) => {
                 // Pending ones are checked live against what's approved now.
                 const clashes = t.status === 'proposed' ? findScheduleConflicts({ ...t }, approved).map(describeConflict) : [];
-                const past = t.scheduledDate < today && t.status === 'proposed';
+                // Passed: an earlier day, or today with the start time already gone.
+                const past = t.status === 'proposed' && (t.scheduledDate < today || (t.scheduledDate === today && hhmmToMinutes(t.startTime) < nowMinutes));
                 return (
                   <View key={t.id} style={styles.card}>
                     <TouchableOpacity onPress={() => navigation.navigate('CleanupTaskDetail', { taskId: t.id } as never)} activeOpacity={0.8}>
@@ -171,6 +175,9 @@ export default function ApprovalsScreen() {
                     )}
                     {t.status === 'rejected' && (
                       <View style={styles.redBox}><Text style={styles.redText}>Rejected by {t.rejectedByName}: {t.rejectionRemarks}</Text></View>
+                    )}
+                    {t.status === 'cancelled' && (
+                      <View style={styles.redBox}><Text style={styles.redText}>The crew couldn't do it: {t.declineReason || 'no reason given'}. A new schedule can be proposed for this report.</Text></View>
                     )}
                     {(APPROVED_STATUSES as readonly string[]).includes(t.status) && (
                       <Text style={styles.okText}>✓ Approved by {t.approvedByName ?? 'the Captain'} · crew status: {t.status.replace('_', ' ')}</Text>

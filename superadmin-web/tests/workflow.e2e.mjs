@@ -80,6 +80,10 @@ await check('citizen creates a pending report in their barangay', assertSucceeds
   location: loc, photoURL: 'https://res.cloudinary.com/x/before.jpg', status: 'pending', severity: 'high', wasteTypes: ['plastic'],
   statusHistory: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
 })));
+await check('a report cannot be filed with made-up cleanup photos', assertFails(setDoc(doc(citizen, 'reports', 'qa_fake2'), {
+  userId: 'citizen', barangayId: B, location: loc, status: 'pending', severity: 'low',
+  cleanupResult: { beforePhotoURLs: [], afterPhotoURLs: ['https://x/fake.jpg'], confirmedAt: 'x' },
+})));
 await check('a report cannot be filed already "verified"', assertFails(setDoc(doc(citizen, 'reports', 'qa_fake'), {
   userId: 'citizen', barangayId: B, location: loc, status: 'verified', severity: 'low',
 })));
@@ -136,6 +140,11 @@ await check('the official cannot approve their own proposal ("assigned")', asser
 await check('the official cannot propose it in the name of someone else', assertFails(setDoc(doc(official, 'cleanupTasks', 'qa_bad3'), {
   ...taskBase, assignedByUserId: 'captain', status: 'proposed',
 })));
+// proposeCleanup first looks for another schedule of the same report (one cleanup per report).
+await check("the official can check the report's existing schedules", assertSucceeds(getDocs(query(collection(official, 'cleanupTasks'),
+  where('barangayId', '==', B), where('reportId', '==', R)))));
+await check("the Captain can check the report's existing schedules", assertSucceeds(getDocs(query(collection(captain, 'cleanupTasks'),
+  where('barangayId', '==', B), where('reportId', '==', R)))));
 await check('the official proposes the schedule under the day\'s lock (proposeCleanup)', assertSucceeds(runTransaction(official, async (tx) => {
   const lockRef = doc(official, 'scheduleLocks', `${B}_${DATE}`);
   const lock = await tx.get(lockRef);
@@ -261,6 +270,19 @@ await check('the official cannot mark the task confirmed', assertFails(updateDoc
 })));
 await check('the Captain closes the report (confirmTaskCompleted)', assertSucceeds(updateDoc(doc(captain, 'reports', R), {
   status: 'completed', updatedAt: serverTimestamp(), statusHistory: history('completed', 'captain', 'Cleanup confirmed'), resolvedAt: serverTimestamp(),
+})));
+await check('the Captain copies the before/after photos onto the report (cleanupResult)', assertSucceeds(updateDoc(doc(captain, 'reports', R), {
+  cleanupResult: {
+    beforePhotoURLs: ['https://res.cloudinary.com/x/cleanupTasks/qa/before_0.jpg'], afterPhotoURLs: ['https://res.cloudinary.com/x/cleanupTasks/qa/after_0.jpg'],
+    crewName: 'crew QA', wasteCollectedKg: 18, notes: 'Cleared 6 sacks of plastic.', confirmedAt: new Date().toISOString(),
+  },
+})));
+await expect('the reporter sees the before and after photos on their report', async () => {
+  const r = (await getDoc(doc(citizen, 'reports', R))).data();
+  return (r.cleanupResult?.beforePhotoURLs?.length === 1 && r.cleanupResult?.afterPhotoURLs?.length === 1) || r.cleanupResult;
+});
+await check('the official cannot write the cleanup photos onto the report', assertFails(updateDoc(doc(official, 'reports', R), {
+  cleanupResult: { beforePhotoURLs: [], afterPhotoURLs: ['https://evil/x.jpg'], confirmedAt: 'x' },
 })));
 await check('the Captain marks the task confirmed', assertSucceeds(updateDoc(doc(captain, 'cleanupTasks', T), {
   confirmedByUserId: 'captain', confirmedAt: new Date().toISOString(), updatedAt: serverTimestamp(),

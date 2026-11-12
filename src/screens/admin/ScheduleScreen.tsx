@@ -6,12 +6,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../hooks/useTheme';
 import { ThemeColors } from '../../constants/theme';
-import { RootStackParamList } from '../../types';
+import { RootStackParamList, WasteReport } from '../../types';
 import { BackIcon } from '../../components/common/TabIcons';
 import { Badge } from '../../components/common/Badge';
 import { useAppSelector } from '../../store/hooks';
 import { proposeCleanup, CrewMember, getCrewsForBarangay, reportBarangayId } from '../../services/crewService';
-import { formatDateKey, formatHHmm, toDateKey } from '../../utils/dates';
+import { getReportById } from '../../services/reportsService';
+import { formatDateKey, formatHHmm } from '../../utils/dates';
+import { addDaysKey, phDateKey } from '../../utils/phTime';
 import { formatPhone } from '../../utils/phone';
 import { CEBU_BARANGAYS } from '../../services/locationService';
 import { getNotificationRecipientsByRole, sendBulkNotification } from '../../services/notificationService';
@@ -19,22 +21,14 @@ import { formatVolume } from '../../utils/units';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AdminSchedule'>;
 
-// Used when the Admin picks a real crew: this screen has no date or time fields of its own.
-const CREW_START = '08:00';
-const CREW_END = '10:00';
-
-function tomorrowKey(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return toDateKey(d);
-}
-
-function suggestScheduleDate(severity: string): string {
-  const now = new Date();
-  const daysOffset = severity === 'critical' ? 1 : severity === 'high' ? 2 : 4;
-  const d = new Date(now);
-  d.setDate(d.getDate() + daysOffset);
-  return d.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'long', day: 'numeric', year: 'numeric' });
+/**
+ * The suggested cleanup slot (Philippine date): sooner and longer for worse reports. This is
+ * exactly what Approve books; "Choose date & time" is for anything else.
+ */
+function suggestedSlot(severity: string): { scheduledDate: string; startTime: string; endTime: string } {
+  const days = severity === 'critical' ? 1 : severity === 'high' ? 2 : 4;
+  const [startTime, endTime] = severity === 'critical' ? ['06:00', '14:00'] : ['07:00', '12:00'];
+  return { scheduledDate: addDaysKey(phDateKey(), days), startTime, endTime };
 }
 
 export default function AdminScheduleScreen({ navigation, route }: Props) {
@@ -43,7 +37,21 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
   const { reportId } = route.params || {};
   const { reports } = useAppSelector((s) => s.reports);
   const { user } = useAppSelector((s) => s.auth);
-  const report = reportId ? reports.find((r) => r.id === reportId) : null;
+  // Opened from a notification, the report may not be loaded yet: fetch it.
+  const stored = reportId ? reports.find((r) => r.id === reportId) : undefined;
+  const [fetched, setFetched] = useState<WasteReport | null>(null);
+  const [loadIssue, setLoadIssue] = useState('');
+  useEffect(() => {
+    if (stored || !reportId) return undefined;
+    let cancelled = false;
+    getReportById(reportId)
+      .then((r) => { if (!cancelled) { setFetched(r); if (!r) setLoadIssue('This report may have been removed.'); } })
+      .catch((e: { code?: string }) => {
+        if (!cancelled) setLoadIssue(e?.code === 'permission-denied' ? 'This report belongs to another barangay.' : 'Could not load this report. Please try again.');
+      });
+    return () => { cancelled = true; };
+  }, [stored, reportId]);
+  const report = stored ?? fetched;
 
   const severity = report?.severity || 'critical';
   const barangay = report?.location?.barangay || report?.barangay || 'Unknown';
@@ -69,19 +77,21 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
 
   const unitCrews = crews;
   const selectedCrew = unitCrews.find((c) => c.uid === crewId);
-  const scheduledDate = tomorrowKey();
+  const slot = suggestedSlot(severity);
+  const { scheduledDate, startTime: CREW_START, endTime: CREW_END } = slot;
 
   const aiSchedule = {
-    date: suggestScheduleDate(severity),
-    time: severity === 'critical' ? '6:00 AM – 2:00 PM' : '7:00 AM – 12:00 PM',
+    date: formatDateKey(scheduledDate),
+    time: `${formatHHmm(CREW_START)} – ${formatHHmm(CREW_END)}`,
     personnel: severity === 'critical' ? '8–10 (hazmat)' : '4–6 (standard)',
     priority: severity.toUpperCase(),
   };
 
   const handleApprove = async () => {
+    if (!report || !user || !selectedCrew) return;
     setSaving(true);
     try {
-      if (report && user && selectedCrew) {
+      {
         // Checked automatically for clashes with approved cleanups first; a clash declines it.
         const result = await proposeCleanup({
           report, crew: selectedCrew, assigner: user, scheduledDate, startTime: CREW_START, endTime: CREW_END,
@@ -114,19 +124,47 @@ export default function AdminScheduleScreen({ navigation, route }: Props) {
         );
       }, 1200);
     } catch (err) {
-      Alert.alert('Error', err instanceof Error && err.message ? err.message : 'Failed to save schedule. Please try again.');
+      Alert.alert('Could not schedule the cleanup', err instanceof Error && err.message ? err.message : 'Failed to save schedule. Please try again.');
     } finally {
       setSaving(false);
     }
   };
 
+  const header = (
+    <View style={styles.header}>
+      <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon size={18} /></TouchableOpacity>
+      <Text style={styles.headerTitle}>Schedule cleanup</Text>
+      <View style={{ width: 34 }} />
+    </View>
+  );
+  // Never show made-up details (or book anything) for a report that isn't loaded.
+  if (!report) {
+    return (
+      <SafeAreaView style={styles.container}>
+        {header}
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          {loadIssue ? <Text style={{ color: colors.textMuted, textAlign: 'center' }}>{loadIssue}</Text> : <ActivityIndicator color={colors.blue} />}
+        </View>
+      </SafeAreaView>
+    );
+  }
+  // Only a verified report (or one whose crew declined) can get a schedule.
+  if (report.status !== 'verified' && report.status !== 'assigned') {
+    const why = report.status === 'pending' ? 'This report has not been verified yet. An official verifies it first.'
+      : `This report is already ${report.status.replace('_', ' ')}, so it doesn't need a new schedule.`;
+    return (
+      <SafeAreaView style={styles.container}>
+        {header}
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <Text style={{ color: colors.textMuted, textAlign: 'center' }}>{why}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}><BackIcon size={18} /></TouchableOpacity>
-        <Text style={styles.headerTitle}>Schedule cleanup</Text>
-        <View style={{ width: 34 }} />
-      </View>
+      {header}
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         {/* Severity banner */}

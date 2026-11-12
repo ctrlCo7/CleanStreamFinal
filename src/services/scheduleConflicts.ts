@@ -71,6 +71,32 @@ export function workerProblem(needed: number | undefined, crewSize: number | und
   return `${crewName} has ${crewSize} worker${crewSize === 1 ? '' : 's'}, but this cleanup needs ${needed}. Pick a bigger crew or fewer workers.`;
 }
 
+/** A schedule that fell through: declined for a conflict, rejected by the Captain, or turned down by the crew. */
+export const FAILED_SCHEDULE_STATUSES = ['declined', 'rejected', 'cancelled'] as const;
+
+/**
+ * The fallen-through schedules whose report still needs a new one: only when the report has no
+ * other schedule waiting, approved or finished, and only one (the latest) per report. Without
+ * this, a schedule stayed in "needs a new proposal" after a new one was already made.
+ */
+export function schedulesNeedingNewProposal<T extends { id: string; reportId: string; status: string; updatedAt?: unknown; createdAt?: unknown }>(tasks: T[]): T[] {
+  const failed = (s: string) => (FAILED_SCHEDULE_STATUSES as readonly string[]).includes(s);
+  const covered = new Set(tasks.filter((t) => !failed(t.status)).map((t) => t.reportId));
+  const stamp = (t: T) => {
+    const v = (t.updatedAt ?? t.createdAt) as { toMillis?: () => number } | string | number | undefined;
+    if (v && typeof v === 'object' && typeof v.toMillis === 'function') return v.toMillis();
+    const n = typeof v === 'string' ? Date.parse(v) : typeof v === 'number' ? v : NaN;
+    return Number.isFinite(n) ? n : 0;
+  };
+  const latest = new Map<string, T>();
+  for (const t of tasks) {
+    if (!failed(t.status) || covered.has(t.reportId)) continue;
+    const seen = latest.get(t.reportId);
+    if (!seen || stamp(t) >= stamp(seen)) latest.set(t.reportId, t);
+  }
+  return [...latest.values()];
+}
+
 export function timesOverlap(a: Pick<ScheduleSlot, 'scheduledDate' | 'startTime' | 'endTime'>, b: Pick<ScheduleSlot, 'scheduledDate' | 'startTime' | 'endTime'>): boolean {
   if (a.scheduledDate !== b.scheduledDate) return false;
   const as = hhmmToMinutes(a.startTime), ae = hhmmToMinutes(a.endTime);

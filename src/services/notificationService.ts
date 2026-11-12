@@ -72,7 +72,7 @@ export const sendReportNotification = async (
     },
     report_completed: {
       title: 'Report Resolved',
-      body: `Great news! Report ${reportNumber} has been resolved.`,
+      body: `Great news! Report ${reportNumber} has been cleaned up. Tap to see the before and after photos.`,
     },
     report_rejected: {
       title: 'Report Rejected',
