@@ -651,5 +651,17 @@ export function subscribeActiveTrips(viewer: { role: string; barangayId?: string
     return () => undefined;
   }
   const q = query(collection(db, COL), where('barangayId', '==', viewer.barangayId), where('status', '==', 'en_route'));
-  return onSnapshot(q, (snap) => fn(snap.docs.map((d) => toTracking(d.data()))), () => fn([]));
+  // A trip not heard from for 30 minutes was abandoned (phone off, app removed, or never ended):
+  // drop it, as the Super Admin's City map does, instead of showing "on the way" forever.
+  let latest: CrewTracking[] = [];
+  const emit = () => fn(latest.filter((t) => !isAbandonedTrip(t)));
+  const timer = setInterval(emit, 60_000);
+  const unsub = onSnapshot(q, (snap) => { latest = snap.docs.map((d) => toTracking(d.data())); emit(); }, () => { latest = []; fn([]); });
+  return () => { clearInterval(timer); unsub(); };
 }
+
+/** Minutes without any update after which a trip counts as abandoned. */
+export const ABANDONED_TRIP_MS = 30 * 60 * 1000;
+/** True when the crew's phone hasn't updated the trip for ABANDONED_TRIP_MS. */
+export const isAbandonedTrip = (t: Pick<CrewTracking, 'updatedAtMs'>, now = Date.now()): boolean =>
+  !Number.isFinite(t.updatedAtMs) || now - t.updatedAtMs > ABANDONED_TRIP_MS;

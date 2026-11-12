@@ -6,8 +6,9 @@ import {
 } from 'firebase/firestore';
 
 /**
- * QA: one waste report followed through the whole workflow, from the Barangay Official's
- * verification to the cleanup crew's finished cleanup and the Captain's confirmation.
+ * QA: one waste report followed through the whole workflow, from the citizen's sign-up and the
+ * official's verification to the crew's cleanup, the Captain's confirmation and the citizen
+ * opening the "cleaned up" notification with the before and after photos.
  * Each step makes the same Firestore writes the app makes (src/services/reportsService.ts,
  * crewService.ts, workflowNotifications.ts), signed in as the role that does it in the app,
  * and checks that the other roles are refused at that step.
@@ -27,8 +28,9 @@ const person = (uid, role, extra = {}) => ({
 await env.clearFirestore();
 await env.withSecurityRulesDisabled(async (ctx) => {
   const db = ctx.firestore();
+  // The reporter ('citizen') and a new official ('newOfficial') sign up during the test (stage S).
   for (const [uid, role, extra] of [
-    ['citizen', 'citizen', { barangayId: B, emailVerificationRequired: true }],
+    ['superadmin', 'superadmin', {}],
     ['official', 'barangay', { barangayId: B, idVerification: 'approved' }],
     ['captain', 'admin', { barangayId: B }],
     ['crew', 'cleanup_team', { barangayId: B, crewSize: 5 }],
@@ -62,6 +64,41 @@ const history = (status, by, note) => arrayUnion({ status, changedBy: by, change
 const note = (db, sender, userId, type, extra = {}) =>
   addDoc(collection(db, 'notifications'), { userId, senderId: sender, type, title: type, body: type, read: false, createdAt: serverTimestamp(), ...extra });
 
+// ─── S. Sign-up and onboarding ──────────────────────────────────────────────────
+// registerUser (authService.ts): the profile a new account writes for itself.
+const unconfirmed = (uid) => env.authenticatedContext(uid, { email_verified: false }).firestore();
+const superadmin = as('superadmin');
+const signupProfile = (uid, role, extra = {}) => ({
+  uid, email: `${uid}@x.co`, firstName: uid, lastName: 'QA', role, barangay: 'Talamban', barangayId: B,
+  emailVerificationRequired: true, isActive: true, isVerified: false, createdAt: serverTimestamp(), ...extra,
+});
+console.log('\n== S. Sign-up: a new citizen and a new official create their accounts');
+await check('sign-up cannot skip email confirmation', assertFails(setDoc(doc(unconfirmed('citizen'), 'users', 'citizen'),
+  { ...signupProfile('citizen', 'citizen'), emailVerificationRequired: false })));
+await check('sign-up cannot mark itself verified', assertFails(setDoc(doc(unconfirmed('citizen'), 'users', 'citizen'),
+  { ...signupProfile('citizen', 'citizen'), isVerified: true })));
+await check('sign-up cannot create a cleanup crew account', assertFails(setDoc(doc(unconfirmed('citizen'), 'users', 'citizen'),
+  signupProfile('citizen', 'cleanup_team'))));
+await check('sign-up cannot create a profile for someone else', assertFails(setDoc(doc(unconfirmed('citizen'), 'users', 'someoneElse'),
+  signupProfile('someoneElse', 'citizen'))));
+await check('a new citizen signs up (registerUser)', assertSucceeds(setDoc(doc(unconfirmed('citizen'), 'users', 'citizen'), signupProfile('citizen', 'citizen'))));
+await check('before confirming the email, the citizen cannot file a report', assertFails(setDoc(doc(unconfirmed('citizen'), 'reports', 'qa_unconfirmed'), {
+  userId: 'citizen', barangayId: B, location: { latitude: 10.37, longitude: 123.91 }, status: 'pending', severity: 'low',
+})));
+await check('the citizen cannot remove the email-confirmation requirement', assertFails(updateDoc(doc(unconfirmed('citizen'), 'users', 'citizen'),
+  { emailVerificationRequired: false })));
+await check('an official cannot sign up already approved', assertFails(setDoc(doc(unconfirmed('newOfficial'), 'users', 'newOfficial'),
+  signupProfile('newOfficial', 'barangay', { idVerification: 'approved' }))));
+await check('a new official signs up, waiting for ID approval', assertSucceeds(setDoc(doc(unconfirmed('newOfficial'), 'users', 'newOfficial'),
+  signupProfile('newOfficial', 'barangay', { idVerification: 'pending' }))));
+await check('the new official sends their ID and selfies for review', assertSucceeds(setDoc(doc(unconfirmed('newOfficial'), 'verifications', 'newOfficial'), {
+  uid: 'newOfficial', role: 'barangay', idType: 'national_id', idImage: 'data:x', selfieNeutral: 'data:x', selfieSmile: 'data:x', selfieTurn: 'data:x',
+  status: 'pending', submittedAt: serverTimestamp(),
+})));
+await check('the new official cannot approve themselves', assertFails(updateDoc(doc(as('newOfficial'), 'users', 'newOfficial'), { idVerification: 'approved' })));
+console.log('   (the citizen and the official open the link in the confirmation email: their sign-in token now has email_verified)');
+
+// ─── 0. Staff directory ─────────────────────────────────────────────────────────
 // The Captain and the official register themselves in the staff directory (staffDirectory.ts).
 console.log('\n== 0. Staff register themselves in the barangay staff directory');
 await check('the Captain adds themselves to the directory', assertSucceeds(setDoc(doc(captain, 'barangayStaff', B), { captains: ['captain'], officials: [], updatedAt: serverTimestamp() })));
@@ -88,6 +125,18 @@ await check('a report cannot be filed already "verified"', assertFails(setDoc(do
   userId: 'citizen', barangayId: B, location: loc, status: 'verified', severity: 'low',
 })));
 await check('the official of the barangay can see it', assertSucceeds(getDoc(doc(official, 'reports', R))));
+// The new official, still waiting for ID approval, has no staff powers yet.
+const newOfficial = as('newOfficial');
+await check('the new official (ID not yet approved) cannot verify it', assertFails(updateDoc(doc(newOfficial, 'reports', R), {
+  status: 'verified', updatedAt: serverTimestamp(), statusHistory: history('verified', 'newOfficial'),
+})));
+await check('the Super Admin approves the new official\'s ID (portal)', assertSucceeds(updateDoc(doc(superadmin, 'users', 'newOfficial'), {
+  idVerification: 'approved', isVerified: true,
+})));
+await check('the Super Admin deletes the ID photos after deciding', assertSucceeds(updateDoc(doc(superadmin, 'verifications', 'newOfficial'), {
+  status: 'approved', idImage: null, selfieNeutral: null, selfieSmile: null, selfieTurn: null,
+})));
+await check('once approved, the new official can open the barangay\'s reports', assertSucceeds(getDoc(doc(newOfficial, 'reports', R))));
 await check("another barangay's official cannot see it", assertFails(getDoc(doc(officialOther, 'reports', R))));
 
 // ─── 2. The official verifies it ────────────────────────────────────────────────
@@ -310,6 +359,22 @@ await expect('the reporter received each update (verified, assigned, in progress
   const types = s.docs.map((d) => d.data().type).sort();
   return JSON.stringify(types) === JSON.stringify(['report_assigned', 'report_completed', 'report_in_progress', 'report_verified']) || types;
 });
+// ─── 9. The citizen opens the "cleaned up" notification ─────────────────────────
+console.log('\n== 9. The citizen taps the "cleaned up" notification');
+let completedNote = null;
+await expect('the "cleaned up" notification points to the report', async () => {
+  const s = await getDocs(query(collection(citizen, 'notifications'), where('userId', '==', 'citizen')));
+  completedNote = s.docs.find((d) => d.data().type === 'report_completed');
+  return (completedNote?.data().reportId === R) || completedNote?.data();
+});
+await expect('the report it opens shows the before and after photos', async () => {
+  const r = (await getDoc(doc(citizen, 'reports', completedNote.data().reportId))).data();
+  return (r.status === 'completed' && r.cleanupResult.beforePhotoURLs.length > 0 && r.cleanupResult.afterPhotoURLs.length > 0) || r;
+});
+await check('the citizen marks the notification read', assertSucceeds(updateDoc(doc(citizen, 'notifications', completedNote.id), { read: true, readAt: serverTimestamp() })));
+await check("another resident cannot read the citizen's notification", assertFails(getDoc(doc(citizen2, 'notifications', completedNote.id))));
+await check('the citizen cannot alter the notification text', assertFails(updateDoc(doc(citizen, 'notifications', completedNote.id), { body: 'changed' })));
+
 await check('the reporter cannot reopen the closed report', assertFails(updateDoc(doc(citizen, 'reports', R), { status: 'pending', updatedAt: serverTimestamp() })));
 await check('the official cannot reopen the closed report', assertFails(updateDoc(doc(official, 'reports', R), {
   status: 'verified', updatedAt: serverTimestamp(), statusHistory: history('verified', 'official'),

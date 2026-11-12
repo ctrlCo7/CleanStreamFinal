@@ -20,6 +20,11 @@ import { updateReportStatus } from './reportsService';
 import { assignmentProblem, reportBarangayId } from './assignmentRules';
 import { mergeSummaries, summarizeAnalysis } from './cleanupComparison';
 import { withTimeout } from '../utils/async';
+import { formatDateKey, formatHHmm } from '../utils/dates';
+
+/** A schedule in words, e.g. "Nov 13, 2026, 8:00 AM–10:00 AM" (notifications, logs, messages). */
+const whenText = (date: string, start: string, end?: string): string =>
+  `${formatDateKey(date)}, ${formatHHmm(start)}${end ? `–${formatHHmm(end)}` : ''}`;
 
 const TASKS = 'cleanupTasks';
 
@@ -148,19 +153,19 @@ const announceApproved = async (task: CleanupTask, captain: User) => {
     assignedTeamName: task.assignedTeamName,
     assignedBarangayId: task.barangayId,
     cleanupTaskId: task.id,
-    note: `Cleanup scheduled for ${task.scheduledDate}, ${task.startTime}–${task.endTime} (approved by the Barangay Captain)`,
+    note: `Cleanup scheduled for ${whenText(task.scheduledDate, task.startTime, task.endTime)} (approved by the Barangay Captain)`,
   });
-  await notify(task.assignedTeamId, 'New cleanup task', `${task.reportNumber ?? 'A report'} on ${task.scheduledDate}, ${task.startTime}. Open the app to accept it.`, task, 'task_assigned');
+  await notify(task.assignedTeamId, 'New cleanup task', `${task.reportNumber ?? 'A report'} on ${whenText(task.scheduledDate, task.startTime)}. Open the app to accept it.`, task, 'task_assigned');
   if (task.assignedByUserId !== captain.uid) {
     await staffNote([task.assignedByUserId], {
       title: 'Cleanup schedule approved',
-      body: `The Barangay Captain approved the cleanup for ${task.reportNumber ?? 'the report'} on ${task.scheduledDate}, ${task.startTime}–${task.endTime}.`,
+      body: `The Barangay Captain approved the cleanup for ${task.reportNumber ?? 'the report'} on ${whenText(task.scheduledDate, task.startTime, task.endTime)}.`,
       type: 'schedule_approved', taskId: task.id, reportId: task.reportId,
     });
   }
   if (task.reporterUserId) {
     sendReportNotification(task.reporterUserId, 'report_assigned', task.reportId, task.reportNumber ?? task.reportId, undefined,
-      `It is scheduled for ${task.scheduledDate}, ${task.startTime}.`).catch(() => undefined);
+      `It is scheduled for ${whenText(task.scheduledDate, task.startTime)}.`).catch(() => undefined);
   }
 };
 
@@ -182,7 +187,7 @@ const announceDeclined = async (
   conflicts: ScheduleConflictInfo[], suggestion: CleanupTask['suggestedSlot'] | null, actor: User,
 ) => {
   const reason = declineReasonFor(conflicts);
-  const free = suggestion ? ` A free time: ${suggestion.scheduledDate}, ${suggestion.startTime}–${suggestion.endTime}.` : '';
+  const free = suggestion ? ` A free time: ${whenText(suggestion.scheduledDate, suggestion.startTime, suggestion.endTime)}.` : '';
   await staffNote([task.assignedByUserId], {
     title: 'Cleanup schedule declined automatically', body: `${reason}${free} Propose a different schedule.`,
     type: 'schedule_declined', taskId, reportId: task.reportId,
@@ -206,7 +211,7 @@ const openScheduleFor = async (reportId: string, barangayId: string, exceptTaskI
 };
 
 const describeOpenSchedule = (t: CleanupTask): string => {
-  const when = `${t.scheduledDate}, ${t.startTime}–${t.endTime}`;
+  const when = `${whenText(t.scheduledDate, t.startTime, t.endTime)}`;
   return t.status === 'proposed'
     ? `A schedule for this report (${t.assignedTeamName}, ${when}) is already waiting for the Barangay Captain's approval. Wait for the decision, or ask the Captain to reject it first.`
     : `This report already has an approved cleanup (${t.assignedTeamName}, ${when}). A new schedule is only needed if that crew declines it.`;
@@ -296,18 +301,18 @@ export const proposeCleanup = async (i: AssignCrewInput): Promise<ProposalResult
     await announceApproved({ ...base, id: taskId, status: 'assigned' } as CleanupTask, assigner);
     logBarangayActivity({
       actor: assigner, barangayId, action: 'schedule_approved', entityType: 'task', entityId: taskId,
-      summary: `Cleanup for ${report.reportNumber ?? 'a report'} scheduled and approved for ${i.scheduledDate}, ${i.startTime}–${i.endTime}`,
+      summary: `Cleanup for ${report.reportNumber ?? 'a report'} scheduled and approved for ${whenText(i.scheduledDate, i.startTime, i.endTime)}`,
     });
     return { outcome: 'approved', taskId };
   }
   await staffNote(await captainsOf(barangayId), {
     title: 'Cleanup schedule awaiting your approval',
-    body: `${assignerName} proposed a cleanup for ${report.reportNumber ?? 'a report'} on ${i.scheduledDate}, ${i.startTime}–${i.endTime} with ${crew.name}.`,
+    body: `${assignerName} proposed a cleanup for ${report.reportNumber ?? 'a report'} on ${whenText(i.scheduledDate, i.startTime, i.endTime)} with ${crew.name}.`,
     type: 'schedule_proposed', taskId, reportId: report.id,
   });
   logBarangayActivity({
     actor: assigner, barangayId, action: 'schedule_proposed', entityType: 'task', entityId: taskId,
-    summary: `Proposed a cleanup for ${report.reportNumber ?? 'a report'} on ${i.scheduledDate}, ${i.startTime}–${i.endTime} (${crew.name})`,
+    summary: `Proposed a cleanup for ${report.reportNumber ?? 'a report'} on ${whenText(i.scheduledDate, i.startTime, i.endTime)} (${crew.name})`,
   });
   return { outcome: 'proposed', taskId };
 };
@@ -369,7 +374,7 @@ export const approveCleanup = async (task: CleanupTask, captain: User): Promise<
   await announceApproved(task, captain);
   logBarangayActivity({
     actor: captain, barangayId: task.barangayId, action: 'schedule_approved', entityType: 'task', entityId: task.id,
-    summary: `Approved the cleanup for ${task.reportNumber ?? 'a report'} on ${task.scheduledDate}, ${task.startTime}–${task.endTime}`,
+    summary: `Approved the cleanup for ${task.reportNumber ?? 'a report'} on ${whenText(task.scheduledDate, task.startTime, task.endTime)}`,
   });
   return 'approved';
 };
@@ -391,12 +396,12 @@ export const rejectCleanup = async (task: CleanupTask, captain: User, remarks: s
   });
   await staffNote([task.assignedByUserId], {
     title: 'Cleanup schedule rejected',
-    body: `The Barangay Captain rejected the cleanup for ${task.reportNumber ?? 'the report'} on ${task.scheduledDate}: ${remarks.trim()}`,
+    body: `The Barangay Captain rejected the cleanup for ${task.reportNumber ?? 'the report'} on ${formatDateKey(task.scheduledDate)}: ${remarks.trim()}`,
     type: 'schedule_rejected', taskId: task.id, reportId: task.reportId,
   });
   logBarangayActivity({
     actor: captain, barangayId: task.barangayId, action: 'schedule_rejected', entityType: 'task', entityId: task.id,
-    summary: `Rejected the cleanup for ${task.reportNumber ?? 'a report'} on ${task.scheduledDate}: ${remarks.trim()}`,
+    summary: `Rejected the cleanup for ${task.reportNumber ?? 'a report'} on ${formatDateKey(task.scheduledDate)}: ${remarks.trim()}`,
   });
 };
 
