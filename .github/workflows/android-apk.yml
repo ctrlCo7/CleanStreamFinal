@@ -26,20 +26,21 @@ jobs:
     env:
       NODE_ENV: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # all commits (build number) and tags (release notes)
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
-          cache: gradle
+          # No Gradle cache here: the android/ folder (with its Gradle files) is only generated
+          # by the prebuild step below, so setup-java would find nothing to cache and fail.
 
       - name: Build number
         run: |
