@@ -1,0 +1,97 @@
+# Builds the CleanStream APK on every push and publishes it as a GitHub Release (build-<number>).
+# Installed apps check the newest release when they open and offer an Update button
+# (src/services/appUpdate.ts), which installs the new APK over the old one: no uninstall.
+#
+# The build number is the number of commits (same as scripts/build-apk.ps1 on the PC), so every
+# push gets a higher Android versionCode, which Android needs to accept the APK as an update.
+name: Android APK
+
+on:
+  push:
+    branches: [upgrade/expo-sdk-58]
+    paths-ignore: ['**.md', 'superadmin-web/**', 'builds/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write # to publish the release
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true # a newer push replaces a build still running
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # all commits (build number) and tags (release notes)
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Build number
+        run: |
+          echo "CLEANSTREAM_BUILD=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
+          echo "CLEANSTREAM_COMMIT=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: Skip if this build is already published
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "build-$CLEANSTREAM_BUILD" > /dev/null 2>&1; then
+            echo "Release build-$CLEANSTREAM_BUILD already exists."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install packages
+        if: steps.existing.outputs.skip != 'true'
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate the Android project
+        if: steps.existing.outputs.skip != 'true'
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Compile the APK
+        if: steps.existing.outputs.skip != 'true'
+        working-directory: android
+        # arm64-v8a: real phones. x86_64: the PC emulator.
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,x86_64 --no-daemon
+
+      - name: Check the signing key
+        if: steps.existing.outputs.skip != 'true'
+        # Phones only accept an update signed with the same key as the installed app. Every APK so
+        # far (PC builds) has this certificate; a different one would force an uninstall.
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          SIGNER="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          DIGEST=$("$SIGNER" verify --print-certs "$APK" | grep -m1 'SHA-256' | awk '{print $NF}')
+          echo "Certificate: $DIGEST"
+          test "$DIGEST" = "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c"
+
+      - name: Publish the release
+        if: steps.existing.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="CleanStream-build$CLEANSTREAM_BUILD-$CLEANSTREAM_COMMIT.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$APK"
+          PREV=$(git tag -l 'build-*' --sort=-v:refname | head -1)
+          if [ -n "$PREV" ]; then git log --no-merges --format='- %s' "$PREV..HEAD" > notes.md; else git log -1 --format='- %s' > notes.md; fi
+          gh release create "build-$CLEANSTREAM_BUILD" "$APK" \
+            --target "$GITHUB_SHA" \
+            --title "CleanStream build $CLEANSTREAM_BUILD ($CLEANSTREAM_COMMIT)" \
+            --notes-file notes.md \
+            --latest

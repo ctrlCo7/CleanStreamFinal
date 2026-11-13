@@ -44,10 +44,15 @@ $env:Path = "$(Split-Path $ninja.Source);$(Split-Path $cmake.Source);$env:Path"
 # ── Code to build: the last commit of the current branch ─────────────────────
 $branch = (git -C $repo rev-parse --abbrev-ref HEAD).Trim()
 $commit = (git -C $repo rev-parse --short HEAD).Trim()
+# Build number = commits on the branch: each new APK installs over the old one as an update
+# (see app.config.js), and matches the number GitHub gives the same commit.
+$buildNo = (git -C $repo rev-list --count HEAD).Trim()
+$env:CLEANSTREAM_BUILD = $buildNo
+$env:CLEANSTREAM_COMMIT = $commit
 if (git -C $repo status --porcelain) {
   Write-Host "Note: you have uncommitted changes. They are NOT in this build (commit them first to include them)." -ForegroundColor Yellow
 }
-Step "Building $branch at $commit"
+Step "Building $branch at $commit (build $buildNo)"
 
 if (-not (Test-Path $build)) {
   Run git @('-C', $repo, 'worktree', 'add', '--detach', $build, $commit)
@@ -85,7 +90,7 @@ try {
 $apk = Join-Path $build 'android\app\build\outputs\apk\release\app-release.apk'
 $outDir = Join-Path $repo 'builds'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-$out = Join-Path $outDir ("CleanStream-{0}-{1}.apk" -f (Get-Date -Format 'yyyy-MM-dd-HHmm'), $commit)
+$out = Join-Path $outDir ("CleanStream-{0}-build{1}-{2}.apk" -f (Get-Date -Format 'yyyy-MM-dd-HHmm'), $buildNo, $commit)
 Copy-Item $apk $out
 Step "APK ready: $out"
 

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer, NavigationContainerRef, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { useLiveNotifications } from '../hooks/useLiveNotifications';
 import { useOfflineSync } from '../hooks/useOfflineQueue';
+import { useAppUpdate } from '../hooks/useAppUpdate';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthChange } from '../services/authService';
 import { restoreSession, setUser } from '../store/authSlice';
@@ -88,6 +89,8 @@ export default function RootNavigator() {
   // Officials file reports too (e.g. a problem found at a checkpoint): send theirs when back online.
   // Citizens' are sent by CitizenNavigator, which also refreshes their report list.
   useOfflineSync(isAuthenticated && user?.role === 'barangay' ? user.uid : undefined);
+  // A newer APK on GitHub: offer it with an Update button (installs over this one, data kept).
+  useAppUpdate();
 
   if (initializing) return <LoadingScreen />;
 
