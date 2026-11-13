@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useTheme } from '../../hooks/useTheme';
 import { useAppSettings } from '../../services/appSettings';
 import { ThemeColors } from '../../constants/theme';
-import { CONCERN_LABELS, CrewTracking, RootStackParamList, WasteReport } from '../../types';
+import { CleanupResult, CONCERN_LABELS, CrewTracking, RootStackParamList, WasteReport } from '../../types';
 import { formatPH } from '../../utils/phTime';
 import { formatDateKey } from '../../utils/dates';
 import { Badge } from '../../components/common/Badge';
@@ -17,6 +17,7 @@ import { useAppSelector } from '../../store/hooks';
 import { subscribeTrackingForReport } from '../../services/crewTrackingService';
 import { CrewTrackingCard } from '../../components/map/CrewTrackingCard';
 import { CleanupResultCard } from '../../components/report/CleanupResultCard';
+import { loadCleanupResult } from '../../services/crewService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CitizenDetail'>;
 
@@ -46,6 +47,19 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
   }, [reportId, user?.uid]);
 
   const [loadIssue, setLoadIssue] = useState('');
+  // The crew's before/after photos once the cleanup is done (what "Cleaned up!" opens to).
+  const [cleanup, setCleanup] = useState<CleanupResult | undefined>();
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  useEffect(() => {
+    if (report?.status !== 'completed') return;
+    if (report.cleanupResult) { setCleanup(report.cleanupResult); return; }
+    let alive = true;
+    setCleanupLoading(true);
+    loadCleanupResult(report)
+      .then((r) => { if (alive) setCleanup(r); })
+      .finally(() => { if (alive) setCleanupLoading(false); });
+    return () => { alive = false; };
+  }, [report]);
   useEffect(() => {
     getReportById(reportId)
       .then((r) => { setReport(r); if (!r) setLoadIssue('This report may have been removed.'); })
@@ -105,7 +119,9 @@ export default function CitizenReportDetailScreen({ navigation, route }: Props) 
 
         {/* The finished cleanup: what the "cleaned up" notification opens to */}
         {report.status === 'completed' && (
-          <CleanupResultCard result={report.cleanupResult} fallbackBeforeURL={report.photoURL || undefined} />
+          cleanupLoading
+            ? <ActivityIndicator style={{ marginVertical: 16 }} color={colors.teal} />
+            : <CleanupResultCard result={cleanup} fallbackBeforeURL={report.photoURL || undefined} />
         )}
 
         {/* Live cleanup truck, while it is on the way */}

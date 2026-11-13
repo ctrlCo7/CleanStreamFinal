@@ -315,7 +315,10 @@ service cloud.firestore {
                     // Only once the Captain approved it: proposals, and declined or rejected
                     // schedules, never reach the crew (also matches the app's crew queries).
                     (isCleanupTeam() && resource.data.assignedTeamId == currentUid()
-                      && resource.data.status in ['assigned', 'accepted', 'in_progress', 'completed', 'cancelled'])
+                      && resource.data.status in ['assigned', 'accepted', 'in_progress', 'completed', 'cancelled']) ||
+                    // The reporter, once the cleanup of their report is finished: its before/after
+                    // photos (for cleanups confirmed before the photos were copied onto the report).
+                    (resource.data.get('reporterUserId', '') == currentUid() && resource.data.status == 'completed')
                   );
 
       // A cleanup stays inside the report's barangay: the task's barangay must be the report's,

@@ -1,5 +1,5 @@
 import { NotificationBell } from '../../components/common/NotificationBell';
-import React, { useEffect, useCallback, useMemo, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -17,6 +17,7 @@ import { ActionGrid, AlertStrip, Card, EmptyNote, ListRow, ScreenHeader, Section
 import { subscribeActiveTrips } from '../../services/crewTrackingService';
 import { formatEta } from '../../services/routeMath';
 import { subscribeToBarangayTasks } from '../../services/cleanupTaskService';
+import { backfillCleanupPhotos, reportsMissingCleanupPhotos } from '../../services/crewService';
 import { subscribeToBarangayActivity } from '../../services/activityLogService';
 import { APPROVED_STATUSES } from '../../services/scheduleConflicts';
 import { CHECKPOINT_STATUS_LABELS } from '../../services/checkpointStatus';
@@ -61,6 +62,17 @@ export default function AdminDashboardScreen() {
   const rejectedSchedules = tasks.filter((t) => t.status === 'rejected').length;
   const completedCleanups = tasks.filter((t) => t.status === 'completed').length;
   // Finished by the crew, waiting for the Captain to check the photos and close the report.
+  // Cleanups confirmed on an older app version never copied their before/after photos onto the
+  // report, so the reporter couldn't see them. The Captain's app adds them (once per report).
+  const backfilled = useRef(new Set<string>());
+  useEffect(() => {
+    const missing = reportsMissingCleanupPhotos(reports, tasks).filter(({ report }) => !backfilled.current.has(report.id));
+    if (missing.length === 0) return;
+    missing.forEach(({ report }) => backfilled.current.add(report.id));
+    backfillCleanupPhotos(missing.map((m) => m.report), missing.map((m) => m.task))
+      .catch((e) => console.warn('[Dashboard] Cleanup photo backfill failed:', e));
+  }, [reports, tasks]);
+
   const toConfirm = tasks.filter((t) => t.status === 'completed' && !t.confirmedAt);
   // Checkpoints
   const cp = monitor.progress;

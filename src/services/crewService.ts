@@ -20,6 +20,9 @@ import { updateReportStatus } from './reportsService';
 import { assignmentProblem, reportBarangayId } from './assignmentRules';
 import { mergeSummaries, summarizeAnalysis } from './cleanupComparison';
 import { withTimeout } from '../utils/async';
+import { cleanupResultOf, reportsMissingCleanupPhotos } from './cleanupResult';
+
+export { cleanupResultOf, reportsMissingCleanupPhotos };
 import { formatDateKey, formatHHmm } from '../utils/dates';
 
 /** A schedule in words, e.g. "Nov 13, 2026, 8:00 AM–10:00 AM" (notifications, logs, messages). */
@@ -490,6 +493,42 @@ export const finishTask = async (task: CleanupTask, actor: User, input: FinishIn
 // ─── The official's / Admin's side ───────────────────────────────────────────
 
 /** Confirms a finished cleanup: closes the report and tells the person who reported it. */
+/** Run by the Captain's app: adds the missing photos so those reporters can see them too. */
+export const backfillCleanupPhotos = async (reports: WasteReport[], tasks: CleanupTask[]): Promise<number> => {
+  let fixed = 0;
+  for (const { report, task } of reportsMissingCleanupPhotos(reports, tasks)) {
+    try {
+      await updateDoc(doc(db, 'reports', report.id), { cleanupResult: cleanupResultOf(task) });
+      fixed++;
+    } catch (e) {
+      console.warn('[Crew] Could not add the cleanup photos to', report.id, e);
+    }
+  }
+  return fixed;
+};
+
+/**
+ * The before/after photos for a completed report. The report carries them; for a cleanup
+ * confirmed before that, they're read from the crew's finished task (the reporter may read it).
+ */
+export const loadCleanupResult = async (report: WasteReport): Promise<CleanupResult | undefined> => {
+  if (report.cleanupResult) return report.cleanupResult;
+  if (report.cleanupTaskId) {
+    // Refused when that task isn't this report's finished cleanup (e.g. a later re-schedule):
+    // then look the finished one up below.
+    const snap = await getDoc(doc(db, TASKS, report.cleanupTaskId)).catch(() => null);
+    if (snap?.exists() && snap.data().status === 'completed') return cleanupResultOf({ id: snap.id, ...snap.data() } as CleanupTask);
+  }
+  try {
+    const q = query(collection(db, TASKS), where('reportId', '==', report.id), where('reporterUserId', '==', report.userId), where('status', '==', 'completed'));
+    const found = (await getDocs(q)).docs[0];
+    return found ? cleanupResultOf({ id: found.id, ...found.data() } as CleanupTask) : undefined;
+  } catch (e) {
+    console.warn('[Crew] Cleanup photos not readable yet:', e);
+    return undefined;
+  }
+};
+
 export const confirmTaskCompleted = async (task: CleanupTask, actor: User): Promise<void> => {
   if (actor.role !== 'admin') throw new Error('Only the Barangay Captain can confirm a finished cleanup.');
   const confirmedAt = new Date().toISOString();
@@ -498,14 +537,7 @@ export const confirmTaskCompleted = async (task: CleanupTask, actor: User): Prom
   const t = saved ? { ...task, ...saved } : task;
   await updateReportStatus(task.reportId, 'completed', actor.uid, fullName(actor), { note: 'Cleanup confirmed' });
   // The reporter can't read cleanup tasks, so the before/after photos go onto the report itself.
-  const cleanupResult: CleanupResult = {
-    beforePhotoURLs: t.beforePhotoURLs ?? [],
-    afterPhotoURLs: t.afterPhotoURLs ?? [],
-    confirmedAt,
-    ...(t.assignedTeamName ? { crewName: t.assignedTeamName } : {}),
-    ...(typeof t.wasteCollectedKg === 'number' ? { wasteCollectedKg: t.wasteCollectedKg } : {}),
-    ...(t.completionNotes ? { notes: t.completionNotes } : {}),
-  };
+  const cleanupResult = cleanupResultOf(t, confirmedAt);
   await updateDoc(doc(db, 'reports', task.reportId), { cleanupResult })
     .catch((e) => console.warn('[Crew] Could not add the cleanup photos to the report (non-fatal):', e));
   await updateDoc(doc(db, TASKS, task.id), { confirmedByUserId: actor.uid, confirmedAt, updatedAt: serverTimestamp() });

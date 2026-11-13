@@ -24,6 +24,8 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'cleanupTasks', 't1'), task('b1', 'cl'));
   await setDoc(doc(db, 'cleanupTasks', 't2'), task('b1', 'cl2'));
   await setDoc(doc(db, 'cleanupTasks', 't_b2'), task('b2', 'cl2'));
+  await setDoc(doc(db, 'cleanupTasks', 't_done'), task('b1', 'cl', { status: 'completed', reporterUserId: 'ct', afterPhotoURLs: ['https://img/after.jpg'] }));
+  await setDoc(doc(db, 'cleanupTasks', 't_open'), task('b1', 'cl', { status: 'in_progress', reporterUserId: 'ct' }));
   const ev = (barangayId) => ({ title: 'Cleanup drive', barangayId, organizedBy: 'bg', participantIds: [], currentParticipants: 0, status: 'upcoming' });
   await setDoc(doc(db, 'cleanupEvents', 'ev1'), ev('b1'));
   await setDoc(doc(db, 'cleanupEvents', 'ev_b2'), ev('b2'));
@@ -231,6 +233,12 @@ const crew = as('cl'), crew2 = as('cl2');
 await check('nobody can self-register as a cleanup team account', assertFails(su('n_cl', { role: 'cleanup_team', isVerified: false, isActive: true })));
 await check('a crew leader cannot read everyone\'s profiles', assertFails(getDoc(doc(crew, 'users', 'ct'))));
 await check('a crew leader cannot list accounts', assertFails(getDocs(collection(crew, 'users'))));
+// The reporter sees the before/after photos of their own report's finished cleanup.
+await check("the reporter reads their report's finished cleanup (its photos)", assertSucceeds(getDoc(doc(as('ct'), 'cleanupTasks', 't_done'))));
+await check('the reporter finds it by report', assertSucceeds(getDocs(query(collection(as('ct'), 'cleanupTasks'), where('reportId', '==', 'r_b1'), where('reporterUserId', '==', 'ct'), where('status', '==', 'completed')))));
+await check("the reporter can't read a cleanup still in progress", assertFails(getDoc(doc(as('ct'), 'cleanupTasks', 't_open'))));
+await check("another citizen can't read someone else's finished cleanup", assertFails(getDoc(doc(as('vol1'), 'cleanupTasks', 't_done'))));
+await check("a reporter can't change their finished cleanup", assertFails(updateDoc(doc(as('ct'), 'cleanupTasks', 't_done'), { afterPhotoURLs: [] })));
 await check('a crew leader reads a task assigned to them', assertSucceeds(getDoc(doc(crew, 'cleanupTasks', 't1'))));
 await check("a crew leader cannot read another crew's task", assertFails(getDoc(doc(crew, 'cleanupTasks', 't2'))));
 await check('a crew leader accepts their task', assertSucceeds(updateDoc(doc(crew, 'cleanupTasks', 't1'), { status: 'accepted', updatedAt: serverTimestamp() })));
