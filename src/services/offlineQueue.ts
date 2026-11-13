@@ -17,8 +17,14 @@ import { retryPendingPhotos, uploadPhotoForReport } from './photoRetry';
 
 const STORAGE_KEY = 'cleanstream_offline_reports_v1';
 const PHOTO_DIR = 'offline-reports';
-// Give up on an entry after this many failed uploads; it stays visible so it can be retried by hand.
-const MAX_AUTO_ATTEMPTS = 8;
+// After this many failed uploads in a row, an entry is retried less often (never dropped):
+// a report must still go up on its own whenever the problem clears.
+const FAST_ATTEMPTS = 8;
+const SLOW_RETRY_MS = 5 * 60_000;
+
+/** Whether an automatic sync should try this entry now. */
+export const dueForRetry = (i: Pick<QueuedReport, 'attempts' | 'lastTriedAt'>, now = Date.now()): boolean =>
+  i.attempts < FAST_ATTEMPTS || !i.lastTriedAt || now - Date.parse(i.lastTriedAt) >= SLOW_RETRY_MS;
 
 export interface QueuedReport {
   id: string;
@@ -34,6 +40,7 @@ export interface QueuedReport {
   capturedAt: string;
   attempts: number;
   lastError?: string;
+  lastTriedAt?: string;
 }
 
 // ─── Small observable store for the UI ───────────────────────────────────────
@@ -128,7 +135,7 @@ let running: Promise<number> | null = null;
 export function syncOfflineReports(userId: string, force = false): Promise<number> {
   if (running) return running;
   running = (async () => {
-    const queued = (await read()).filter((i) => i.userId === userId && (force || i.attempts < MAX_AUTO_ATTEMPTS));
+    const queued = (await read()).filter((i) => i.userId === userId && (force || dueForRetry(i)));
     if (!(await isOnline())) return 0;
     // Photos of reports sent earlier whose upload failed go up first.
     await retryPendingPhotos().catch((e) => console.warn('[Offline] Photo retry failed:', e));
@@ -157,7 +164,7 @@ export function syncOfflineReports(userId: string, force = false): Promise<numbe
         console.warn('[Offline] Upload failed, will retry:', e);
         const items = await read();
         await write(items.map((i) => i.id === item.id
-          ? { ...i, attempts: i.attempts + 1, lastError: e instanceof Error ? e.message : String(e) }
+          ? { ...i, attempts: i.attempts + 1, lastTriedAt: new Date().toISOString(), lastError: e instanceof Error ? e.message : String(e) }
           : i));
       }
     }

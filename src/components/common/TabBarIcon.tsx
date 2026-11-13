@@ -15,7 +15,12 @@ export function TabBarIcon({ focused, color, icon, label, activeBg }: TabBarIcon
   return (
     <View style={[styles.wrap, focused && { backgroundColor: activeBg }]}>
       {icon}
-      <Text style={[styles.label, { color }, focused && styles.labelActive]} numberOfLines={1}>
+      <Text
+        style={[styles.label, { color }, focused && styles.labelActive]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.8}
+      >
         {label}
       </Text>
     </View>
@@ -27,10 +32,11 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'center',
     gap: 3,
-    paddingHorizontal: 14,
+    paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 16,
     minWidth: 56,
+    maxWidth: '100%',
   },
   label: { fontSize: 10, fontWeight: '600' },
   labelActive: { fontWeight: '700' },

@@ -177,7 +177,10 @@ service cloud.firestore {
       // else (citizens, officials, crews, the Admin) only sees their own barangay's reports,
       // plus any report they filed themselves: queries must filter on barangayId or userId.
       // An account without a barangay sees only its own reports.
+      // A report that doesn't exist yet can be checked for (the offline queue asks "did my
+      // upload already go through?" before creating the report); it reveals nothing.
       allow read: if isSuperAdmin()
+                  || (isAuthenticated() && resource == null)
                   || (isAuthenticated()
                       && (isOwner(resource.data.userId) || inMyBarangay(resource.data.barangayId)));
 

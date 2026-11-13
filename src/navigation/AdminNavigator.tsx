@@ -34,6 +34,9 @@ export default function AdminNavigator() {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
+        // Let the icon + label pill use the whole tab, not the small fixed icon box (which cut labels to "Hist…").
+        tabBarIconStyle: { width: '100%', height: 48 },
+        tabBarItemStyle: { paddingHorizontal: 2 },
         tabBarStyle: {
           height: 66,
           borderTopWidth: 0,

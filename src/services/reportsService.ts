@@ -102,8 +102,15 @@ export const createReport = async (
   },
 ): Promise<{ reportId: string; reportNumber: string }> => {
   if (opts?.reportId) {
-    const existing = await getDoc(doc(db, 'reports', opts.reportId));
-    if (existing.exists()) {
+    // A retry of an upload that already went through must not make a second report. When the
+    // report doesn't exist yet, rules deployed before the `resource == null` read rule refuse
+    // this read (they check the report's owner, and there is no report): that also means "not
+    // created yet", so carry on and create it. Before, that refusal failed every offline upload.
+    const existing = await getDoc(doc(db, 'reports', opts.reportId)).catch((e: { code?: string }) => {
+      if (e?.code === 'permission-denied') return null;
+      throw e;
+    });
+    if (existing?.exists()) {
       return { reportId: opts.reportId, reportNumber: String(existing.data().reportNumber ?? opts.reportId) };
     }
   }

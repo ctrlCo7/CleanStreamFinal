@@ -149,6 +149,9 @@ await check("a citizen can't list another barangay's reports", assertFails(getDo
 await check('a citizen still reads their own report filed in another barangay', assertSucceeds(getDoc(doc(as('ct'), 'reports', 'r_b2'))));
 await check("a citizen lists their own reports wherever they are", assertSucceeds(getDocs(query(collection(as('ct'), 'reports'), where('userId', '==', 'ct')))));
 await check("a citizen with no barangay can't read others' reports", assertFails(getDoc(doc(as('ct2'), 'reports', 'r_b1'))));
+// The offline queue checks "did my upload already go through?" before creating its report.
+await check('the offline queue can check that its report does not exist yet', assertSucceeds(getDoc(doc(ct, 'reports', 'offline_new_id'))));
+await check('signed-out visitors still cannot check report IDs', assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), 'reports', 'offline_new_id'))));
 await check("the Admin reads their barangay's report", assertSucceeds(getDoc(doc(as('ad'), 'reports', 'r_b1'))));
 await check("the Admin can't read another barangay's report", assertFails(getDoc(doc(as('ad'), 'reports', 'r_b2'))));
 await check("the Admin can't list every report", assertFails(getDocs(collection(as('ad'), 'reports'))));
